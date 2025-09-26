@@ -1,8 +1,8 @@
-# DormDevise
+# 设舍
 
-This is an app developed to serve dormitories.
+这是一个为服务于宿舍开发的App。
 
-## Getting Started
+## 入门指南
 
 For help getting started with Flutter development, view the online
 [documentation](https://flutter.dev/).
