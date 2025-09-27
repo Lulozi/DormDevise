@@ -225,104 +225,147 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
       appBar: AppBar(title: Text('MQTT配置')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: ListView(
-          children: [
-            TextField(
-              controller: _brokerController,
-              decoration: InputDecoration(labelText: 'Broker地址'),
-            ),
-            TextField(
-              controller: _portController,
-              decoration: InputDecoration(labelText: '端口'),
-              keyboardType: TextInputType.number,
-            ),
-            TextField(
-              controller: _topicController,
-              decoration: InputDecoration(labelText: '主题'),
-            ),
-            TextField(
-              controller: _usernameController,
-              decoration: InputDecoration(labelText: '用户名'),
-            ),
-            TextField(
-              controller: _passwordController,
-              decoration: InputDecoration(labelText: '密码'),
-              obscureText: true,
-            ),
-            // 只显示Client ID，不允许编辑
-            ListTile(
-              title: Text('Client ID（设备唯一标识）'),
-              subtitle: Text(clientId),
-            ),
-            SizedBox(height: 24),
-            ElevatedButton(onPressed: _saveConfig, child: Text('保存配置')),
-            SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                final client = await connect();
-                final topic = _topicController.text;
-                try {
-                  client.subscribe(topic, MqttQos.atLeastOnce);
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('订阅成功: $topic')));
-                } catch (e) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('订阅失败: $e')));
-                }
-              },
-              child: Text('订阅'),
-            ),
-            SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                final client = await connect();
-                final topic = _topicController.text;
-                final builder = MqttClientPayloadBuilder();
-                builder.addString('OPEN');
-                try {
-                  client.publishMessage(
-                    topic,
-                    MqttQos.atLeastOnce,
-                    builder.payload!,
-                  );
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('OPEN消息已发送')));
-                } catch (e) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('发送失败: $e')));
-                }
-              },
-              child: Text('测试发送OPEN'),
-            ),
-            SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                final result = await connect();
-                if (result.connectionStatus == MqttConnectionState.connected) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('连接失败')));
-                } else {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('连接成功')));
-                }
-              },
-              child: Text('连接服务器'),
-            ),
-            SizedBox(height: 24),
-            ElevatedButton(onPressed: _exportConfig, child: Text('导出配置')),
-            SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _importConfigFromClipboard,
-              child: Text('从剪贴板导入配置'),
-            ),
-            SizedBox(height: 24),
-          ],
+        child: SingleChildScrollView(
+          physics: NeverScrollableScrollPhysics(), // 禁止滑动
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _brokerController,
+                decoration: InputDecoration(labelText: 'Broker地址'),
+              ),
+              TextField(
+                controller: _portController,
+                decoration: InputDecoration(labelText: '端口'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: _topicController,
+                decoration: InputDecoration(labelText: '主题'),
+              ),
+              TextField(
+                controller: _usernameController,
+                decoration: InputDecoration(labelText: '用户名'),
+              ),
+              TextField(
+                controller: _passwordController,
+                decoration: InputDecoration(labelText: '密码'),
+                obscureText: true,
+              ),
+              ListTile(
+                title: Text('Client ID（设备唯一标识）'),
+                subtitle: Text(clientId),
+              ),
+              SizedBox(height: 24),
+              // 按钮区域居中且大小一致
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _saveConfig,
+                      child: Text('保存配置'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(0, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final client = await connect();
+                        final topic = _topicController.text;
+                        try {
+                          client.subscribe(topic, MqttQos.atLeastOnce);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('订阅成功: $topic')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('订阅失败: $e')),
+                          );
+                        }
+                      },
+                      child: Text('订阅'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(0, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final client = await connect();
+                        final topic = _topicController.text;
+                        final builder = MqttClientPayloadBuilder();
+                        builder.addString('OPEN');
+                        try {
+                          client.publishMessage(
+                            topic,
+                            MqttQos.atLeastOnce,
+                            builder.payload!,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('OPEN消息已发送')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('发送失败: $e')),
+                          );
+                        }
+                      },
+                      child: Text('测试发送OPEN'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(0, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _exportConfig,
+                      child: Text('导出配置'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(0, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _importConfigFromClipboard,
+                      child: Text('从剪贴板导入配置'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(0, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
