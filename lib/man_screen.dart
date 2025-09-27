@@ -13,7 +13,7 @@ class ManagementScreen extends StatefulWidget {
 
 class _ManagementScreenState extends State<ManagementScreen> {
   int selectedIndex = 1;
-  final List pages = [
+  final List<Widget> pages = [
     const TablePage(),
     const OpenDoorPage(),
     const PersonPage(),
@@ -22,12 +22,12 @@ class _ManagementScreenState extends State<ManagementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // 使body延伸到导航栏后面
-      resizeToAvoidBottomInset: false, // 防止键盘弹出时调整布局
+      extendBody: true,
+      resizeToAvoidBottomInset: false,
       bottomNavigationBar: Theme(
         data: Theme.of(context).copyWith(
-          splashFactory: NoSplash.splashFactory, // 关闭水波纹
-          highlightColor: Colors.transparent, // 关闭高亮
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
         ),
         child: BottomNavigationBar(
           elevation: 0,
@@ -70,7 +70,23 @@ class _ManagementScreenState extends State<ManagementScreen> {
           ],
         ),
       ),
-      body: pages[selectedIndex],
+      body: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity != null) {
+            if (details.primaryVelocity! < 0 &&
+                selectedIndex < pages.length - 1) {
+              setState(() {
+                selectedIndex++;
+              });
+            } else if (details.primaryVelocity! > 0 && selectedIndex > 0) {
+              setState(() {
+                selectedIndex--;
+              });
+            }
+          }
+        },
+        child: pages[selectedIndex],
+      ),
     );
   }
 }
