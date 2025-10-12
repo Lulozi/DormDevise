@@ -1,4 +1,4 @@
-package com.example.dormdevise
+package com.lulo.dormdevise
 
 import io.flutter.embedding.android.FlutterActivity
 
