@@ -13,11 +13,19 @@ class ManagementScreen extends StatefulWidget {
 
 class _ManagementScreenState extends State<ManagementScreen> {
   int selectedIndex = 1;
+  final PageController _pageController = PageController(initialPage: 1);
   final List<Widget> pages = [
     const TablePage(),
     const OpenDoorPage(),
     const PersonPage(),
   ];
+  // FIXME 流畅度需要优化
+  // MAYBE 更好看的页面切换效果
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +47,12 @@ class _ManagementScreenState extends State<ManagementScreen> {
           onTap: (value) {
             setState(() {
               selectedIndex = value;
+              _pageController.animateToPage(
+                value,
+                // HACK 延长动画时间以提升流畅度
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.ease,
+              );
             });
           },
           items: [
@@ -70,22 +84,14 @@ class _ManagementScreenState extends State<ManagementScreen> {
           ],
         ),
       ),
-      body: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          if (details.primaryVelocity != null) {
-            if (details.primaryVelocity! < 0 &&
-                selectedIndex < pages.length - 1) {
-              setState(() {
-                selectedIndex++;
-              });
-            } else if (details.primaryVelocity! > 0 && selectedIndex > 0) {
-              setState(() {
-                selectedIndex--;
-              });
-            }
-          }
+      body: PageView(
+        controller: _pageController,
+        children: pages,
+        onPageChanged: (index) {
+          setState(() {
+            selectedIndex = index;
+          });
         },
-        child: pages[selectedIndex],
       ),
     );
   }

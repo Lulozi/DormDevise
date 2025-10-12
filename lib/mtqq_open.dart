@@ -5,6 +5,8 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'dart:developer'; // 顶部添加
+// MAYBE 重新设计UI
 
 // 添加静态方法，方便其他页面调用
 class MqttConfigPage extends StatefulWidget {
@@ -26,12 +28,12 @@ class MqttConfigPage extends StatefulWidget {
     client.port = port;
     client.logging(on: false);
     client.keepAlivePeriod = 20;
-    client.onConnected = () => print('连接成功');
-    client.onDisconnected = () => print('断开连接');
-    client.onSubscribed = (topic) => print('已订阅: $topic');
-    client.onUnsubscribed = (topic) => print('取消订阅: $topic');
-    client.onSubscribeFail = (topic) => print('订阅失败: $topic');
-    client.pongCallback = () => print('Ping响应');
+    client.onConnected = () => log('连接成功');
+    client.onDisconnected = () => log('断开连接');
+    client.onSubscribed = (topic) => log('已订阅: $topic');
+    client.onUnsubscribed = (topic) => log('取消订阅: $topic');
+    client.onSubscribeFail = (topic) => log('订阅失败: $topic');
+    client.pongCallback = () => log('Ping响应');
 
     final connMess = MqttConnectMessage()
         .withClientIdentifier(clientId)
@@ -119,12 +121,12 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
     client.port = port;
     client.logging(on: false);
     client.keepAlivePeriod = 20;
-    client.onConnected = () => print('连接成功');
-    client.onDisconnected = () => print('断开连接');
-    client.onSubscribed = (topic) => print('已订阅: $topic');
-    client.onUnsubscribed = (topic) => print('取消订阅: $topic');
-    client.onSubscribeFail = (topic) => print('订阅失败: $topic');
-    client.pongCallback = () => print('Ping响应');
+    client.onConnected = () => log('连接成功');
+    client.onDisconnected = () => log('断开连接');
+    client.onSubscribed = (topic) => log('已订阅: $topic');
+    client.onUnsubscribed = (topic) => log('取消订阅: $topic');
+    client.onSubscribeFail = (topic) => log('订阅失败: $topic');
+    client.pongCallback = () => log('Ping响应');
 
     final connMess = MqttConnectMessage()
         .withClientIdentifier(clientId)
@@ -135,7 +137,7 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
     try {
       await client.connect();
     } catch (e) {
-      print('连接异常: $e');
+      log('连接异常: $e');
       client.disconnect();
     }
     return client;
@@ -265,13 +267,13 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _saveConfig,
-                      child: Text('保存配置'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: Size(0, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
+                      child: Text('保存配置'),
                     ),
                   ),
                   SizedBox(height: 16),
@@ -287,18 +289,18 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
                             SnackBar(content: Text('订阅成功: $topic')),
                           );
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('订阅失败: $e')),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('订阅失败: $e')));
                         }
                       },
-                      child: Text('订阅'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: Size(0, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
+                      child: Text('订阅'),
                     ),
                   ),
                   SizedBox(height: 16),
@@ -316,22 +318,22 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
                             MqttQos.atLeastOnce,
                             builder.payload!,
                           );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('OPEN消息已发送')),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('OPEN消息已发送')));
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('发送失败: $e')),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('发送失败: $e')));
                         }
                       },
-                      child: Text('测试发送OPEN'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: Size(0, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
+                      child: Text('测试发送OPEN'),
                     ),
                   ),
                   SizedBox(height: 16),
@@ -339,13 +341,13 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _exportConfig,
-                      child: Text('导出配置'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: Size(0, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
+                      child: Text('导出配置'),
                     ),
                   ),
                   SizedBox(height: 16),
@@ -353,13 +355,13 @@ class _MqttConfigPageState extends State<MqttConfigPage> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _importConfigFromClipboard,
-                      child: Text('从剪贴板导入配置'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: Size(0, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
+                      child: Text('从剪贴板导入配置'),
                     ),
                   ),
                 ],
