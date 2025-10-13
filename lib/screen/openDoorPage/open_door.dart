@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:dormdevise/screen/personPage/config_mtqq.dart';
 import 'package:dormdevise/screen/openDoorPage/mqtt_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -114,44 +113,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
               ],
             ),
           ),
-          // TODO mtqq配置页面转移至个人页面里的设置里
           //MAYBE 添加隐藏式的特殊方式进入配置界面
-          Positioned(
-            bottom: 16 * 7,
-            right: 16,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => ConfigMqttPage()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(0),
-                elevation: 4,
-                shadowColor: Colors.grey,
-                backgroundColor: Colors.transparent,
-              ),
-              child: Ink(
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF4F8EF7), Color(0xFF3465D9)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: SizedBox(
-                  width: 50,
-                  height: 50,
-                  child: Transform.rotate(
-                    angle: 315 * 3.14159 / 180,
-                    child: const Icon(Icons.settings, color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
