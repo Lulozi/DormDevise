@@ -438,8 +438,8 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                     child: TextField(
                       controller: _customMsgController,
                       decoration: const InputDecoration(
-                        labelText: '自定义消息',
-                        hintText: '输入要发送的消息',
+                        labelText: '自定义发送消息',
+                        hintText: '输入mtqq接收开门的消息',
                       ),
                       minLines: 1,
                       maxLines: 3,
@@ -523,7 +523,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('发送'),
+                          : const Text('测试发送'),
                     ),
                   ),
                 ],
