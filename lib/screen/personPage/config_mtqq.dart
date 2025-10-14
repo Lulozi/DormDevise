@@ -16,6 +16,33 @@ class ConfigMqttPage extends StatefulWidget {
 
 class _ConfigMqttPageState extends State<ConfigMqttPage> {
   final List<String> _logLines = [];
+  // 配置变量
+  String _host = '';
+  String _port = '1883';
+  String _topic = '';
+  String _clientId = '';
+  String _username = '';
+  String _password = '';
+  String _caPath = 'assets/certs/ca.pem';
+  String _certPath = '';
+  String _keyPath = '';
+  String _keyPwd = '';
+  bool _withTls = false;
+  String _customMsg = 'OPEN';
+
+  // controller 只在变量变更时重建，避免 labelText 闪烁
+  late TextEditingController _hostController;
+  late TextEditingController _portController;
+  late TextEditingController _topicController;
+  late TextEditingController _clientIdController;
+  late TextEditingController _usernameController;
+  late TextEditingController _passwordController;
+  late TextEditingController _caPathController;
+  late TextEditingController _certPathController;
+  late TextEditingController _keyPathController;
+  late TextEditingController _keyPwdController;
+  late TextEditingController _customMsgController;
+
   void _showBubble(BuildContext context, String msg) {
     showDialog(
       context: context,
@@ -32,19 +59,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     );
   }
 
-  final _customMsgController = TextEditingController();
   bool _sending = false;
-  final _hostController = TextEditingController();
-  final _portController = TextEditingController(text: '1883');
-  final _topicController = TextEditingController();
-  final _clientIdController = TextEditingController();
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _caPathController = TextEditingController(text: 'assets/certs/ca.pem');
-  final _certPathController = TextEditingController();
-  final _keyPathController = TextEditingController();
-  final _keyPwdController = TextEditingController();
-  bool _withTls = false;
   bool _loading = false;
   String _status = '';
 
@@ -67,20 +82,30 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   Future<void> _loadConfig({String? defaultClientId}) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _hostController.text = prefs.getString('mqtt_host') ?? '';
-      _portController.text = prefs.getString('mqtt_port') ?? '1883';
-      _topicController.text = prefs.getString('mqtt_topic') ?? '';
-      _usernameController.text = prefs.getString('mqtt_username') ?? '';
-      _passwordController.text = prefs.getString('mqtt_password') ?? '';
-      _clientIdController.text =
-          prefs.getString('mqtt_clientId') ?? (defaultClientId ?? '');
-      _caPathController.text =
-          prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
-      _certPathController.text = prefs.getString('mqtt_cert') ?? '';
-      _keyPathController.text = prefs.getString('mqtt_key') ?? '';
-      _keyPwdController.text = prefs.getString('mqtt_key_pwd') ?? '';
+      _host = prefs.getString('mqtt_host') ?? '';
+      _port = prefs.getString('mqtt_port') ?? '1883';
+      _topic = prefs.getString('mqtt_topic') ?? '';
+      _username = prefs.getString('mqtt_username') ?? '';
+      _password = prefs.getString('mqtt_password') ?? '';
+      _clientId = prefs.getString('mqtt_clientId') ?? (defaultClientId ?? '');
+      _caPath = prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
+      _certPath = prefs.getString('mqtt_cert') ?? '';
+      _keyPath = prefs.getString('mqtt_key') ?? '';
+      _keyPwd = prefs.getString('mqtt_key_pwd') ?? '';
       _withTls = prefs.getBool('mqtt_with_tls') ?? false;
-      _customMsgController.text = 'OPEN';
+      _customMsg = 'OPEN';
+      // 重新创建 controller
+      _hostController = TextEditingController(text: _host);
+      _portController = TextEditingController(text: _port);
+      _topicController = TextEditingController(text: _topic);
+      _clientIdController = TextEditingController(text: _clientId);
+      _usernameController = TextEditingController(text: _username);
+      _passwordController = TextEditingController(text: _password);
+      _caPathController = TextEditingController(text: _caPath);
+      _certPathController = TextEditingController(text: _certPath);
+      _keyPathController = TextEditingController(text: _keyPath);
+      _keyPwdController = TextEditingController(text: _keyPwd);
+      _customMsgController = TextEditingController(text: _customMsg);
     });
   }
 
@@ -97,10 +122,12 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     await prefs.setString('mqtt_key', _keyPathController.text);
     await prefs.setString('mqtt_key_pwd', _keyPwdController.text);
     await prefs.setBool('mqtt_with_tls', _withTls);
+    if (!mounted) return;
     setState(() {
       _status = '配置已保存';
+      // setState 里同步调用 _showBubble，context 不跨异步
+      _showBubble(context, '配置已保存');
     });
-    _showBubble(context, '配置已保存');
   }
 
   Future<void> _exportConfig() async {
@@ -115,9 +142,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       'mqtt_key': _keyPathController.text,
       'mqtt_key_pwd': _keyPwdController.text,
       'mqtt_with_tls': _withTls,
+      // 不导出 clientId/uuid
     };
     final jsonStr = JsonEncoder.withIndent('  ').convert(config);
     await Clipboard.setData(ClipboardData(text: jsonStr));
+    if (!mounted) return;
     setState(() {
       _status = '配置已导出到剪贴板';
     });
@@ -127,6 +156,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   Future<void> _importConfigFromClipboard() async {
     final data = await Clipboard.getData('text/plain');
     if (data == null || data.text == null || data.text!.trim().isEmpty) {
+      if (!mounted) return;
       setState(() {
         _status = '剪贴板内容为空';
       });
@@ -137,27 +167,45 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       final map = jsonDecode(data.text!);
       if (map is! Map) throw Exception('格式错误');
       setState(() {
-        _hostController.text = map['mqtt_host'] ?? '';
-        _portController.text = map['mqtt_port'] ?? '1883';
-        _topicController.text = map['mqtt_topic'] ?? '';
-        _usernameController.text = map['mqtt_username'] ?? '';
-        _passwordController.text = map['mqtt_password'] ?? '';
-        _clientIdController.text =
-            (map['mqtt_clientId'] != null &&
-                (map['mqtt_clientId'] as String).isNotEmpty)
-            ? map['mqtt_clientId']
-            : const Uuid().v4();
-        _caPathController.text = map['mqtt_ca'] ?? 'assets/certs/ca.pem';
-        _certPathController.text = map['mqtt_cert'] ?? '';
-        _keyPathController.text = map['mqtt_key'] ?? '';
-        _keyPwdController.text = map['mqtt_key_pwd'] ?? '';
+        _host = map['mqtt_host'] ?? '';
+        _port = map['mqtt_port'] ?? '1883';
+        _topic = map['mqtt_topic'] ?? '';
+        _username = map['mqtt_username'] ?? '';
+        _password = map['mqtt_password'] ?? '';
+        _caPath = map['mqtt_ca'] ?? 'assets/certs/ca.pem';
+        _certPath = map['mqtt_cert'] ?? '';
+        _keyPath = map['mqtt_key'] ?? '';
+        _keyPwd = map['mqtt_key_pwd'] ?? '';
         _withTls = map['mqtt_with_tls'] ?? false;
         _status = '配置已从剪贴板导入';
+        // 重新创建 controller
+        _hostController = TextEditingController(text: _host);
+        _portController = TextEditingController(text: _port);
+        _topicController = TextEditingController(text: _topic);
+        _usernameController = TextEditingController(text: _username);
+        _passwordController = TextEditingController(text: _password);
+        _caPathController = TextEditingController(text: _caPath);
+        _certPathController = TextEditingController(text: _certPath);
+        _keyPathController = TextEditingController(text: _keyPath);
+        _keyPwdController = TextEditingController(text: _keyPwd);
       });
-      await _saveConfig();
+      // 只保存配置到本地，不弹“配置已保存”弹窗
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('mqtt_host', _host);
+      await prefs.setString('mqtt_port', _port);
+      await prefs.setString('mqtt_topic', _topic);
+      await prefs.setString('mqtt_username', _username);
+      await prefs.setString('mqtt_password', _password);
+      await prefs.setString('mqtt_ca', _caPath);
+      await prefs.setString('mqtt_cert', _certPath);
+      await prefs.setString('mqtt_key', _keyPath);
+      await prefs.setString('mqtt_key_pwd', _keyPwd);
+      await prefs.setBool('mqtt_with_tls', _withTls);
       final importStr = JsonEncoder.withIndent('  ').convert(map);
-      _showBubble(context, '配置已从剪贴板导入\n\n$importStr');
+      if (!mounted) return;
+      _showBubble(context, '配置已从剪贴板导入\n\n$importStr\n\n点击确定保存配置');
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _status = '导入失败: $e';
       });
@@ -173,7 +221,9 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       dialogTitle: dialogTitle,
     );
     if (result != null && result.files.single.path != null) {
-      controller.text = result.files.single.path!;
+      setState(() {
+        controller.text = result.files.single.path!;
+      });
     }
   }
 
@@ -232,12 +282,14 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       if (topic.isNotEmpty) {
         await service.subscribe(topic);
       }
+      if (!mounted) return;
       setState(() {
         _status = '连接成功';
       });
       _showBubble(context, '连接成功');
       await service.dispose();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _status = '连接失败: $e';
         _logLines.add('连接失败: $e');
@@ -269,15 +321,17 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final inputBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: colorScheme.outlineVariant),
+    );
     return Scaffold(
       appBar: AppBar(
         title: const Text('MQTT配置'),
         actions: [
           IconButton(
-            icon: const Text(
-              '≡',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
+            icon: const Icon(Icons.info_outline_rounded),
             tooltip: '查看MQTT连接情况',
             onPressed: () {
               final info = StringBuffer();
@@ -288,7 +342,6 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
               info.writeln('用户名: ${_usernameController.text}');
               info.writeln('主题: ${_topicController.text}');
               info.writeln('TLS: ${_withTls ? '启用' : '未启用'}');
-              // 实时判断连接状态
               String statusText;
               if (_status.contains('连接成功') || _status.contains('订阅连接')) {
                 statusText = '已连接，已订阅';
@@ -315,93 +368,174 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: _hostController,
-                decoration: const InputDecoration(labelText: '服务器地址'),
-              ),
-              TextField(
-                controller: _portController,
-                decoration: const InputDecoration(labelText: '端口'),
-                keyboardType: TextInputType.number,
-              ),
-              TextField(
-                controller: _topicController,
-                decoration: const InputDecoration(labelText: '主题'),
-              ),
-              TextField(
-                controller: _usernameController,
-                decoration: const InputDecoration(labelText: '用户名'),
-              ),
-              TextField(
-                controller: _passwordController,
-                decoration: const InputDecoration(labelText: '密码'),
-                obscureText: true,
-              ),
-              TextField(
-                controller: _clientIdController,
-                decoration: const InputDecoration(
-                  labelText: 'Client ID (默认使用UUID)',
+              Card(
+                elevation: 0,
+                color: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              ),
-              SwitchListTile(
-                title: const Text('启用TLS/SSL'),
-                value: _withTls,
-                onChanged: (v) => setState(() => _withTls = v),
-              ),
-              if (_withTls) ...[
-                GestureDetector(
-                  onTap: () =>
-                      _pickFile(_caPathController, dialogTitle: '选择CA证书'),
-                  child: AbsorbPointer(
-                    child: TextField(
-                      controller: _caPathController,
-                      decoration: const InputDecoration(labelText: 'CA证书路径'),
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () =>
-                      _pickFile(_certPathController, dialogTitle: '选择客户端证书'),
-                  child: AbsorbPointer(
-                    child: TextField(
-                      controller: _certPathController,
-                      decoration: const InputDecoration(
-                        labelText: '客户端证书路径(可选)',
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      TextField(
+                        key: const ValueKey('host'),
+                        controller: _hostController,
+                        decoration: InputDecoration(
+                          labelText: '服务器地址',
+                          border: inputBorder,
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () =>
-                      _pickFile(_keyPathController, dialogTitle: '选择客户端私钥'),
-                  child: AbsorbPointer(
-                    child: TextField(
-                      controller: _keyPathController,
-                      decoration: const InputDecoration(
-                        labelText: '客户端私钥路径(可选)',
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('port'),
+                        controller: _portController,
+                        decoration: InputDecoration(
+                          labelText: '端口',
+                          border: inputBorder,
+                        ),
+                        keyboardType: TextInputType.number,
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('topic'),
+                        controller: _topicController,
+                        decoration: InputDecoration(
+                          labelText: '主题',
+                          border: inputBorder,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('username'),
+                        controller: _usernameController,
+                        decoration: InputDecoration(
+                          labelText: '用户名',
+                          border: inputBorder,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('password'),
+                        controller: _passwordController,
+                        decoration: InputDecoration(
+                          labelText: '密码',
+                          border: inputBorder,
+                        ),
+                        obscureText: true,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('clientId'),
+                        controller: _clientIdController,
+                        decoration: InputDecoration(
+                          labelText: 'Client ID (默认使用UUID)',
+                          border: inputBorder,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        title: const Text('启用TLS/SSL'),
+                        value: _withTls,
+                        onChanged: (v) => setState(() => _withTls = v),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        tileColor: colorScheme.surface,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      if (_withTls) ...[
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () => _pickFile(
+                            _caPathController,
+                            dialogTitle: '选择CA证书',
+                          ),
+                          child: AbsorbPointer(
+                            child: TextField(
+                              key: const ValueKey('caPath'),
+                              controller: _caPathController,
+                              decoration: InputDecoration(
+                                labelText: 'CA证书路径',
+                                border: inputBorder,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () => _pickFile(
+                            _certPathController,
+                            dialogTitle: '选择客户端证书',
+                          ),
+                          child: AbsorbPointer(
+                            child: TextField(
+                              key: const ValueKey('certPath'),
+                              controller: _certPathController,
+                              decoration: InputDecoration(
+                                labelText: '客户端证书路径(可选)',
+                                border: inputBorder,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () => _pickFile(
+                            _keyPathController,
+                            dialogTitle: '选择客户端私钥',
+                          ),
+                          child: AbsorbPointer(
+                            child: TextField(
+                              key: const ValueKey('keyPath'),
+                              controller: _keyPathController,
+                              decoration: InputDecoration(
+                                labelText: '客户端私钥路径(可选)',
+                                border: inputBorder,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          key: const ValueKey('keyPwd'),
+                          controller: _keyPwdController,
+                          decoration: InputDecoration(
+                            labelText: '私钥密码(可选)',
+                            border: inputBorder,
+                          ),
+                          obscureText: true,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                TextField(
-                  controller: _keyPwdController,
-                  decoration: const InputDecoration(labelText: '私钥密码(可选)'),
-                  obscureText: true,
-                ),
-              ],
+              ),
               const SizedBox(height: 24),
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton(
+                    child: FilledButton.tonal(
                       onPressed: _loading ? null : _saveConfig,
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
                       child: const Text('保存配置'),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: ElevatedButton(
+                    child: FilledButton(
                       onPressed: _loading ? null : _testConnect,
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
                       child: _loading
                           ? const SizedBox(
                               width: 16,
@@ -417,148 +551,184 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton(
+                    child: OutlinedButton(
                       onPressed: _loading ? null : _exportConfig,
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
                       child: const Text('导出配置'),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: ElevatedButton(
+                    child: OutlinedButton(
                       onPressed: _loading ? null : _importConfigFromClipboard,
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
                       child: const Text('导入配置'),
                     ),
                   ),
                 ],
               ),
-              // 自定义消息发送框
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _customMsgController,
-                      decoration: const InputDecoration(
-                        labelText: '自定义发送消息',
-                        hintText: '输入mtqq接收开门的消息',
+              const SizedBox(height: 20),
+              Card(
+                elevation: 0,
+                color: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _customMsgController,
+                          decoration: InputDecoration(
+                            labelText: '自定义发送消息',
+                            hintText: '输入mqtt接收开门的消息',
+                            border: inputBorder,
+                          ),
+                          minLines: 1,
+                          maxLines: 3,
+                        ),
                       ),
-                      minLines: 1,
-                      maxLines: 3,
-                    ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 40,
+                        child: FilledButton(
+                          onPressed: _sending
+                              ? null
+                              : () async {
+                                  final msg = _customMsgController.text.trim();
+                                  if (msg.isEmpty) return;
+                                  setState(() {
+                                    _sending = true;
+                                    _status = '正在发送...';
+                                  });
+                                  try {
+                                    SecurityContext? sc;
+                                    if (_withTls) {
+                                      sc = await buildSecurityContext(
+                                        caAsset: _caPathController.text,
+                                        clientCertAsset:
+                                            _certPathController.text.isNotEmpty
+                                            ? _certPathController.text
+                                            : null,
+                                        clientKeyAsset:
+                                            _keyPathController.text.isNotEmpty
+                                            ? _keyPathController.text
+                                            : null,
+                                        clientKeyPassword:
+                                            _keyPwdController.text.isNotEmpty
+                                            ? _keyPwdController.text
+                                            : null,
+                                      );
+                                    }
+                                    final service = MqttService(
+                                      host: _hostController.text,
+                                      port:
+                                          int.tryParse(_portController.text) ??
+                                          1883,
+                                      clientId:
+                                          _clientIdController.text.isNotEmpty
+                                          ? _clientIdController.text
+                                          : 'flutter_client',
+                                      username:
+                                          _usernameController.text.isNotEmpty
+                                          ? _usernameController.text
+                                          : null,
+                                      password:
+                                          _passwordController.text.isNotEmpty
+                                          ? _passwordController.text
+                                          : null,
+                                      securityContext: sc,
+                                      log: (msg) => debugPrint(msg),
+                                      onError: (e, [st]) =>
+                                          debugPrint('MQTT error: $e'),
+                                    );
+                                    await service.connect();
+                                    final topic = _topicController.text.trim();
+                                    if (topic.isEmpty) {
+                                      throw Exception('Topic不能为空');
+                                    }
+                                    await service.publishText(topic, msg);
+                                    setState(() {
+                                      _status = '消息已发送';
+                                    });
+                                    await service.dispose();
+                                  } catch (e) {
+                                    setState(() {
+                                      _status = '发送失败: $e';
+                                    });
+                                  } finally {
+                                    setState(() {
+                                      _sending = false;
+                                    });
+                                  }
+                                },
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                          ),
+                          child: _sending
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('测试发送'),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 40,
-                    child: ElevatedButton(
-                      onPressed: _sending
-                          ? null
-                          : () async {
-                              final msg = _customMsgController.text.trim();
-                              if (msg.isEmpty) return;
-                              setState(() {
-                                _sending = true;
-                                _status = '正在发送...';
-                              });
-                              try {
-                                SecurityContext? sc;
-                                if (_withTls) {
-                                  sc = await buildSecurityContext(
-                                    caAsset: _caPathController.text,
-                                    clientCertAsset:
-                                        _certPathController.text.isNotEmpty
-                                        ? _certPathController.text
-                                        : null,
-                                    clientKeyAsset:
-                                        _keyPathController.text.isNotEmpty
-                                        ? _keyPathController.text
-                                        : null,
-                                    clientKeyPassword:
-                                        _keyPwdController.text.isNotEmpty
-                                        ? _keyPwdController.text
-                                        : null,
-                                  );
-                                }
-                                final service = MqttService(
-                                  host: _hostController.text,
-                                  port:
-                                      int.tryParse(_portController.text) ??
-                                      1883,
-                                  clientId: _clientIdController.text.isNotEmpty
-                                      ? _clientIdController.text
-                                      : 'flutter_client',
-                                  username: _usernameController.text.isNotEmpty
-                                      ? _usernameController.text
-                                      : null,
-                                  password: _passwordController.text.isNotEmpty
-                                      ? _passwordController.text
-                                      : null,
-                                  securityContext: sc,
-                                  log: (msg) => debugPrint(msg),
-                                  onError: (e, [st]) =>
-                                      debugPrint('MQTT error: $e'),
-                                );
-                                await service.connect();
-                                final topic = _topicController.text.trim();
-                                if (topic.isEmpty) {
-                                  throw Exception('Topic不能为空');
-                                }
-                                // 发送纯文本消息
-                                await service.publishText(topic, msg);
-                                setState(() {
-                                  _status = '消息已发送';
-                                });
-                                await service.dispose();
-                              } catch (e) {
-                                setState(() {
-                                  _status = '发送失败: $e';
-                                });
-                              } finally {
-                                setState(() {
-                                  _sending = false;
-                                });
-                              }
-                            },
-                      child: _sending
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('测试发送'),
-                    ),
-                  ),
-                ],
+                ),
               ),
               const SizedBox(height: 16),
               Text(
                 _status,
                 style: TextStyle(
                   color: _status.contains('成功') ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               if (_logLines.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Container(
-                  height: 120,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(8),
+                Card(
+                  color: Colors.black87,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: ListView(
-                    children:
-                        (_logLines.length > 20
-                                ? _logLines.sublist(_logLines.length - 20)
-                                : _logLines)
-                            .map(
-                              (e) => Text(
-                                e,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.greenAccent,
+                  child: Container(
+                    height: 120,
+                    padding: const EdgeInsets.all(8),
+                    child: ListView(
+                      children:
+                          (_logLines.length > 20
+                                  ? _logLines.sublist(_logLines.length - 20)
+                                  : _logLines)
+                              .map(
+                                (e) => Text(
+                                  e,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.greenAccent,
+                                  ),
                                 ),
-                              ),
-                            )
-                            .toList(),
+                              )
+                              .toList(),
+                    ),
                   ),
                 ),
               ],
