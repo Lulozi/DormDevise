@@ -10,10 +10,13 @@ class ManagementScreen extends StatefulWidget {
   State<ManagementScreen> createState() => ManagementScreenState();
 }
 
-class ManagementScreenState extends State<ManagementScreen> {
+class ManagementScreenState extends State<ManagementScreen>
+    with WidgetsBindingObserver {
   int selectedIndex = 1;
-  final PageController _pageController = PageController(initialPage: 1);
+  late final PageController _pageController;
   double _page = 1.0;
+  // 用于强制刷新页面的key
+  // Key _pageViewKey = UniqueKey();
 
   Widget _buildPage(int index) {
     if (index == 2) {
@@ -64,9 +67,28 @@ class ManagementScreenState extends State<ManagementScreen> {
   // FIXME 流畅度需要优化
   // MAYBE 更好看的页面切换效果
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _pageController = PageController(initialPage: selectedIndex);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
+  }
+
+  // 监听App生命周期
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // App回到前台时强制刷新页面
+      // App回到前台时刷新页面（不重建PageView，避免白屏）
+      setState(() {});
+    }
   }
 
   @override
@@ -113,6 +135,7 @@ class ManagementScreenState extends State<ManagementScreen> {
         ),
       ),
       body: PageView.builder(
+        // key: _pageViewKey, // 强制刷新
         controller: _pageController,
         itemCount: 3,
         itemBuilder: (context, index) => _buildAnimatedPage(context, index),
