@@ -131,12 +131,21 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                 if (messenger != null) {
                                   messenger.showSnackBar(
                                     SnackBar(
-                                      content: Text('开门失败: $e'),
+                                      content: Text(
+                                        '开门失败: $e',
+                                        style: TextStyle(
+                                          color:
+                                              colorScheme.onSecondaryContainer,
+                                        ),
+                                      ),
                                       backgroundColor:
-                                          colorScheme.errorContainer,
+                                          colorScheme.secondaryContainer,
                                       behavior: SnackBarBehavior.floating,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      duration: const Duration(
+                                        milliseconds: 1500,
                                       ),
                                     ),
                                   );
@@ -152,7 +161,8 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                 ),
               ),
             ),
-            //MAYBE 添加隐藏式的特殊方式进入配置界面
+
+            //MAYBE 添加隐藏式的特殊方式进入配置界面，长按按钮再按一下开门进入config_mqtt.dart
           ],
         ),
       ),
@@ -208,10 +218,7 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
     super.dispose();
   }
 
-  void _handleTap() async {
-    setState(() => _pressed = true);
-    await Future.delayed(const Duration(milliseconds: 120));
-    setState(() => _pressed = false);
+  void _handleTap() {
     widget.onTap();
   }
 
@@ -220,6 +227,9 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
     final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: _handleTap,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
