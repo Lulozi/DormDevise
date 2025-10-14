@@ -17,110 +17,150 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _CoolDoorButton(
-                  isOpen: isOpen,
-                  onTap: () async {
-                    final now = DateTime.now();
-                    if (lastTapTime != null &&
-                        now.difference(lastTapTime!) < Duration(seconds: 4)) {
-                      return;
-                    }
-                    lastTapTime = now;
-                    if (!isOpen) {
-                      final prefs = await SharedPreferences.getInstance();
-                      final topic =
-                          prefs.getString('mqtt_topic') ?? 'test/topic';
-                      final host = prefs.getString('mqtt_host') ?? '';
-                      final port =
-                          int.tryParse(
-                            prefs.getString('mqtt_port') ?? '1883',
-                          ) ??
-                          1883;
-                      final clientId =
-                          prefs.getString('mqtt_clientId') ?? 'flutter_client';
-                      final username = prefs.getString('mqtt_username');
-                      final password = prefs.getString('mqtt_password');
-                      final withTls = prefs.getBool('mqtt_with_tls') ?? false;
-                      final caPath =
-                          prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
-                      final certPath = prefs.getString('mqtt_cert');
-                      final keyPath = prefs.getString('mqtt_key');
-                      final keyPwd = prefs.getString('mqtt_key_pwd');
-                      final msg = prefs.getString('custom_open_msg') ?? 'OPEN';
-                      SecurityContext? sc;
-                      if (withTls) {
-                        sc = await buildSecurityContext(
-                          caAsset: caPath,
-                          clientCertAsset:
-                              (certPath != null && certPath.isNotEmpty)
-                              ? certPath
-                              : null,
-                          clientKeyAsset:
-                              (keyPath != null && keyPath.isNotEmpty)
-                              ? keyPath
-                              : null,
-                          clientKeyPassword:
-                              (keyPwd != null && keyPwd.isNotEmpty)
-                              ? keyPwd
-                              : null,
-                        );
-                      }
-                      _mqttService ??= MqttService(
-                        host: host,
-                        port: port,
-                        clientId: clientId,
-                        username: (username != null && username.isNotEmpty)
-                            ? username
-                            : null,
-                        password: (password != null && password.isNotEmpty)
-                            ? password
-                            : null,
-                        securityContext: sc,
-                      );
-                      try {
-                        await _mqttService!.connect();
-                        await _mqttService!.subscribe(topic);
-                        await _mqttService!.publishText(topic, msg);
-                        setState(() {
-                          isOpen = true;
-                        });
-                        Future.delayed(Duration(seconds: 2), () {
-                          if (mounted) {
-                            setState(() {
-                              isOpen = false;
-                            });
-                          }
-                        });
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('开门失败: $e')));
-                        }
-                      }
-                    }
-                  },
+      backgroundColor: colorScheme.surface,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: Card(
+                elevation: 0,
+                color: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(32),
                 ),
-                SizedBox(height: 20),
-              ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 36,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _CoolDoorButton(
+                        isOpen: isOpen,
+                        onTap: () async {
+                          final now = DateTime.now();
+                          if (lastTapTime != null &&
+                              now.difference(lastTapTime!) <
+                                  const Duration(seconds: 4)) {
+                            return;
+                          }
+                          lastTapTime = now;
+                          if (!isOpen) {
+                            final prefs = await SharedPreferences.getInstance();
+                            final topic =
+                                prefs.getString('mqtt_topic') ?? 'test/topic';
+                            final host = prefs.getString('mqtt_host') ?? '';
+                            final port =
+                                int.tryParse(
+                                  prefs.getString('mqtt_port') ?? '1883',
+                                ) ??
+                                1883;
+                            final clientId =
+                                prefs.getString('mqtt_clientId') ??
+                                'flutter_client';
+                            final username = prefs.getString('mqtt_username');
+                            final password = prefs.getString('mqtt_password');
+                            final withTls =
+                                prefs.getBool('mqtt_with_tls') ?? false;
+                            final caPath =
+                                prefs.getString('mqtt_ca') ??
+                                'assets/certs/ca.pem';
+                            final certPath = prefs.getString('mqtt_cert');
+                            final keyPath = prefs.getString('mqtt_key');
+                            final keyPwd = prefs.getString('mqtt_key_pwd');
+                            final msg =
+                                prefs.getString('custom_open_msg') ?? 'OPEN';
+                            SecurityContext? sc;
+                            if (withTls) {
+                              sc = await buildSecurityContext(
+                                caAsset: caPath,
+                                clientCertAsset:
+                                    (certPath != null && certPath.isNotEmpty)
+                                    ? certPath
+                                    : null,
+                                clientKeyAsset:
+                                    (keyPath != null && keyPath.isNotEmpty)
+                                    ? keyPath
+                                    : null,
+                                clientKeyPassword:
+                                    (keyPwd != null && keyPwd.isNotEmpty)
+                                    ? keyPwd
+                                    : null,
+                              );
+                            }
+                            _mqttService ??= MqttService(
+                              host: host,
+                              port: port,
+                              clientId: clientId,
+                              username:
+                                  (username != null && username.isNotEmpty)
+                                  ? username
+                                  : null,
+                              password:
+                                  (password != null && password.isNotEmpty)
+                                  ? password
+                                  : null,
+                              securityContext: sc,
+                            );
+                            try {
+                              await _mqttService!.connect();
+                              await _mqttService!.subscribe(topic);
+                              await _mqttService!.publishText(topic, msg);
+                              if (mounted) {
+                                setState(() {
+                                  isOpen = true;
+                                });
+                                Future.delayed(const Duration(seconds: 2), () {
+                                  if (mounted) {
+                                    setState(() {
+                                      isOpen = false;
+                                    });
+                                  }
+                                });
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                final messenger = ScaffoldMessenger.maybeOf(
+                                  context,
+                                );
+                                if (messenger != null) {
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('开门失败: $e'),
+                                      backgroundColor:
+                                          colorScheme.errorContainer,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-          //MAYBE 添加隐藏式的特殊方式进入配置界面
-        ],
+            //MAYBE 添加隐藏式的特殊方式进入配置界面
+          ],
+        ),
       ),
     );
   }
 }
-// ================== 门禁按钮组件 ==================
 
+// ================== 门禁按钮组件 ==================
 class _CoolDoorButton extends StatefulWidget {
   final bool isOpen;
   final VoidCallback onTap;
@@ -177,6 +217,7 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: _handleTap,
       child: AnimatedBuilder(
@@ -196,8 +237,10 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
                   boxShadow: [
                     BoxShadow(
                       color: widget.isOpen
-                          ? Colors.greenAccent.withValues(alpha: 0.7)
-                          : Colors.blueAccent.withValues(alpha: 0.5),
+                          ? colorScheme.primary.withAlpha((0.45 * 255).toInt())
+                          : colorScheme.secondary.withAlpha(
+                              (0.25 * 255).toInt(),
+                            ),
                       blurRadius: glow + 30,
                       spreadRadius: glow / 2,
                     ),
@@ -216,16 +259,16 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
                     gradient: SweepGradient(
                       colors: widget.isOpen
                           ? [
-                              Color(0xFF5AC8FA),
-                              Color(0xFF007AFF),
-                              Color(0xFF34C759),
-                              Color(0xFF5AC8FA),
+                              colorScheme.primary,
+                              colorScheme.primaryContainer,
+                              colorScheme.tertiary,
+                              colorScheme.primary,
                             ]
                           : [
-                              Color(0xFF007AFF),
-                              Color(0xFF5E5CE6),
-                              Color(0xFFAF52DE),
-                              Color(0xFF007AFF),
+                              colorScheme.secondary,
+                              colorScheme.secondaryContainer,
+                              colorScheme.tertiaryContainer,
+                              colorScheme.secondary,
                             ],
                       stops: const [0.0, 0.5, 0.8, 1.0],
                       startAngle: 0,
@@ -235,14 +278,20 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
                     boxShadow: [
                       BoxShadow(
                         color: widget.isOpen
-                            ? Colors.greenAccent.withValues(alpha: 0.5)
-                            : Colors.blueAccent.withValues(alpha: 0.3),
+                            ? colorScheme.primary.withAlpha(
+                                (0.25 * 255).toInt(),
+                              )
+                            : colorScheme.secondary.withAlpha(
+                                (0.13 * 255).toInt(),
+                              ),
                         blurRadius: 30,
                         spreadRadius: 2,
                       ),
                     ],
                     border: Border.all(
-                      color: widget.isOpen ? Colors.white : Colors.blueGrey,
+                      color: widget.isOpen
+                          ? colorScheme.onPrimary
+                          : colorScheme.outlineVariant,
                       width: 4,
                     ),
                   ),
@@ -256,11 +305,10 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
                               FadeTransition(opacity: animation, child: child),
                           child: Icon(
                             widget.isOpen
-                                ? Icons
-                                      .lock_open_rounded // 开锁
-                                : Icons.lock_outline_rounded, // 关锁
+                                ? Icons.lock_open_rounded
+                                : Icons.lock_outline_rounded,
                             key: ValueKey<bool>(widget.isOpen),
-                            color: Colors.white,
+                            color: colorScheme.onPrimary,
                             size: 60,
                           ),
                         ),
@@ -277,7 +325,9 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
                   height: widget.isOpen ? 220 : 120,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.13),
+                    color: colorScheme.onPrimary.withAlpha(
+                      (0.13 * 255).toInt(),
+                    ),
                   ),
                 ),
             ],

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:dormdevise/screen/personPage/config_mtqq.dart';
+// import 'package:dormdevise/screen/personPage/config_mtqq.dart';
+import 'package:dormdevise/screen/personPage/mqtt_settings_open_container.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dormdevise/screen/personPage/about_open_container.dart';
 
 class PersonPage extends StatefulWidget {
-  const PersonPage({super.key});
+  final double appBarProgress;
+  const PersonPage({super.key, this.appBarProgress = 0.0});
 
   @override
   State<PersonPage> createState() => _PersonPageState();
@@ -29,91 +32,135 @@ class _PersonPageState extends State<PersonPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 渐变区间 0.0~1.0，0.0为不透明，1.0为完全透明
+    final double progress = widget.appBarProgress.clamp(0.0, 1.0);
+    final colorScheme = Theme.of(context).colorScheme;
+    // 渐变色：primary/primaryContainer -> 完全透明
+    final Color appBarColor = Color.lerp(
+      Color.lerp(colorScheme.primary, colorScheme.primaryContainer, progress)!,
+      Colors.transparent,
+      progress,
+    )!;
+    final Color titleColor = Color.lerp(
+      Colors.white,
+      colorScheme.onSurface,
+      progress,
+    )!;
+
+    // body滑动动画：progress=0时完全显示，progress=0.5后开始滑出，progress=1时完全隐藏
+    double bodyProgress = 1.0;
+    if (progress <= 0.7 && progress >= 0.0) {
+      bodyProgress = 1.0;
+    } else if (progress > 0.7 && progress <= 1.0) {
+      bodyProgress = 1.0 - ((progress - 0.7) / 0.3).clamp(0.0, 1.0);
+    } else if (progress > 1.0) {
+      bodyProgress = 0.0;
+    }
+
+    final List<Widget> cards = [
+      // 用OpenContainer实现Material3丝巾展开动画
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: MqttSettingsOpenContainer(),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: AboutOpenContainer(version: _version),
+      ),
+    ];
+
     return Scaffold(
       body: NestedScrollView(
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
           return <Widget>[
             SliverAppBar(
-              //扩展高度
               expandedHeight: 160.0,
-              //是否随着滑动隐藏标题
               floating: false,
-              //标题栏是否固定在顶部
               pinned: true,
-              //定义滚动空间
+              surfaceTintColor: colorScheme.surface,
+              backgroundColor: appBarColor,
               flexibleSpace: FlexibleSpaceBar(
                 titlePadding: EdgeInsets.only(left: 0),
-                title: _buildHead(),
+                title: Opacity(
+                  opacity: 1.0 - progress,
+                  child: _buildHead(titleColor),
+                ),
                 centerTitle: true,
-                background: Container(color: const Color(0xFF007AFF)),
+                background: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Color.lerp(
+                          colorScheme.primary,
+                          Colors.transparent,
+                          progress,
+                        )!,
+                        Color.lerp(
+                          colorScheme.primaryContainer,
+                          Colors.transparent,
+                          progress,
+                        )!,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                ),
               ),
             ),
           ];
         },
         body: Container(
-          color: const Color(0xFFF5F5F5),
-          child: ListView(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('MQTT配置'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ConfigMqttPage(),
-                    ),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.info),
-                title: const Text('关于'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  showAboutDialog(
-                    context: context,
-                    applicationName: '舍设',
-                    applicationVersion: _version,
-                    applicationIcon: Image.asset(
-                      'assets/images/app_icon.png',
-                      width: 50,
-                      height: 50,
-                    ),
-                    applicationLegalese:
-                        '© 2025 DormDevise. All rights reserved.',
-                  );
-                },
-              ),
-              const Divider(height: 1),
-            ],
+          color: colorScheme.surface,
+          child: ListView.builder(
+            itemCount: cards.length,
+            itemBuilder: (context, index) {
+              // 每个子项的动画延迟0.4（400ms）
+              double delay = 0.4 * index;
+              double itemProgress = ((bodyProgress - delay) / (1 - delay))
+                  .clamp(0.0, 1.0);
+              return Transform.translate(
+                offset: Offset(100 * (1 - itemProgress), 0),
+                child: Opacity(opacity: itemProgress, child: cards[index]),
+              );
+            },
           ),
         ),
-        // TODO 课程表配置页面
       ),
     );
   }
 }
 
-_buildHead() {
+Widget _buildHead(Color textColor) {
   return Row(
     children: [
-      ClipRRect(
-        child: CachedNetworkImage(
-          imageUrl: 'https://q1.qlogo.cn/g?b=qq&nk=123456789&s=640',
-          width: 46,
-          height: 46,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => const CircularProgressIndicator(),
-          errorWidget: (context, url, error) => const Icon(Icons.error),
+      Padding(
+        padding: const EdgeInsets.only(left: 12, bottom: 12),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: CachedNetworkImage(
+            imageUrl:
+                'http://minio.xiaoheiwu.fun/imgs/2025-10-13-20:08:59-4ce88e37c9914ac5be496592a103f08d.jpg',
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            errorWidget: (context, url, error) => const Icon(Icons.error),
+          ),
         ),
       ),
       const SizedBox(width: 8),
       Text(
-        'User Name',
-        style: const TextStyle(fontSize: 11, color: Colors.white),
+        'Your Name',
+        style: TextStyle(
+          fontSize: 13,
+          color: textColor,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ],
   );
