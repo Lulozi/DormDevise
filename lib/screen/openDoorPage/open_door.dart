@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:dormdevise/screen/openDoorPage/mqtt_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dormdevise/screen/personPage/config_mqtt.dart';
 import 'dart:io';
+
+import 'dart:async';
 
 class OpenDoorPage extends StatefulWidget {
   const OpenDoorPage({super.key});
@@ -11,9 +14,43 @@ class OpenDoorPage extends StatefulWidget {
 }
 
 class _OpenDoorPageState extends State<OpenDoorPage> {
+  Timer? _longPressTimer;
+  double _longPressProgress = 0.0;
   bool isOpen = false;
   DateTime? lastTapTime;
   MqttService? _mqttService;
+
+  void _handleLongPressStart(LongPressStartDetails details) {
+    _longPressTimer?.cancel();
+    _longPressProgress = 0.0;
+    final int totalMs = 2000;
+    int elapsed = 0;
+    const tick = 50;
+    _longPressTimer = Timer.periodic(const Duration(milliseconds: tick), (
+      timer,
+    ) {
+      elapsed += tick;
+      setState(() {
+        _longPressProgress = (elapsed / totalMs).clamp(0.0, 1.0);
+      });
+      if (elapsed >= totalMs) {
+        timer.cancel();
+        _longPressProgress = 0.0;
+        if (mounted) {
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ConfigMqttPage()));
+        }
+      }
+    });
+  }
+
+  void _handleLongPressEnd(LongPressEndDetails details) {
+    _longPressTimer?.cancel();
+    setState(() {
+      _longPressProgress = 0.0;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,133 +73,183 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                     horizontal: 32,
                     vertical: 36,
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _CoolDoorButton(
-                        isOpen: isOpen,
-                        onTap: () async {
-                          final now = DateTime.now();
-                          if (lastTapTime != null &&
-                              now.difference(lastTapTime!) <
-                                  const Duration(seconds: 4)) {
-                            return;
-                          }
-                          lastTapTime = now;
-                          if (!isOpen) {
-                            final prefs = await SharedPreferences.getInstance();
-                            final topic =
-                                prefs.getString('mqtt_topic') ?? 'test/topic';
-                            final host = prefs.getString('mqtt_host') ?? '';
-                            final port =
-                                int.tryParse(
-                                  prefs.getString('mqtt_port') ?? '1883',
-                                ) ??
-                                1883;
-                            final clientId =
-                                prefs.getString('mqtt_clientId') ??
-                                'flutter_client';
-                            final username = prefs.getString('mqtt_username');
-                            final password = prefs.getString('mqtt_password');
-                            final withTls =
-                                prefs.getBool('mqtt_with_tls') ?? false;
-                            final caPath =
-                                prefs.getString('mqtt_ca') ??
-                                'assets/certs/ca.pem';
-                            final certPath = prefs.getString('mqtt_cert');
-                            final keyPath = prefs.getString('mqtt_key');
-                            final keyPwd = prefs.getString('mqtt_key_pwd');
-                            final msg =
-                                prefs.getString('custom_open_msg') ?? 'OPEN';
-                            SecurityContext? sc;
-                            if (withTls) {
-                              sc = await buildSecurityContext(
-                                caAsset: caPath,
-                                clientCertAsset:
-                                    (certPath != null && certPath.isNotEmpty)
-                                    ? certPath
-                                    : null,
-                                clientKeyAsset:
-                                    (keyPath != null && keyPath.isNotEmpty)
-                                    ? keyPath
-                                    : null,
-                                clientKeyPassword:
-                                    (keyPwd != null && keyPwd.isNotEmpty)
-                                    ? keyPwd
-                                    : null,
-                              );
-                            }
-                            _mqttService ??= MqttService(
-                              host: host,
-                              port: port,
-                              clientId: clientId,
-                              username:
-                                  (username != null && username.isNotEmpty)
-                                  ? username
-                                  : null,
-                              password:
-                                  (password != null && password.isNotEmpty)
-                                  ? password
-                                  : null,
-                              securityContext: sc,
-                            );
-                            try {
-                              await _mqttService!.connect();
-                              await _mqttService!.subscribe(topic);
-                              await _mqttService!.publishText(topic, msg);
-                              if (mounted) {
-                                setState(() {
-                                  isOpen = true;
-                                });
-                                Future.delayed(const Duration(seconds: 2), () {
-                                  if (mounted) {
-                                    setState(() {
-                                      isOpen = false;
-                                    });
-                                  }
-                                });
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                final messenger = ScaffoldMessenger.maybeOf(
-                                  context,
-                                );
-                                if (messenger != null) {
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        '开门失败: $e',
-                                        style: TextStyle(
-                                          color:
-                                              colorScheme.onSecondaryContainer,
-                                        ),
-                                      ),
-                                      backgroundColor:
-                                          colorScheme.secondaryContainer,
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      duration: const Duration(
-                                        milliseconds: 1500,
-                                      ),
-                                    ),
-                                  );
+                  child: SizedBox(
+                    width: 260,
+                    height: 320,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _CoolDoorButton(
+                              isOpen: isOpen,
+                              onTap: () async {
+                                final now = DateTime.now();
+                                if (lastTapTime != null &&
+                                    now.difference(lastTapTime!) <
+                                        const Duration(seconds: 4)) {
+                                  return;
                                 }
-                              }
-                            }
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                    ],
+                                lastTapTime = now;
+                                if (!isOpen) {
+                                  final prefs =
+                                      await SharedPreferences.getInstance();
+                                  final topic =
+                                      prefs.getString('mqtt_topic') ??
+                                      'test/topic';
+                                  final host =
+                                      prefs.getString('mqtt_host') ?? '';
+                                  final port =
+                                      int.tryParse(
+                                        prefs.getString('mqtt_port') ?? '1883',
+                                      ) ??
+                                      1883;
+                                  final clientId =
+                                      prefs.getString('mqtt_clientId') ??
+                                      'flutter_client';
+                                  final username = prefs.getString(
+                                    'mqtt_username',
+                                  );
+                                  final password = prefs.getString(
+                                    'mqtt_password',
+                                  );
+                                  final withTls =
+                                      prefs.getBool('mqtt_with_tls') ?? false;
+                                  final caPath =
+                                      prefs.getString('mqtt_ca') ??
+                                      'assets/certs/ca.pem';
+                                  final certPath = prefs.getString('mqtt_cert');
+                                  final keyPath = prefs.getString('mqtt_key');
+                                  final keyPwd = prefs.getString(
+                                    'mqtt_key_pwd',
+                                  );
+                                  final msg =
+                                      prefs.getString('custom_open_msg') ??
+                                      'OPEN';
+                                  SecurityContext? sc;
+                                  if (withTls) {
+                                    sc = await buildSecurityContext(
+                                      caAsset: caPath,
+                                      clientCertAsset:
+                                          (certPath != null &&
+                                              certPath.isNotEmpty)
+                                          ? certPath
+                                          : null,
+                                      clientKeyAsset:
+                                          (keyPath != null &&
+                                              keyPath.isNotEmpty)
+                                          ? keyPath
+                                          : null,
+                                      clientKeyPassword:
+                                          (keyPwd != null && keyPwd.isNotEmpty)
+                                          ? keyPwd
+                                          : null,
+                                    );
+                                  }
+                                  _mqttService ??= MqttService(
+                                    host: host,
+                                    port: port,
+                                    clientId: clientId,
+                                    username:
+                                        (username != null &&
+                                            username.isNotEmpty)
+                                        ? username
+                                        : null,
+                                    password:
+                                        (password != null &&
+                                            password.isNotEmpty)
+                                        ? password
+                                        : null,
+                                    securityContext: sc,
+                                  );
+                                  try {
+                                    await _mqttService!.connect();
+                                    await _mqttService!.subscribe(topic);
+                                    await _mqttService!.publishText(topic, msg);
+                                    if (mounted) {
+                                      setState(() {
+                                        isOpen = true;
+                                      });
+                                      Future.delayed(
+                                        const Duration(seconds: 2),
+                                        () {
+                                          if (mounted) {
+                                            setState(() {
+                                              isOpen = false;
+                                            });
+                                          }
+                                        },
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      final messenger =
+                                          ScaffoldMessenger.maybeOf(context);
+                                      if (messenger != null) {
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              '开门失败: $e',
+                                              style: TextStyle(
+                                                color: colorScheme
+                                                    .onSecondaryContainer,
+                                              ),
+                                            ),
+                                            backgroundColor:
+                                                colorScheme.secondaryContainer,
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                            duration: const Duration(
+                                              milliseconds: 1500,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              onLongPressStart: _handleLongPressStart,
+                              onLongPressEnd: _handleLongPressEnd,
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
+                        if (_longPressProgress > 0)
+                          Positioned(
+                            bottom: 32,
+                            left: 0,
+                            right: 0,
+                            child: Column(
+                              children: [
+                                LinearProgressIndicator(
+                                  value: _longPressProgress,
+                                  minHeight: 6,
+                                  backgroundColor: colorScheme.surfaceVariant,
+                                  color: colorScheme.primary,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '长按2秒进入mqtt配置',
+                                  style: TextStyle(
+                                    color: colorScheme.outline,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-
-            //MAYBE 添加隐藏式的特殊方式进入配置界面，长按按钮再按一下开门进入config_mqtt.dart
           ],
         ),
       ),
@@ -171,10 +258,21 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
 }
 
 // ================== 门禁按钮组件 ==================
+
+typedef DoorLongPressCallback = void Function(LongPressStartDetails details);
+typedef DoorLongPressEndCallback = void Function(LongPressEndDetails details);
+
 class _CoolDoorButton extends StatefulWidget {
   final bool isOpen;
   final VoidCallback onTap;
-  const _CoolDoorButton({required this.isOpen, required this.onTap});
+  final DoorLongPressCallback? onLongPressStart;
+  final DoorLongPressEndCallback? onLongPressEnd;
+  const _CoolDoorButton({
+    required this.isOpen,
+    required this.onTap,
+    this.onLongPressStart,
+    this.onLongPressEnd,
+  });
 
   @override
   State<_CoolDoorButton> createState() => _CoolDoorButtonState();
@@ -230,6 +328,8 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) => setState(() => _pressed = false),
       onTapCancel: () => setState(() => _pressed = false),
+      onLongPressStart: widget.onLongPressStart,
+      onLongPressEnd: widget.onLongPressEnd,
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
