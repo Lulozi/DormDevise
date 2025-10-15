@@ -21,7 +21,7 @@ class MqttSettingsOpenContainer extends StatelessWidget {
       openShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
       transitionDuration: const Duration(milliseconds: 600),
       closedBuilder: (context, openContainer) => ListTile(
-        leading: const Icon(Icons.settings, color: Colors.blueAccent),
+        leading: const Icon(Icons.api_rounded, color: Colors.blueAccent),
         title: const Text(
           'MQTT配置',
           style: TextStyle(fontWeight: FontWeight.w500),
