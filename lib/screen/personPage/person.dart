@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dormdevise/screen/personPage/about_open_container.dart';
 import 'package:dormdevise/screen/personPage/location_settings_container.dart';
+import 'package:dormdevise/screen/personPage/wifi_settings_container.dart';
 
 class PersonPage extends StatefulWidget {
   final double appBarProgress;
@@ -65,6 +66,10 @@ class _PersonPageState extends State<PersonPage> {
       ),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: WifiSettingsContainer(),
+      ),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: LocationSettingsOpenContainer(),
       ),
       Padding(
@@ -119,8 +124,8 @@ class _PersonPageState extends State<PersonPage> {
           child: ListView.builder(
             itemCount: cards.length,
             itemBuilder: (context, index) {
-              // 每个子项的动画延迟0.4（400ms）
-              double delay = 0.4 * index;
+              // 每个子项的动画延迟0.2（200ms）
+              double delay = 0.2 * index;
               double itemProgress = ((bodyProgress - delay) / (1 - delay))
                   .clamp(0.0, 1.0);
               return Transform.translate(
