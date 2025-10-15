@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-// import 'package:dormdevise/screen/personPage/config_mtqq.dart';
 import 'package:dormdevise/screen/personPage/mqtt_settings_open_container.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dormdevise/screen/personPage/about_open_container.dart';
+import 'package:dormdevise/screen/personPage/location_settings_container.dart';
 
 class PersonPage extends StatefulWidget {
   final double appBarProgress;
@@ -58,10 +58,14 @@ class _PersonPageState extends State<PersonPage> {
     }
 
     final List<Widget> cards = [
-      // 用OpenContainer实现Material3丝巾展开动画
+      // body内容，按顺序排列
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: MqttSettingsOpenContainer(),
+      ),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: LocationSettingsOpenContainer(),
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
