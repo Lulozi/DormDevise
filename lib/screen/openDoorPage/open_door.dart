@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dormdevise/screen/openDoorPage/mqtt_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:dormdevise/screen/personPage/config_mqtt.dart';
+import 'package:dormdevise/screen/openDoorPage/config_all.dart';
 import 'dart:io';
-
 import 'dart:async';
 
 class OpenDoorPage extends StatefulWidget {
@@ -39,7 +38,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
         if (mounted) {
           Navigator.of(
             context,
-          ).push(MaterialPageRoute(builder: (_) => const ConfigMqttPage()));
+          ).push(MaterialPageRoute(builder: (_) => const ConfigPage()));
         }
       }
     });
@@ -230,12 +229,13 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                 LinearProgressIndicator(
                                   value: _longPressProgress,
                                   minHeight: 6,
-                                  backgroundColor: colorScheme.surfaceVariant,
+                                  backgroundColor:
+                                      colorScheme.surfaceContainerHighest,
                                   color: colorScheme.primary,
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '长按2秒进入mqtt配置',
+                                  '长按2秒进入配置设置',
                                   style: TextStyle(
                                     color: colorScheme.outline,
                                     fontSize: 13,
