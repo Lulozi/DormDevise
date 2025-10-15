@@ -15,8 +15,7 @@ class ManagementScreenState extends State<ManagementScreen>
   int selectedIndex = 1;
   late final PageController _pageController;
   double _page = 1.0;
-  // 用于强制刷新页面的key
-  // Key _pageViewKey = UniqueKey();
+  bool _isLoading = true;
 
   Widget _buildPage(int index) {
     if (index == 2) {
@@ -71,6 +70,15 @@ class ManagementScreenState extends State<ManagementScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: selectedIndex);
+    // 模拟初始化耗时操作，实际可替换为真实初始化逻辑
+    Future.microtask(() async {
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
   }
 
   @override
@@ -80,20 +88,14 @@ class ManagementScreenState extends State<ManagementScreen>
     super.dispose();
   }
 
-  // 监听App生命周期
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      // App回到前台时强制刷新页面
-      // App回到前台时刷新页面（不重建PageView，避免白屏）
-      setState(() {});
-    }
-  }
+  // 监听App生命周期（已移除回到前台时的 setState，避免白屏）
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: false,
@@ -112,20 +114,20 @@ class ManagementScreenState extends State<ManagementScreen>
               curve: Curves.ease,
             );
           },
-          destinations: [
+          destinations: const [
             NavigationDestination(
-              icon: Icon(Icons.calendar_today_outlined, size: 24),
-              selectedIcon: Icon(Icons.calendar_today, size: 28),
+              icon: Icon(Icons.calendar_today_outlined),
+              selectedIcon: Icon(Icons.calendar_today),
               label: '课表',
             ),
             NavigationDestination(
-              icon: Icon(Icons.door_front_door_outlined, size: 24),
-              selectedIcon: Icon(Icons.door_front_door, size: 28),
+              icon: Icon(Icons.door_front_door_outlined),
+              selectedIcon: Icon(Icons.door_front_door),
               label: '开门',
             ),
             NavigationDestination(
-              icon: Icon(Icons.person_outline, size: 24),
-              selectedIcon: Icon(Icons.person, size: 28),
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
               label: '我的',
             ),
           ],
@@ -135,7 +137,6 @@ class ManagementScreenState extends State<ManagementScreen>
         ),
       ),
       body: PageView.builder(
-        // key: _pageViewKey, // 强制刷新
         controller: _pageController,
         itemCount: 3,
         itemBuilder: (context, index) => _buildAnimatedPage(context, index),
