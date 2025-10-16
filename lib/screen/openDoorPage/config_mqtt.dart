@@ -740,6 +740,17 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                       ),
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 200),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        transitionBuilder: (child, animation) {
+                          return ClipRect(
+                            child: SizeTransition(
+                              sizeFactor: animation,
+                              axisAlignment: -1.0,
+                              child: child,
+                            ),
+                          );
+                        },
                         child:
                             !_topicExpanded &&
                                 _statusTopicController.text.isEmpty &&
