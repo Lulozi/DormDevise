@@ -33,6 +33,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
   bool _connectStatusIsError = false;
   String? _connectStatusActionLabel;
   VoidCallback? _connectStatusAction;
+  bool _disconnecting = false;
 
   @override
   void initState() {
@@ -285,6 +286,39 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
     }
   }
 
+  Future<void> _disconnectFromNetwork() async {
+    if (mounted) {
+      setState(() => _disconnecting = true);
+    }
+    _showConnectStatus('正在断开当前WiFi...');
+    try {
+      if (!await _ensurePluginRegistered()) {
+        if (!_warnedMissingPlugin) {
+          _showConnectStatus('无法断开当前WiFi，请稍后重试', isError: true);
+        }
+        return;
+      }
+      final bool? success = await PluginWifiConnect.disconnect();
+      final message = success == true ? '已请求断开当前WiFi' : '断开WiFi失败，请重试';
+      _showConnectStatus(message, isError: success != true);
+    } on MissingPluginException catch (_) {
+      _handleMissingPlugin('断开 WiFi');
+      _showConnectStatus(
+        '当前构建缺少 plugin_wifi_connect 的原生实现，无法自动断开WiFi',
+        isError: true,
+      );
+    } on PlatformException catch (e) {
+      final msg = e.message ?? '未知错误';
+      _showConnectStatus('断开失败: $msg', isError: true);
+    } catch (e) {
+      _showConnectStatus('断开失败: $e', isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _disconnecting = false);
+      }
+    }
+  }
+
   void _showConnectStatus(
     String message, {
     bool isError = false,
@@ -335,6 +369,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
     final buttonShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(16),
     );
+    final hasSavedNetwork = _savedSsid?.trim().isNotEmpty ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('WiFi设置')),
       body: Padding(
@@ -415,41 +450,63 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
               ],
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _canSubmit && !_connecting
-                    ? () async {
-                        await _save(showStatus: false);
-                        final target = _savedSsid?.trim();
-                        if (target == null || target.isEmpty) {
-                          return;
-                        }
-                        if (mounted) {
-                          setState(() {
-                            _connecting = true;
-                            _connectStatusMessage = '正在尝试连接...';
-                            _connectStatusIsError = false;
-                            _connectStatusActionLabel = null;
-                            _connectStatusAction = null;
-                          });
-                        }
-                        try {
-                          await _connectToSavedNetwork(target);
-                        } finally {
-                          if (mounted) {
-                            setState(() => _connecting = false);
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _canSubmit && !_connecting && !_disconnecting
+                        ? () async {
+                            await _save(showStatus: false);
+                            final target = _savedSsid?.trim();
+                            if (target == null || target.isEmpty) {
+                              return;
+                            }
+                            if (mounted) {
+                              setState(() {
+                                _connecting = true;
+                                _connectStatusMessage = '正在尝试连接...';
+                                _connectStatusIsError = false;
+                                _connectStatusActionLabel = null;
+                                _connectStatusAction = null;
+                              });
+                            }
+                            try {
+                              await _connectToSavedNetwork(target);
+                            } finally {
+                              if (mounted) {
+                                setState(() => _connecting = false);
+                              }
+                            }
                           }
-                        }
-                      }
-                    : null,
-                icon: Icon(_connecting ? Icons.hourglass_top : Icons.wifi_lock),
-                label: Text(_connecting ? '正在连接...' : '连接当前WiFi'),
-                style: FilledButton.styleFrom(
-                  shape: buttonShape,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                        : null,
+                    icon: Icon(
+                      _connecting ? Icons.hourglass_top : Icons.wifi_lock,
+                    ),
+                    label: Text(_connecting ? '正在连接...' : '连接当前WiFi'),
+                    style: FilledButton.styleFrom(
+                      shape: buttonShape,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        hasSavedNetwork && !_disconnecting && !_connecting
+                        ? () => _disconnectFromNetwork()
+                        : null,
+                    icon: Icon(
+                      _disconnecting ? Icons.hourglass_bottom : Icons.wifi_off,
+                    ),
+                    label: Text(_disconnecting ? '正在断开...' : '断开当前WiFi'),
+                    style: OutlinedButton.styleFrom(
+                      shape: buttonShape,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
             ),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
