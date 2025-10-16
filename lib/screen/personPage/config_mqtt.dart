@@ -59,9 +59,21 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     );
   }
 
+  void _showStatus(String message, {bool isError = false, IconData? icon}) {
+    if (!mounted) return;
+    setState(() {
+      _status = message;
+      _statusIsError = isError;
+      _statusIcon =
+          icon ?? (isError ? Icons.error_outline : Icons.check_circle_outline);
+    });
+  }
+
   bool _sending = false;
   bool _loading = false;
   String _status = '';
+  bool _statusIsError = false;
+  IconData _statusIcon = Icons.check_circle_outline;
 
   @override
   void initState() {
@@ -123,11 +135,8 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     await prefs.setString('mqtt_key_pwd', _keyPwdController.text);
     await prefs.setBool('mqtt_with_tls', _withTls);
     if (!mounted) return;
-    setState(() {
-      _status = '配置已保存';
-      // setState 里同步调用 _showBubble，context 不跨异步
-      _showBubble(context, '配置已保存');
-    });
+    _showStatus('配置已保存');
+    _showBubble(context, '配置已保存');
   }
 
   Future<void> _exportConfig() async {
@@ -147,9 +156,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     final jsonStr = JsonEncoder.withIndent('  ').convert(config);
     await Clipboard.setData(ClipboardData(text: jsonStr));
     if (!mounted) return;
-    setState(() {
-      _status = '配置已导出到剪贴板';
-    });
+    _showStatus('配置已导出到剪贴板');
     _showBubble(context, '配置已导出到剪贴板\n\n$jsonStr');
   }
 
@@ -157,9 +164,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     final data = await Clipboard.getData('text/plain');
     if (data == null || data.text == null || data.text!.trim().isEmpty) {
       if (!mounted) return;
-      setState(() {
-        _status = '剪贴板内容为空';
-      });
+      _showStatus('剪贴板内容为空', isError: true, icon: Icons.info_outline);
       _showBubble(context, '剪贴板内容为空');
       return;
     }
@@ -177,7 +182,6 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
         _keyPath = map['mqtt_key'] ?? '';
         _keyPwd = map['mqtt_key_pwd'] ?? '';
         _withTls = map['mqtt_with_tls'] ?? false;
-        _status = '配置已从剪贴板导入';
         // 重新创建 controller
         _hostController = TextEditingController(text: _host);
         _portController = TextEditingController(text: _port);
@@ -203,12 +207,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       await prefs.setBool('mqtt_with_tls', _withTls);
       final importStr = JsonEncoder.withIndent('  ').convert(map);
       if (!mounted) return;
+      _showStatus('配置已从剪贴板导入');
       _showBubble(context, '配置已从剪贴板导入\n\n$importStr\n\n点击确定保存配置');
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _status = '导入失败: $e';
-      });
+      _showStatus('导入失败: $e', isError: true);
       _showBubble(context, '导入失败: $e');
     }
   }
@@ -230,8 +233,8 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   Future<void> _testConnect() async {
     setState(() {
       _loading = true;
-      _status = '正在连接...';
     });
+    _showStatus('正在连接...', icon: Icons.hourglass_top);
     try {
       SecurityContext? sc;
       if (_withTls) {
@@ -283,18 +286,16 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
         await service.subscribe(topic);
       }
       if (!mounted) return;
-      setState(() {
-        _status = '连接成功';
-      });
+      _showStatus('连接成功');
       _showBubble(context, '连接成功');
       await service.dispose();
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _status = '连接失败: $e';
         _logLines.add('连接失败: $e');
         if (_logLines.length > 200) _logLines.removeAt(0);
       });
+      _showStatus('连接失败: $e', isError: true);
       _showBubble(context, '连接失败: $e');
     } finally {
       setState(() {
@@ -326,6 +327,30 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       borderRadius: BorderRadius.circular(16),
       borderSide: BorderSide(color: colorScheme.outlineVariant),
     );
+    final focusedBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: colorScheme.primary, width: 2),
+    );
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+    );
+    const buttonPadding = EdgeInsets.symmetric(vertical: 14);
+
+    InputDecoration decoration(
+      String label, {
+      String? hint,
+      Widget? prefixIcon,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        border: inputBorder,
+        enabledBorder: inputBorder,
+        focusedBorder: focusedBorder,
+        prefixIcon: prefixIcon,
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('MQTT配置'),
@@ -381,18 +406,18 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                       TextField(
                         key: const ValueKey('host'),
                         controller: _hostController,
-                        decoration: InputDecoration(
-                          labelText: '服务器地址',
-                          border: inputBorder,
+                        decoration: decoration(
+                          '服务器地址',
+                          prefixIcon: const Icon(Icons.dns_outlined),
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         key: const ValueKey('port'),
                         controller: _portController,
-                        decoration: InputDecoration(
-                          labelText: '端口',
-                          border: inputBorder,
+                        decoration: decoration(
+                          '端口',
+                          prefixIcon: const Icon(Icons.numbers),
                         ),
                         keyboardType: TextInputType.number,
                       ),
@@ -400,27 +425,27 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                       TextField(
                         key: const ValueKey('topic'),
                         controller: _topicController,
-                        decoration: InputDecoration(
-                          labelText: '主题',
-                          border: inputBorder,
+                        decoration: decoration(
+                          '主题',
+                          prefixIcon: const Icon(Icons.subject_outlined),
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         key: const ValueKey('username'),
                         controller: _usernameController,
-                        decoration: InputDecoration(
-                          labelText: '用户名',
-                          border: inputBorder,
+                        decoration: decoration(
+                          '用户名',
+                          prefixIcon: const Icon(Icons.person_outline),
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         key: const ValueKey('password'),
                         controller: _passwordController,
-                        decoration: InputDecoration(
-                          labelText: '密码',
-                          border: inputBorder,
+                        decoration: decoration(
+                          '密码',
+                          prefixIcon: const Icon(Icons.lock_outline),
                         ),
                         obscureText: true,
                       ),
@@ -428,9 +453,9 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                       TextField(
                         key: const ValueKey('clientId'),
                         controller: _clientIdController,
-                        decoration: InputDecoration(
-                          labelText: 'Client ID (默认使用UUID)',
-                          border: inputBorder,
+                        decoration: decoration(
+                          'Client ID (默认使用UUID)',
+                          prefixIcon: const Icon(Icons.badge_outlined),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -455,9 +480,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                             child: TextField(
                               key: const ValueKey('caPath'),
                               controller: _caPathController,
-                              decoration: InputDecoration(
-                                labelText: 'CA证书路径',
-                                border: inputBorder,
+                              decoration: decoration(
+                                'CA证书路径',
+                                prefixIcon: const Icon(
+                                  Icons.file_present_outlined,
+                                ),
                               ),
                             ),
                           ),
@@ -472,9 +499,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                             child: TextField(
                               key: const ValueKey('certPath'),
                               controller: _certPathController,
-                              decoration: InputDecoration(
-                                labelText: '客户端证书路径(可选)',
-                                border: inputBorder,
+                              decoration: decoration(
+                                '客户端证书路径(可选)',
+                                prefixIcon: const Icon(
+                                  Icons.assignment_turned_in_outlined,
+                                ),
                               ),
                             ),
                           ),
@@ -489,9 +518,9 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                             child: TextField(
                               key: const ValueKey('keyPath'),
                               controller: _keyPathController,
-                              decoration: InputDecoration(
-                                labelText: '客户端私钥路径(可选)',
-                                border: inputBorder,
+                              decoration: decoration(
+                                '客户端私钥路径(可选)',
+                                prefixIcon: const Icon(Icons.vpn_key_outlined),
                               ),
                             ),
                           ),
@@ -500,9 +529,9 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                         TextField(
                           key: const ValueKey('keyPwd'),
                           controller: _keyPwdController,
-                          decoration: InputDecoration(
-                            labelText: '私钥密码(可选)',
-                            border: inputBorder,
+                          decoration: decoration(
+                            '私钥密码(可选)',
+                            prefixIcon: const Icon(Icons.password_outlined),
                           ),
                           obscureText: true,
                         ),
@@ -515,34 +544,32 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
               Row(
                 children: [
                   Expanded(
-                    child: FilledButton.tonal(
+                    child: OutlinedButton.icon(
                       onPressed: _loading ? null : _saveConfig,
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      style: OutlinedButton.styleFrom(
+                        shape: buttonShape,
+                        padding: buttonPadding,
                       ),
-                      child: const Text('保存配置'),
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('保存配置'),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: FilledButton(
+                    child: FilledButton.icon(
                       onPressed: _loading ? null : _testConnect,
                       style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: buttonShape,
+                        padding: buttonPadding,
                       ),
-                      child: _loading
+                      icon: _loading
                           ? const SizedBox(
-                              width: 16,
-                              height: 16,
+                              width: 18,
+                              height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('订阅连接'),
+                          : const Icon(Icons.cloud_sync_outlined),
+                      label: Text(_loading ? '正在连接...' : '订阅连接'),
                     ),
                   ),
                 ],
@@ -551,28 +578,26 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
+                    child: OutlinedButton.icon(
                       onPressed: _loading ? null : _exportConfig,
                       style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: buttonShape,
+                        padding: buttonPadding,
                       ),
-                      child: const Text('导出配置'),
+                      icon: const Icon(Icons.upload_outlined),
+                      label: const Text('导出配置'),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: OutlinedButton(
+                    child: OutlinedButton.icon(
                       onPressed: _loading ? null : _importConfigFromClipboard,
                       style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: buttonShape,
+                        padding: buttonPadding,
                       ),
-                      child: const Text('导入配置'),
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('导入配置'),
                     ),
                   ),
                 ],
@@ -591,10 +616,10 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                       Expanded(
                         child: TextField(
                           controller: _customMsgController,
-                          decoration: InputDecoration(
-                            labelText: '自定义发送消息',
-                            hintText: '输入mqtt接收开门的消息',
-                            border: inputBorder,
+                          decoration: decoration(
+                            '自定义发送消息',
+                            hint: '输入mqtt接收开门的消息',
+                            prefixIcon: const Icon(Icons.chat_bubble_outline),
                           ),
                           minLines: 1,
                           maxLines: 3,
@@ -603,7 +628,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                       const SizedBox(width: 8),
                       SizedBox(
                         height: 40,
-                        child: FilledButton(
+                        child: FilledButton.icon(
                           onPressed: _sending
                               ? null
                               : () async {
@@ -611,8 +636,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                                   if (msg.isEmpty) return;
                                   setState(() {
                                     _sending = true;
-                                    _status = '正在发送...';
                                   });
+                                  _showStatus(
+                                    '正在发送...',
+                                    icon: Icons.hourglass_top,
+                                  );
                                   try {
                                     SecurityContext? sc;
                                     if (_withTls) {
@@ -660,14 +688,10 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                                       throw Exception('Topic不能为空');
                                     }
                                     await service.publishText(topic, msg);
-                                    setState(() {
-                                      _status = '消息已发送';
-                                    });
+                                    _showStatus('消息已发送');
                                     await service.dispose();
                                   } catch (e) {
-                                    setState(() {
-                                      _status = '发送失败: $e';
-                                    });
+                                    _showStatus('发送失败: $e', isError: true);
                                   } finally {
                                     setState(() {
                                       _sending = false;
@@ -675,12 +699,10 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                                   }
                                 },
                           style: FilledButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
+                            shape: buttonShape,
                             padding: const EdgeInsets.symmetric(horizontal: 18),
                           ),
-                          child: _sending
+                          icon: _sending
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
@@ -688,7 +710,8 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text('测试发送'),
+                              : const Icon(Icons.send_outlined),
+                          label: Text(_sending ? '发送中...' : '测试发送'),
                         ),
                       ),
                     ],
@@ -696,12 +719,50 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(
-                _status,
-                style: TextStyle(
-                  color: _status.contains('成功') ? Colors.green : Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _status.isEmpty
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        key: ValueKey(
+                          '${_status}_${_statusIsError}_${_statusIcon.codePoint}',
+                        ),
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _statusIsError
+                                ? colorScheme.errorContainer
+                                : colorScheme.secondaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                _statusIcon,
+                                color: _statusIsError
+                                    ? colorScheme.onErrorContainer
+                                    : colorScheme.onSecondaryContainer,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _status,
+                                  style: TextStyle(
+                                    color: _statusIsError
+                                        ? colorScheme.onErrorContainer
+                                        : colorScheme.onSecondaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
               ),
               if (_logLines.isNotEmpty) ...[
                 const SizedBox(height: 12),
