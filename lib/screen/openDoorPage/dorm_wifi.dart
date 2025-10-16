@@ -1,4 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:plugin_wifi_connect/plugin_wifi_connect.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wifi_scan/wifi_scan.dart';
+import 'package:flutter/services.dart';
+
+const _ssidPrefKey = 'preferred_wifi_ssid';
+const _passwordPrefKey = 'preferred_wifi_password';
 
 class ConfigWifiPage extends StatefulWidget {
   const ConfigWifiPage({super.key});
@@ -8,12 +18,500 @@ class ConfigWifiPage extends StatefulWidget {
 }
 
 class _ConfigWifiPage extends State<ConfigWifiPage> {
+  final TextEditingController _ssidController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  String? _savedSsid;
+  String? _savedPassword;
+  bool _loading = false;
+  bool _connecting = false;
+  bool _obscurePassword = true;
+  List<WiFiAccessPoint> _aps = [];
+  bool _pluginRegistered = false;
+  Future<void>? _registeringFuture;
+  bool _warnedMissingPlugin = false;
+  String? _connectStatusMessage;
+  bool _connectStatusIsError = false;
+  String? _connectStatusActionLabel;
+  VoidCallback? _connectStatusAction;
+
+  @override
+  void initState() {
+    super.initState();
+    _ssidController.addListener(_refreshState); // 输入变化时刷新按钮可用态
+    _passwordController.addListener(_refreshState);
+    _loadSaved();
+  }
+
+  void _refreshState() => setState(() {}); // 触发重建以更新按钮可用态
+
+  Future<void> _loadSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ssid = prefs.getString(_ssidPrefKey);
+    final password = prefs.getString(_passwordPrefKey);
+    if (!mounted) return;
+    _ssidController.text = ssid ?? '';
+    _passwordController.text = password ?? '';
+    setState(() {
+      _savedSsid = ssid;
+      _savedPassword = password;
+    });
+  }
+
+  bool get _isSsidFilled => _ssidController.text.trim().isNotEmpty;
+  bool get _canSubmit => _isSsidFilled;
+
+  Future<void> _scan() async {
+    if (!await _ensureLocationPermission()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先授予位置权限以扫描附近的WiFi')));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final can = await WiFiScan.instance.canGetScannedResults();
+      if (can != CanGetScannedResults.yes) {
+        throw Exception('当前设备或系统设置不允许获取WiFi扫描结果(状态: $can)，请检查是否已开启WiFi');
+      }
+      final canScan = await WiFiScan.instance.canStartScan();
+      if (canScan == CanStartScan.yes) {
+        await WiFiScan.instance.startScan();
+        await Future.delayed(const Duration(seconds: 1));
+      } else {
+        throw Exception('无法开始扫描WiFi(状态: $canScan)，请确认已开启WiFi并授予所需权限');
+      }
+      final results = await WiFiScan.instance.getScannedResults();
+      results.sort((a, b) => b.level.compareTo(a.level));
+      if (!mounted) return;
+      setState(() => _aps = results);
+      await _showPickSheet();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('扫描失败: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _showPickSheet() async {
+    if (!mounted) return;
+    await showModalBottomSheet<WiFiAccessPoint>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        if (_aps.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: Text('未发现可用WiFi')),
+          );
+        }
+        final cs = Theme.of(ctx).colorScheme;
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          itemCount: _aps.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (ctx, i) {
+            final ap = _aps[i];
+            final ssid = ap.ssid.isNotEmpty ? ap.ssid : '(隐藏网络)';
+            final isSelected =
+                (_savedSsid != null && _savedSsid == ap.ssid) ||
+                _ssidController.text.trim() == ap.ssid;
+            return ListTile(
+              leading: const Icon(Icons.wifi),
+              title: Text(ssid),
+              subtitle: Text('强度: ${ap.level}  •  频率: ${ap.frequency}MHz'),
+              trailing: isSelected
+                  ? Icon(Icons.check, color: cs.primary)
+                  : null,
+              onTap: () {
+                Navigator.of(ctx).pop(ap);
+                _ssidController.text = ap.ssid;
+                _passwordController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: _passwordController.text.length),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _save({bool showStatus = true}) async {
+    final value = _ssidController.text.trim();
+    final password = _passwordController.text.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_ssidPrefKey, value);
+    if (password.isEmpty) {
+      await prefs.remove(_passwordPrefKey);
+    } else {
+      await prefs.setString(_passwordPrefKey, password);
+    }
+    if (!mounted) return;
+    setState(() {
+      _savedSsid = value;
+      _savedPassword = password.isEmpty ? null : password;
+    });
+    if (showStatus) {
+      _showConnectStatus('已保存WiFi: $value');
+    }
+  }
+
+  Future<bool> _ensureLocationPermission() async {
+    var status = await Permission.locationWhenInUse.status;
+    if (status.isGranted) return true;
+    if (status.isDenied || status.isLimited) {
+      status = await Permission.locationWhenInUse.request();
+      if (status.isGranted) return true;
+    }
+    if (status.isPermanentlyDenied) {
+      await openAppSettings();
+    }
+    return false;
+  }
+
+  Future<bool> _ensurePluginRegistered() async {
+    if (_pluginRegistered) {
+      return true;
+    }
+    if (_registeringFuture != null) {
+      try {
+        await _registeringFuture;
+      } catch (_) {
+        return false;
+      }
+      return _pluginRegistered;
+    }
+    final completer = Completer<void>();
+    _registeringFuture = completer.future;
+    try {
+      try {
+        await PluginWifiConnect.unregister();
+      } catch (_) {
+        // 无需处理，上一次未注册会抛异常，忽略即可
+      }
+      await PluginWifiConnect.register();
+      _pluginRegistered = true;
+      completer.complete();
+      return true;
+    } on MissingPluginException catch (_) {
+      _handleMissingPlugin('注册 WiFi 回调');
+      return false;
+    } catch (e) {
+      completer.completeError(e);
+      _showConnectStatus('注册WiFi回调失败: $e', isError: true);
+      return false;
+    } finally {
+      _registeringFuture = null;
+    }
+  }
+
+  Future<void> _connectToSavedNetwork(String target) async {
+    if (!await _ensurePluginRegistered()) {
+      if (!_warnedMissingPlugin) {
+        _showConnectStatus('无法连接到WiFi，请稍后重试', isError: true);
+      }
+      return;
+    }
+    final password = _savedPassword?.trim() ?? '';
+    bool retried = false;
+    while (true) {
+      try {
+        final bool? success = password.isEmpty
+            ? await PluginWifiConnect.connect(target, saveNetwork: true)
+            : await PluginWifiConnect.connectToSecureNetwork(
+                target,
+                password,
+                saveNetwork: true,
+              );
+        final message = success == true
+            ? '已尝试连接: $target'
+            : '连接 $target 失败，请重试';
+        _showConnectStatus(message, isError: success != true);
+        return;
+      } on MissingPluginException catch (_) {
+        _handleMissingPlugin('连接 WiFi');
+        _showConnectStatus(
+          '当前构建缺少 plugin_wifi_connect 的原生实现，无法自动连接到WiFi',
+          isError: true,
+        );
+        return;
+      } on PlatformException catch (e) {
+        final msg = e.message ?? '';
+        final needRetry = msg.contains('NetworkCallback was not registered');
+        final needsWriteSettings = msg.contains('WRITE_SETTINGS');
+        if (!retried && needRetry) {
+          await _teardownPlugin();
+          retried = true;
+          if (await _ensurePluginRegistered()) {
+            continue;
+          }
+        }
+        if (needsWriteSettings) {
+          _showConnectStatus(
+            '需要授予“修改系统设置”权限后才能连接到WiFi',
+            isError: true,
+            actionLabel: '去设置',
+            action: () {
+              openAppSettings();
+            },
+          );
+        } else {
+          _showConnectStatus('连接失败: $msg', isError: true);
+        }
+        return;
+      } catch (e) {
+        _showConnectStatus('连接失败: $e', isError: true);
+        return;
+      }
+    }
+  }
+
+  Future<void> _teardownPlugin() async {
+    if (!_pluginRegistered) return;
+    try {
+      await PluginWifiConnect.unregister();
+    } catch (_) {
+      // 忽略卸载失败
+    } finally {
+      _pluginRegistered = false;
+    }
+  }
+
+  void _showConnectStatus(
+    String message, {
+    bool isError = false,
+    String? actionLabel,
+    VoidCallback? action,
+  }) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _connectStatusMessage = message;
+      _connectStatusIsError = isError;
+      _connectStatusActionLabel = actionLabel;
+      _connectStatusAction = action;
+    });
+  }
+
+  void _handleMissingPlugin(String action) {
+    if (!mounted) {
+      return;
+    }
+    if (!_warnedMissingPlugin) {
+      _warnedMissingPlugin = true;
+      _showConnectStatus(
+        '当前构建缺少 plugin_wifi_connect 的原生实现，无法自动$action',
+        isError: true,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _ssidController.removeListener(_refreshState);
+    _passwordController.removeListener(_refreshState);
+    _ssidController.dispose();
+    _passwordController.dispose();
+    unawaited(_teardownPlugin());
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final inputBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: colorScheme.outlineVariant),
+    );
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+    );
     return Scaffold(
-      appBar: AppBar(title: const Text('Wifi设置')),
-      // 用户添加设置wifi名称的设置，让用户可以选择搜索到的wifi，也运行用户自主添加
-      // 检测用户的wifi，检测到匹配的wifi显示出来告知用户
+      appBar: AppBar(title: const Text('WiFi设置')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_savedSsid?.isNotEmpty == true)
+              Card(
+                color: colorScheme.secondaryContainer,
+                child: ListTile(
+                  leading: const Icon(Icons.check_circle_outline),
+                  title: Text('已保存的WiFi: ${_savedSsid!}'),
+                  subtitle: Text(
+                    _savedPassword?.isNotEmpty == true ? '密码已保存' : '未设置密码',
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ssidController,
+              decoration: InputDecoration(
+                labelText: 'WiFi名称',
+                border: inputBorder,
+                prefixIcon: const Icon(Icons.wifi),
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) {
+                if (_ssidController.text.trim().isNotEmpty) {
+                  _save();
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordController,
+              obscureText: _obscurePassword,
+              decoration: InputDecoration(
+                labelText: 'WiFi密码',
+                border: inputBorder,
+                prefixIcon: const Icon(Icons.lock_outline),
+                suffixIcon: IconButton(
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                  icon: Icon(
+                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _loading ? null : _scan,
+                    icon: const Icon(Icons.wifi_find),
+                    label: Text(_loading ? '正在扫描...' : '选择扫描到的WiFi'),
+                    style: FilledButton.styleFrom(
+                      shape: buttonShape,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _canSubmit ? _save : null,
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('保存WiFi'),
+                    style: OutlinedButton.styleFrom(
+                      shape: buttonShape,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _canSubmit && !_connecting
+                    ? () async {
+                        await _save(showStatus: false);
+                        final target = _savedSsid?.trim();
+                        if (target == null || target.isEmpty) {
+                          return;
+                        }
+                        if (mounted) {
+                          setState(() {
+                            _connecting = true;
+                            _connectStatusMessage = '正在尝试连接...';
+                            _connectStatusIsError = false;
+                            _connectStatusActionLabel = null;
+                            _connectStatusAction = null;
+                          });
+                        }
+                        try {
+                          await _connectToSavedNetwork(target);
+                        } finally {
+                          if (mounted) {
+                            setState(() => _connecting = false);
+                          }
+                        }
+                      }
+                    : null,
+                icon: Icon(_connecting ? Icons.hourglass_top : Icons.wifi_lock),
+                label: Text(_connecting ? '正在连接...' : '连接当前WiFi'),
+                style: FilledButton.styleFrom(
+                  shape: buttonShape,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _connectStatusMessage == null
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      key: ValueKey(
+                        '${_connectStatusMessage}_${_connectStatusIsError}_${_connectStatusActionLabel ?? ''}',
+                      ),
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _connectStatusIsError
+                              ? colorScheme.errorContainer
+                              : colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              _connectStatusIsError
+                                  ? Icons.error_outline
+                                  : Icons.check_circle_outline,
+                              color: _connectStatusIsError
+                                  ? colorScheme.onErrorContainer
+                                  : colorScheme.onSecondaryContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _connectStatusMessage!,
+                                style: TextStyle(
+                                  color: _connectStatusIsError
+                                      ? colorScheme.onErrorContainer
+                                      : colorScheme.onSecondaryContainer,
+                                ),
+                              ),
+                            ),
+                            if (_connectStatusActionLabel != null &&
+                                _connectStatusAction != null)
+                              TextButton(
+                                onPressed: _connectStatusAction,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: _connectStatusIsError
+                                      ? colorScheme.onErrorContainer
+                                      : colorScheme.onSecondaryContainer,
+                                ),
+                                child: Text(_connectStatusActionLabel!),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
