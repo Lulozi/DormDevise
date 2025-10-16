@@ -480,7 +480,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _disconnecting
+                    onPressed: !_canSubmit || _disconnecting
                         ? null
                         : () async {
                             if (mounted) {

@@ -363,7 +363,6 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
 
   Future<void> _testConnect() async {
     final topic = _topicController.text.trim();
-    final statusTopic = _statusTopicController.text.trim();
     if (topic.isEmpty) {
       _showStatus('请先填写订阅主题', isError: true, icon: Icons.info_outline);
       _showBubble(context, '请先填写订阅主题');
@@ -1038,15 +1037,17 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          controller: _customMsgController,
-                          decoration: decoration(
-                            '自定义发送消息',
-                            hint: '输入mqtt接收开门的消息',
-                            prefixIcon: const Icon(Icons.chat_bubble_outline),
+                        child: SizedBox(
+                          height: 56,
+                          child: TextField(
+                            controller: _customMsgController,
+                            textAlignVertical: TextAlignVertical.center,
+                            decoration: decoration(
+                              '自定义发送消息',
+                              hint: '输入mqtt接收开门的消息',
+                              prefixIcon: const Icon(Icons.chat_bubble_outline),
+                            ),
                           ),
-                          minLines: 1,
-                          maxLines: 3,
                         ),
                       ),
                       const SizedBox(width: 8),
