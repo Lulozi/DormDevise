@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:animations/animations.dart';
-import 'config_mqtt.dart';
+import '../openDoorPage/config_mqtt.dart';
 
 /// 用于包裹MQTT设置按钮，实现Material3风格的丝巾展开动画
 class MqttSettingsOpenContainer extends StatelessWidget {

@@ -1,11 +1,12 @@
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import '../openDoorPage/mqtt_client.dart';
+import 'mqtt_client.dart';
 
 class ConfigMqttPage extends StatefulWidget {
   const ConfigMqttPage({super.key});
@@ -15,6 +16,7 @@ class ConfigMqttPage extends StatefulWidget {
 }
 
 class _ConfigMqttPageState extends State<ConfigMqttPage> {
+  static const String _subscribedTopicKey = 'mqtt_last_subscribed_topic';
   final List<String> _logLines = [];
   // 配置变量
   String _host = '';
@@ -29,11 +31,20 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   String _keyPwd = '';
   bool _withTls = false;
   String _customMsg = 'OPEN';
+  String _statusPreview = '';
+
+  bool _statusFetching = false;
+  bool _topicExpanded = false;
+  bool _isConfigReady = false;
+  bool _isDisposing = false;
+  bool _hasSubscribed = false;
+  MqttService? _statusSubscriptionService;
 
   // controller 只在变量变更时重建，避免 labelText 闪烁
   late TextEditingController _hostController;
   late TextEditingController _portController;
   late TextEditingController _topicController;
+  late TextEditingController _statusTopicController;
   late TextEditingController _clientIdController;
   late TextEditingController _usernameController;
   late TextEditingController _passwordController;
@@ -42,6 +53,41 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   late TextEditingController _keyPathController;
   late TextEditingController _keyPwdController;
   late TextEditingController _customMsgController;
+  final FocusNode _topicFocusNode = FocusNode();
+
+  String _formatStatusPreview(Map<String, dynamic> data) {
+    if (data.length == 1 && data.containsKey('payload')) {
+      final value = data['payload'];
+      if (value is String) return value;
+      if (value == null) return 'null';
+      if (value is Map || value is List) {
+        try {
+          return const JsonEncoder.withIndent('  ').convert(value);
+        } catch (_) {
+          return value.toString();
+        }
+      }
+      return value.toString();
+    }
+    try {
+      return const JsonEncoder.withIndent('  ').convert(data);
+    } catch (_) {
+      return data.toString();
+    }
+  }
+
+  Future<void> _persistSubscribedTopic(
+    String? topic, {
+    SharedPreferences? cachedPrefs,
+  }) async {
+    final prefs = cachedPrefs ?? await SharedPreferences.getInstance();
+    final trimmed = topic?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      await prefs.remove(_subscribedTopicKey);
+    } else {
+      await prefs.setString(_subscribedTopicKey, trimmed);
+    }
+  }
 
   void _showBubble(BuildContext context, String msg) {
     showDialog(
@@ -69,6 +115,14 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     });
   }
 
+  void _appendLog(String line) {
+    if (!mounted || _isDisposing) return;
+    setState(() {
+      _logLines.add(line);
+      if (_logLines.length > 200) _logLines.removeAt(0);
+    });
+  }
+
   bool _sending = false;
   bool _loading = false;
   String _status = '';
@@ -78,7 +132,14 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   @override
   void initState() {
     super.initState();
+    _topicFocusNode.addListener(_handleTopicFocusChange);
     _initAndLoadConfig();
+  }
+
+  void _handleTopicFocusChange() {
+    if (_topicFocusNode.hasFocus && !_topicExpanded) {
+      setState(() => _topicExpanded = true);
+    }
   }
 
   Future<void> _initAndLoadConfig() async {
@@ -92,24 +153,61 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   }
 
   Future<void> _loadConfig({String? defaultClientId}) async {
+    await _stopStatusSubscription(silent: true);
     final prefs = await SharedPreferences.getInstance();
+    final host = prefs.getString('mqtt_host') ?? '';
+    final port = prefs.getString('mqtt_port') ?? '1883';
+    final topic = prefs.getString('mqtt_topic') ?? '';
+    final username = prefs.getString('mqtt_username') ?? '';
+    final password = prefs.getString('mqtt_password') ?? '';
+    final clientId =
+        prefs.getString('mqtt_clientId') ?? (defaultClientId ?? '');
+    final caPath = prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
+    final certPath = prefs.getString('mqtt_cert') ?? '';
+    final keyPath = prefs.getString('mqtt_key') ?? '';
+    final keyPwd = prefs.getString('mqtt_key_pwd') ?? '';
+    final withTls = prefs.getBool('mqtt_with_tls') ?? false;
+    final loadedStatusTopic = prefs.getString('mqtt_status_topic') ?? '';
+    final lastSubscribedTopic = prefs.getString(_subscribedTopicKey) ?? '';
+    final oldControllers = _isConfigReady
+        ? <TextEditingController>[
+            _hostController,
+            _portController,
+            _topicController,
+            _statusTopicController,
+            _clientIdController,
+            _usernameController,
+            _passwordController,
+            _caPathController,
+            _certPathController,
+            _keyPathController,
+            _keyPwdController,
+            _customMsgController,
+          ]
+        : const <TextEditingController>[];
     setState(() {
-      _host = prefs.getString('mqtt_host') ?? '';
-      _port = prefs.getString('mqtt_port') ?? '1883';
-      _topic = prefs.getString('mqtt_topic') ?? '';
-      _username = prefs.getString('mqtt_username') ?? '';
-      _password = prefs.getString('mqtt_password') ?? '';
-      _clientId = prefs.getString('mqtt_clientId') ?? (defaultClientId ?? '');
-      _caPath = prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
-      _certPath = prefs.getString('mqtt_cert') ?? '';
-      _keyPath = prefs.getString('mqtt_key') ?? '';
-      _keyPwd = prefs.getString('mqtt_key_pwd') ?? '';
-      _withTls = prefs.getBool('mqtt_with_tls') ?? false;
+      _host = host;
+      _port = port;
+      _topic = topic;
+      _username = username;
+      _password = password;
+      _clientId = clientId;
+      _caPath = caPath;
+      _certPath = certPath;
+      _keyPath = keyPath;
+      _keyPwd = keyPwd;
+      _withTls = withTls;
       _customMsg = 'OPEN';
+      _topicExpanded = loadedStatusTopic.isNotEmpty;
+      _statusPreview = '';
+      _hasSubscribed = topic.isNotEmpty && lastSubscribedTopic.isNotEmpty
+          ? lastSubscribedTopic == topic
+          : false;
       // 重新创建 controller
       _hostController = TextEditingController(text: _host);
       _portController = TextEditingController(text: _port);
       _topicController = TextEditingController(text: _topic);
+      _statusTopicController = TextEditingController(text: loadedStatusTopic);
       _clientIdController = TextEditingController(text: _clientId);
       _usernameController = TextEditingController(text: _username);
       _passwordController = TextEditingController(text: _password);
@@ -118,7 +216,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       _keyPathController = TextEditingController(text: _keyPath);
       _keyPwdController = TextEditingController(text: _keyPwd);
       _customMsgController = TextEditingController(text: _customMsg);
+      _isConfigReady = true;
     });
+    for (final controller in oldControllers) {
+      controller.dispose();
+    }
   }
 
   Future<void> _saveConfig() async {
@@ -133,6 +235,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     await prefs.setString('mqtt_cert', _certPathController.text);
     await prefs.setString('mqtt_key', _keyPathController.text);
     await prefs.setString('mqtt_key_pwd', _keyPwdController.text);
+    await prefs.setString('mqtt_status_topic', _statusTopicController.text);
     await prefs.setBool('mqtt_with_tls', _withTls);
     if (!mounted) return;
     _showStatus('配置已保存');
@@ -150,6 +253,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       'mqtt_cert': _certPathController.text,
       'mqtt_key': _keyPathController.text,
       'mqtt_key_pwd': _keyPwdController.text,
+      'mqtt_status_topic': _statusTopicController.text,
       'mqtt_with_tls': _withTls,
       // 不导出 clientId/uuid
     };
@@ -171,6 +275,23 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     try {
       final map = jsonDecode(data.text!);
       if (map is! Map) throw Exception('格式错误');
+      await _stopStatusSubscription(silent: true);
+      final oldControllers = _isConfigReady
+          ? <TextEditingController>[
+              _hostController,
+              _portController,
+              _topicController,
+              _statusTopicController,
+              _usernameController,
+              _passwordController,
+              _caPathController,
+              _certPathController,
+              _keyPathController,
+              _keyPwdController,
+            ]
+          : const <TextEditingController>[];
+      final importedStatusTopic = map['mqtt_status_topic'] ?? '';
+      final prefs = await SharedPreferences.getInstance();
       setState(() {
         _host = map['mqtt_host'] ?? '';
         _port = map['mqtt_port'] ?? '1883';
@@ -182,10 +303,16 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
         _keyPath = map['mqtt_key'] ?? '';
         _keyPwd = map['mqtt_key_pwd'] ?? '';
         _withTls = map['mqtt_with_tls'] ?? false;
+        _topicExpanded = importedStatusTopic.isNotEmpty;
+        _statusPreview = '';
+        _hasSubscribed = false;
         // 重新创建 controller
         _hostController = TextEditingController(text: _host);
         _portController = TextEditingController(text: _port);
         _topicController = TextEditingController(text: _topic);
+        _statusTopicController = TextEditingController(
+          text: importedStatusTopic,
+        );
         _usernameController = TextEditingController(text: _username);
         _passwordController = TextEditingController(text: _password);
         _caPathController = TextEditingController(text: _caPath);
@@ -193,8 +320,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
         _keyPathController = TextEditingController(text: _keyPath);
         _keyPwdController = TextEditingController(text: _keyPwd);
       });
+      for (final controller in oldControllers) {
+        controller.dispose();
+      }
+      unawaited(_persistSubscribedTopic(null, cachedPrefs: prefs));
       // 只保存配置到本地，不弹“配置已保存”弹窗
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('mqtt_host', _host);
       await prefs.setString('mqtt_port', _port);
       await prefs.setString('mqtt_topic', _topic);
@@ -204,6 +334,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       await prefs.setString('mqtt_cert', _certPath);
       await prefs.setString('mqtt_key', _keyPath);
       await prefs.setString('mqtt_key_pwd', _keyPwd);
+      await prefs.setString('mqtt_status_topic', importedStatusTopic);
       await prefs.setBool('mqtt_with_tls', _withTls);
       final importStr = JsonEncoder.withIndent('  ').convert(map);
       if (!mounted) return;
@@ -231,10 +362,20 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   }
 
   Future<void> _testConnect() async {
+    final topic = _topicController.text.trim();
+    final statusTopic = _statusTopicController.text.trim();
+    if (topic.isEmpty) {
+      _showStatus('请先填写订阅主题', isError: true, icon: Icons.info_outline);
+      _showBubble(context, '请先填写订阅主题');
+      unawaited(_persistSubscribedTopic(null));
+      return;
+    }
     setState(() {
       _loading = true;
+      _hasSubscribed = false;
     });
     _showStatus('正在连接...', icon: Icons.hourglass_top);
+    await _persistSubscribedTopic(null);
     try {
       SecurityContext? sc;
       if (_withTls) {
@@ -264,64 +405,219 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
             ? _passwordController.text
             : null,
         securityContext: sc,
+        onNotification: (topic, data) {
+          debugPrint('MQTT notification <$topic>: $data');
+          _appendLog('MQTT notification <$topic>: ${jsonEncode(data)}');
+          final statusTopic = _statusTopicController.text.trim();
+          if (statusTopic.isNotEmpty &&
+              topic == statusTopic &&
+              mounted &&
+              _statusSubscriptionService != null) {
+            final preview = _formatStatusPreview(data);
+            setState(() {
+              _statusPreview = preview;
+            });
+          }
+        },
         log: (msg) {
           debugPrint(msg);
-          setState(() {
-            _logLines.add(msg);
-            if (_logLines.length > 200) _logLines.removeAt(0);
-          });
+          _appendLog(msg);
         },
         onError: (e, [st]) {
           debugPrint('MQTT error: $e');
-          setState(() {
-            _logLines.add('MQTT error: $e');
-            if (_logLines.length > 200) _logLines.removeAt(0);
-          });
+          _appendLog('MQTT error: $e');
         },
       );
       await service.connect();
-      // 自动订阅主题
-      final topic = _topicController.text.trim();
-      if (topic.isNotEmpty) {
-        await service.subscribe(topic);
+      await service.subscribe(topic);
+      await _persistSubscribedTopic(topic);
+      if (!mounted) {
+        await service.dispose();
+        return;
       }
-      if (!mounted) return;
-      _showStatus('连接成功');
-      _showBubble(context, '连接成功');
+      final infoLines = <String>['订阅成功: $topic'];
+      _showStatus('已订阅');
+      setState(() {
+        _hasSubscribed = true;
+      });
+      _showBubble(context, infoLines.join('\n\n'));
       await service.dispose();
     } catch (e) {
+      await _persistSubscribedTopic(null);
       if (!mounted) return;
       setState(() {
         _logLines.add('连接失败: $e');
         if (_logLines.length > 200) _logLines.removeAt(0);
+        _hasSubscribed = false;
       });
       _showStatus('连接失败: $e', isError: true);
       _showBubble(context, '连接失败: $e');
     } finally {
-      setState(() {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      } else {
         _loading = false;
+      }
+    }
+  }
+
+  Future<void> _toggleStatusSubscription() async {
+    if (_statusSubscriptionService != null) {
+      await _stopStatusSubscription();
+      return;
+    }
+    await _subscribeStatusTopic();
+  }
+
+  Future<void> _subscribeStatusTopic() async {
+    final statusTopic = _statusTopicController.text.trim();
+    if (statusTopic.isEmpty) {
+      _showStatus('请先填写状态主题', isError: true, icon: Icons.info_outline);
+      return;
+    }
+    if (!_topicExpanded) {
+      setState(() => _topicExpanded = true);
+    }
+    setState(() {
+      _statusFetching = true;
+      _statusPreview = '';
+    });
+    SecurityContext? sc;
+    MqttService? service;
+    try {
+      if (_withTls) {
+        sc = await buildSecurityContext(
+          caAsset: _caPathController.text,
+          clientCertAsset: _certPathController.text.isNotEmpty
+              ? _certPathController.text
+              : null,
+          clientKeyAsset: _keyPathController.text.isNotEmpty
+              ? _keyPathController.text
+              : null,
+          clientKeyPassword: _keyPwdController.text.isNotEmpty
+              ? _keyPwdController.text
+              : null,
+        );
+      }
+      service = MqttService(
+        host: _hostController.text,
+        port: int.tryParse(_portController.text) ?? 1883,
+        clientId: _clientIdController.text.isNotEmpty
+            ? '${_clientIdController.text}_status'
+            : 'flutter_client_status',
+        username: _usernameController.text.isNotEmpty
+            ? _usernameController.text
+            : null,
+        password: _passwordController.text.isNotEmpty
+            ? _passwordController.text
+            : null,
+        securityContext: sc,
+        onNotification: (topic, data) {
+          if (topic != statusTopic || !mounted) return;
+          final preview = _formatStatusPreview(data);
+          setState(() {
+            _statusPreview = preview;
+          });
+        },
+        log: (msg) {
+          debugPrint(msg);
+          _appendLog(msg);
+        },
+        onError: (e, [st]) {
+          debugPrint('MQTT error: $e');
+          _appendLog('MQTT error: $e');
+        },
+      );
+      await service.connect();
+      await service.subscribe(statusTopic);
+      if (!mounted) {
+        await service.dispose();
+        return;
+      }
+      setState(() {
+        _statusSubscriptionService = service;
+        _statusFetching = false;
       });
+      service = null;
+      _appendLog('已订阅状态主题: $statusTopic');
+      _showStatus('状态主题订阅成功');
+    } catch (e) {
+      debugPrint('订阅状态主题失败: $e');
+      _appendLog('订阅状态失败: $e');
+      if (mounted) {
+        _showStatus('订阅状态失败: $e', isError: true);
+      }
+    } finally {
+      if (service != null) {
+        await service.dispose();
+      }
+      if (mounted && _statusSubscriptionService == null) {
+        setState(() {
+          _statusFetching = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _stopStatusSubscription({bool silent = false}) async {
+    final service = _statusSubscriptionService;
+    if (service == null) {
+      return;
+    }
+    setState(() {
+      _statusSubscriptionService = null;
+      _statusFetching = false;
+      _statusPreview = '';
+    });
+    try {
+      await service.dispose();
+      if (!silent) {
+        _appendLog('已取消状态主题订阅');
+        _showStatus('状态主题订阅已停止');
+      }
+    } catch (e) {
+      debugPrint('取消状态主题订阅失败: $e');
+      _appendLog('取消状态订阅失败: $e');
+      if (!silent) {
+        _showStatus('取消状态订阅失败: $e', isError: true);
+      }
     }
   }
 
   @override
   void dispose() {
-    _hostController.dispose();
-    _portController.dispose();
-    _topicController.dispose();
-    _clientIdController.dispose();
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _caPathController.dispose();
-    _certPathController.dispose();
-    _keyPathController.dispose();
-    _keyPwdController.dispose();
-    _customMsgController.dispose();
+    _isDisposing = true;
+    _topicFocusNode.removeListener(_handleTopicFocusChange);
+    _topicFocusNode.dispose();
+    unawaited(_statusSubscriptionService?.dispose());
+    _statusSubscriptionService = null;
+    if (_isConfigReady) {
+      _hostController.dispose();
+      _portController.dispose();
+      _topicController.dispose();
+      _statusTopicController.dispose();
+      _clientIdController.dispose();
+      _usernameController.dispose();
+      _passwordController.dispose();
+      _caPathController.dispose();
+      _certPathController.dispose();
+      _keyPathController.dispose();
+      _keyPwdController.dispose();
+      _customMsgController.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isConfigReady) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('MQTT配置')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
     final colorScheme = Theme.of(context).colorScheme;
     final inputBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
@@ -335,6 +631,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
       borderRadius: BorderRadius.circular(16),
     );
     const buttonPadding = EdgeInsets.symmetric(vertical: 14);
+    final statusSubscribed = _statusSubscriptionService != null;
 
     InputDecoration decoration(
       String label, {
@@ -425,10 +722,133 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                       TextField(
                         key: const ValueKey('topic'),
                         controller: _topicController,
+                        focusNode: _topicFocusNode,
                         decoration: decoration(
                           '主题',
                           prefixIcon: const Icon(Icons.subject_outlined),
                         ),
+                        onTap: () {
+                          if (!_topicExpanded) {
+                            setState(() => _topicExpanded = true);
+                          }
+                        },
+                        onChanged: (value) {
+                          if (_hasSubscribed) {
+                            setState(() => _hasSubscribed = false);
+                            unawaited(_persistSubscribedTopic(null));
+                          }
+                        },
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child:
+                            !_topicExpanded &&
+                                _statusTopicController.text.isEmpty &&
+                                _statusPreview.isEmpty
+                            ? const SizedBox.shrink()
+                            : Column(
+                                key: const ValueKey('statusTopicPanel'),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 12),
+                                  TextField(
+                                    key: const ValueKey('statusTopic'),
+                                    controller: _statusTopicController,
+                                    decoration: decoration(
+                                      '状态主题 (可选)',
+                                      prefixIcon: const Icon(
+                                        Icons.receipt_long_outlined,
+                                      ),
+                                    ),
+                                    onChanged: (value) {
+                                      if (_statusSubscriptionService != null) {
+                                        unawaited(
+                                          _stopStatusSubscription(silent: true),
+                                        );
+                                      }
+                                      setState(() {
+                                        if (!_topicExpanded) {
+                                          _topicExpanded = true;
+                                        }
+                                        _statusPreview = '';
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: colorScheme
+                                                .surfaceContainerHighest,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: _statusPreview.isEmpty
+                                              ? Text(
+                                                  '等待订阅消息…',
+                                                  style: TextStyle(
+                                                    color: colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                                )
+                                              : SelectableText(
+                                                  _statusPreview,
+                                                  style: TextStyle(
+                                                    color: colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        height: 40,
+                                        child: FilledButton.icon(
+                                          onPressed: _statusFetching
+                                              ? null
+                                              : _toggleStatusSubscription,
+                                          style: FilledButton.styleFrom(
+                                            shape: buttonShape,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                            ),
+                                          ),
+                                          icon: _statusFetching
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : Icon(
+                                                  statusSubscribed
+                                                      ? Icons
+                                                            .stop_circle_outlined
+                                                      : Icons.podcasts_outlined,
+                                                ),
+                                          label: Text(
+                                            _statusFetching
+                                                ? (statusSubscribed
+                                                      ? '取消订阅...'
+                                                      : '订阅中...')
+                                                : (statusSubscribed
+                                                      ? '取消订阅'
+                                                      : '订阅状态主题'),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -569,7 +989,11 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.cloud_sync_outlined),
-                      label: Text(_loading ? '正在连接...' : '订阅连接'),
+                      label: Text(
+                        _loading
+                            ? '正在连接...'
+                            : (_hasSubscribed ? '已订阅' : '订阅连接'),
+                      ),
                     ),
                   ),
                 ],
