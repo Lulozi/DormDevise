@@ -24,6 +24,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
   String? _savedPassword;
   bool _loading = false;
   bool _connecting = false;
+  bool _disconnecting = false;
   bool _obscurePassword = true;
   List<WiFiAccessPoint> _aps = [];
   bool _pluginRegistered = false;
@@ -33,7 +34,6 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
   bool _connectStatusIsError = false;
   String? _connectStatusActionLabel;
   VoidCallback? _connectStatusAction;
-  bool _disconnecting = false;
 
   @override
   void initState() {
@@ -275,32 +275,14 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
     }
   }
 
-  Future<void> _teardownPlugin() async {
-    if (!_pluginRegistered) return;
+  Future<void> _disconnectFromCurrentNetwork() async {
     try {
-      await PluginWifiConnect.unregister();
-    } catch (_) {
-      // 忽略卸载失败
-    } finally {
-      _pluginRegistered = false;
-    }
-  }
-
-  Future<void> _disconnectFromNetwork() async {
-    if (mounted) {
-      setState(() => _disconnecting = true);
-    }
-    _showConnectStatus('正在断开当前WiFi...');
-    try {
-      if (!await _ensurePluginRegistered()) {
-        if (!_warnedMissingPlugin) {
-          _showConnectStatus('无法断开当前WiFi，请稍后重试', isError: true);
-        }
-        return;
-      }
       final bool? success = await PluginWifiConnect.disconnect();
-      final message = success == true ? '已请求断开当前WiFi' : '断开WiFi失败，请重试';
-      _showConnectStatus(message, isError: success != true);
+      if (success == false) {
+        _showConnectStatus('断开失败，请在系统设置中重试', isError: true);
+      } else {
+        _showConnectStatus('已请求断开当前WiFi');
+      }
     } on MissingPluginException catch (_) {
       _handleMissingPlugin('断开 WiFi');
       _showConnectStatus(
@@ -312,10 +294,17 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
       _showConnectStatus('断开失败: $msg', isError: true);
     } catch (e) {
       _showConnectStatus('断开失败: $e', isError: true);
+    }
+  }
+
+  Future<void> _teardownPlugin() async {
+    if (!_pluginRegistered) return;
+    try {
+      await PluginWifiConnect.unregister();
+    } catch (_) {
+      // 忽略卸载失败
     } finally {
-      if (mounted) {
-        setState(() => _disconnecting = false);
-      }
+      _pluginRegistered = false;
     }
   }
 
@@ -369,7 +358,6 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
     final buttonShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(16),
     );
-    final hasSavedNetwork = _savedSsid?.trim().isNotEmpty ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('WiFi设置')),
       body: Padding(
@@ -454,7 +442,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _canSubmit && !_connecting && !_disconnecting
+                    onPressed: _canSubmit && !_connecting
                         ? () async {
                             await _save(showStatus: false);
                             final target = _savedSsid?.trim();
@@ -492,10 +480,26 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed:
-                        hasSavedNetwork && !_disconnecting && !_connecting
-                        ? () => _disconnectFromNetwork()
-                        : null,
+                    onPressed: _disconnecting
+                        ? null
+                        : () async {
+                            if (mounted) {
+                              setState(() {
+                                _disconnecting = true;
+                                _connectStatusMessage = '正在断开当前WiFi...';
+                                _connectStatusIsError = false;
+                                _connectStatusActionLabel = null;
+                                _connectStatusAction = null;
+                              });
+                            }
+                            try {
+                              await _disconnectFromCurrentNetwork();
+                            } finally {
+                              if (mounted) {
+                                setState(() => _disconnecting = false);
+                              }
+                            }
+                          },
                     icon: Icon(
                       _disconnecting ? Icons.hourglass_bottom : Icons.wifi_off,
                     ),
