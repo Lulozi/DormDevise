@@ -6,7 +6,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
-typedef OnNotification = void Function(Map<String, dynamic> msg);
+typedef OnNotification = void Function(String topic, Map<String, dynamic> msg);
 typedef OnLog = void Function(String line);
 typedef OnError = void Function(Object error, [StackTrace? st]);
 
@@ -199,10 +199,14 @@ class MqttService {
       _debug('📥 [MQTT] recv $topic: $payload');
       Map<String, dynamic> data;
       try {
-        data = jsonDecode(payload) as Map<String, dynamic>;
-      } catch (e, st) {
-        _error('⚠️ [MQTT] json decode failed: $e', e, st);
-        continue;
+        final decoded = jsonDecode(payload);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded;
+        } else {
+          data = {'payload': decoded};
+        }
+      } catch (_) {
+        data = {'payload': payload};
       }
       final reqId = data['req_id'] as String?;
       if (reqId != null && _pending.containsKey(reqId)) {
@@ -211,7 +215,7 @@ class MqttService {
         continue;
       }
       try {
-        onNotification?.call(data);
+        onNotification?.call(topic, data);
       } catch (e, st) {
         _error('⚠️ [MQTT] onNotification error: $e', e, st);
       }
