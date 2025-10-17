@@ -739,7 +739,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                         },
                       ),
                       AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
+                        duration: const Duration(milliseconds: 400),
                         switchInCurve: Curves.easeOut,
                         switchOutCurve: Curves.easeIn,
                         transitionBuilder: (child, animation) {
