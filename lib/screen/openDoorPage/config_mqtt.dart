@@ -54,6 +54,7 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
   late TextEditingController _keyPwdController;
   late TextEditingController _customMsgController;
   final FocusNode _topicFocusNode = FocusNode();
+  final FocusNode _statusTopicFocusNode = FocusNode();
 
   String _formatStatusPreview(Map<String, dynamic> data) {
     if (data.length == 1 && data.containsKey('payload')) {
@@ -585,11 +586,24 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
     }
   }
 
+  void _onStatusTopicChanged(String value) {
+    if (_statusSubscriptionService != null) {
+      unawaited(_stopStatusSubscription(silent: true));
+    }
+    setState(() {
+      if (!_topicExpanded) {
+        _topicExpanded = true;
+      }
+      _statusPreview = '';
+    });
+  }
+
   @override
   void dispose() {
     _isDisposing = true;
     _topicFocusNode.removeListener(_handleTopicFocusChange);
     _topicFocusNode.dispose();
+    _statusTopicFocusNode.dispose();
     unawaited(_statusSubscriptionService?.dispose());
     _statusSubscriptionService = null;
     if (_isConfigReady) {
@@ -761,28 +775,104 @@ class _ConfigMqttPageState extends State<ConfigMqttPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const SizedBox(height: 12),
-                                  TextField(
+                                  RawAutocomplete<String>(
                                     key: const ValueKey('statusTopic'),
-                                    controller: _statusTopicController,
-                                    decoration: decoration(
-                                      '状态主题 (可选)',
-                                      prefixIcon: const Icon(
-                                        Icons.receipt_long_outlined,
-                                      ),
-                                    ),
-                                    onChanged: (value) {
-                                      if (_statusSubscriptionService != null) {
-                                        unawaited(
-                                          _stopStatusSubscription(silent: true),
-                                        );
-                                      }
-                                      setState(() {
-                                        if (!_topicExpanded) {
-                                          _topicExpanded = true;
-                                        }
-                                        _statusPreview = '';
-                                      });
+                                    textEditingController:
+                                        _statusTopicController,
+                                    focusNode: _statusTopicFocusNode,
+                                    optionsBuilder:
+                                        (TextEditingValue textEditingValue) {
+                                          final raw = textEditingValue.text
+                                              .trim();
+                                          if (raw.isEmpty) {
+                                            return const Iterable<
+                                              String
+                                            >.empty();
+                                          }
+                                          final sanitized = raw.replaceAll(
+                                            RegExp(r'/+$'),
+                                            '',
+                                          );
+                                          final suggestion = sanitized.isEmpty
+                                              ? '/status'
+                                              : '$sanitized/status';
+                                          if (suggestion == raw) {
+                                            return const Iterable<
+                                              String
+                                            >.empty();
+                                          }
+                                          return <String>[suggestion];
+                                        },
+                                    onSelected: (option) {
+                                      _statusTopicController.text = option;
+                                      _statusTopicController.selection =
+                                          TextSelection.fromPosition(
+                                            TextPosition(offset: option.length),
+                                          );
+                                      _onStatusTopicChanged(option);
                                     },
+                                    optionsViewBuilder:
+                                        (context, onSelected, options) {
+                                          if (options.isEmpty) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          final cs = Theme.of(
+                                            context,
+                                          ).colorScheme;
+                                          return Align(
+                                            alignment: Alignment.topLeft,
+                                            child: Material(
+                                              elevation: 4,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              color: cs.surface,
+                                              child: ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      maxHeight: 160,
+                                                      maxWidth: 360,
+                                                    ),
+                                                child: ListView.builder(
+                                                  shrinkWrap: true,
+                                                  padding: EdgeInsets.zero,
+                                                  itemCount: options.length,
+                                                  itemBuilder:
+                                                      (context, index) {
+                                                        final option = options
+                                                            .elementAt(index);
+                                                        return ListTile(
+                                                          dense: true,
+                                                          title: Text(option),
+                                                          onTap: () =>
+                                                              onSelected(
+                                                                option,
+                                                              ),
+                                                        );
+                                                      },
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                    fieldViewBuilder:
+                                        (
+                                          context,
+                                          textEditingController,
+                                          focusNode,
+                                          onFieldSubmitted,
+                                        ) {
+                                          return TextField(
+                                            controller: textEditingController,
+                                            focusNode: focusNode,
+                                            decoration: decoration(
+                                              '状态主题 (可选)',
+                                              prefixIcon: const Icon(
+                                                Icons.receipt_long_outlined,
+                                              ),
+                                            ),
+                                            onChanged: _onStatusTopicChanged,
+                                          );
+                                        },
                                   ),
                                   const SizedBox(height: 8),
                                   Row(
