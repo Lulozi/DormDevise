@@ -41,6 +41,7 @@ dependencies:
   file_picker: ^10.3.3
   uuid: ^4.5.1
   package_info_plus: ^9.0.0
+  device_info_plus: ^10.1.0
   animations: ^2.1.0
   wifi_scan: ^0.4.1+2
   plugin_wifi_connect: ^2.0.1
