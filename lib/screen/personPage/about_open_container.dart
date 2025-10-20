@@ -16,6 +16,30 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/widgets/app_toast.dart';
 
+class _UpdateDownloadCoordinator {
+  _UpdateDownloadCoordinator._();
+  static final _UpdateDownloadCoordinator instance =
+      _UpdateDownloadCoordinator._();
+
+  final ValueNotifier<bool> _isDownloading = ValueNotifier<bool>(false);
+
+  bool get isDownloading => _isDownloading.value;
+  ValueListenable<bool> get listenable => _isDownloading;
+
+  void addListener(VoidCallback listener) =>
+      _isDownloading.addListener(listener);
+  void removeListener(VoidCallback listener) =>
+      _isDownloading.removeListener(listener);
+
+  void markStarted() => _set(true);
+  void markIdle() => _set(false);
+
+  void _set(bool value) {
+    if (_isDownloading.value == value) return;
+    _isDownloading.value = value;
+  }
+}
+
 /// 关于按钮的开合容器
 class AboutOpenContainer extends StatelessWidget {
   final String version;
@@ -64,11 +88,25 @@ class AboutPage extends StatefulWidget {
 class _AboutPageState extends State<AboutPage> {
   bool _checkingUpdate = false;
   bool _hasNewerVersion = false;
+  late final _UpdateDownloadCoordinator _downloadCoordinator;
+  late final VoidCallback _downloadListener;
 
   @override
   void initState() {
     super.initState();
+    _downloadCoordinator = _UpdateDownloadCoordinator.instance;
+    _downloadListener = () {
+      if (!mounted) return;
+      setState(() {});
+    };
+    _downloadCoordinator.addListener(_downloadListener);
     unawaited(_primeLatestVersionStatus());
+  }
+
+  @override
+  void dispose() {
+    _downloadCoordinator.removeListener(_downloadListener);
+    super.dispose();
   }
 
   Future<void> _primeLatestVersionStatus() async {
@@ -257,7 +295,8 @@ class _AboutPageState extends State<AboutPage> {
           children: [
             _AboutHeader(
               version: widget.version,
-              checkingUpdate: _checkingUpdate,
+              checkingUpdate:
+                  _checkingUpdate || _downloadCoordinator.isDownloading,
               hasNewerVersion: _hasNewerVersion,
               onCheckUpdate: _handleCheckForUpdates,
               onOpenRepository: _openRepository,
@@ -1153,6 +1192,8 @@ Future<void> _downloadAndInstallUpdate(
   BuildContext context,
   _ReleaseAsset asset,
 ) async {
+  final coordinator = _UpdateDownloadCoordinator.instance;
+  coordinator.markStarted();
   final totalHint = asset.size > 0 ? asset.size : null;
   final progressNotifier = ValueNotifier<_DownloadProgress>(
     _DownloadProgress(receivedBytes: 0, totalBytes: totalHint),
@@ -1285,81 +1326,89 @@ Future<void> _downloadAndInstallUpdate(
     },
   );
 
-  final resolvedResult =
-      dialogResult ??
-      (downloadError == null
-          ? _DownloadDialogResult.success
-          : _DownloadDialogResult.failure);
+  try {
+    final resolvedResult =
+        dialogResult ??
+        (downloadError == null
+            ? _DownloadDialogResult.success
+            : _DownloadDialogResult.failure);
 
-  if (!downloadCompleted.isCompleted) {
-    await downloadCompleted.future;
-  }
+    if (!downloadCompleted.isCompleted) {
+      await downloadCompleted.future;
+    }
 
-  progressNotifier.dispose();
+    progressNotifier.dispose();
 
-  httpClient.close();
+    httpClient.close();
 
-  if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
-    AppToast.show(context, '已切换到后台下载，完成后会自动打开安装程序');
-  }
+    if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
+      AppToast.show(context, '已切换到后台下载，完成后会自动打开安装程序');
+    }
 
-  if (downloadError != null) {
-    if (downloadError is _DownloadCancelled ||
-        resolvedResult == _DownloadDialogResult.cancelled) {
+    if (downloadError != null) {
+      if (downloadError is _DownloadCancelled ||
+          resolvedResult == _DownloadDialogResult.cancelled) {
+        if (context.mounted) {
+          AppToast.show(context, '下载已取消', variant: AppToastVariant.warning);
+        } else {
+          debugPrint('Download cancelled before installer launch');
+        }
+        return;
+      }
+      final message = _mapErrorMessage(downloadError!);
       if (context.mounted) {
-        AppToast.show(context, '下载已取消', variant: AppToastVariant.warning);
+        AppToast.show(
+          context,
+          '下载更新失败：$message',
+          variant: AppToastVariant.error,
+        );
       } else {
-        debugPrint('Download cancelled before installer launch');
+        debugPrint('下载更新失败：$message');
       }
       return;
     }
-    final message = _mapErrorMessage(downloadError!);
-    if (context.mounted) {
-      AppToast.show(context, '下载更新失败：$message', variant: AppToastVariant.error);
-    } else {
-      debugPrint('下载更新失败：$message');
+
+    final file = downloadedFile;
+    if (file == null) {
+      if (context.mounted) {
+        AppToast.show(context, '下载完成后未找到安装包。', variant: AppToastVariant.error);
+      } else {
+        debugPrint('下载完成后未找到安装包');
+      }
+      return;
     }
-    return;
-  }
 
-  final file = downloadedFile;
-  if (file == null) {
-    if (context.mounted) {
-      AppToast.show(context, '下载完成后未找到安装包。', variant: AppToastVariant.error);
-    } else {
-      debugPrint('下载完成后未找到安装包');
+    if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
+      AppToast.show(context, '下载完成，正在打开安装程序...');
+    } else if (resolvedResult == _DownloadDialogResult.background) {
+      debugPrint('下载完成，正在尝试打开安装程序');
     }
-    return;
-  }
 
-  if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
-    AppToast.show(context, '下载完成，正在打开安装程序...');
-  } else if (resolvedResult == _DownloadDialogResult.background) {
-    debugPrint('下载完成，正在尝试打开安装程序');
-  }
+    final openResult = await OpenFilex.open(
+      file.path,
+      type: 'application/vnd.android.package-archive',
+    );
 
-  final openResult = await OpenFilex.open(
-    file.path,
-    type: 'application/vnd.android.package-archive',
-  );
+    if (!context.mounted) {
+      if (openResult.type != ResultType.done) {
+        final message = openResult.message;
+        final displayMessage = message.isEmpty ? '请稍后重试' : message;
+        debugPrint('无法打开安装包：$displayMessage');
+      }
+      return;
+    }
 
-  if (!context.mounted) {
     if (openResult.type != ResultType.done) {
       final message = openResult.message;
       final displayMessage = message.isEmpty ? '请稍后重试' : message;
-      debugPrint('无法打开安装包：$displayMessage');
+      AppToast.show(
+        context,
+        '无法打开安装包：$displayMessage',
+        variant: AppToastVariant.error,
+      );
     }
-    return;
-  }
-
-  if (openResult.type != ResultType.done) {
-    final message = openResult.message;
-    final displayMessage = message.isEmpty ? '请稍后重试' : message;
-    AppToast.show(
-      context,
-      '无法打开安装包：$displayMessage',
-      variant: AppToastVariant.error,
-    );
+  } finally {
+    coordinator.markIdle();
   }
 }
 
