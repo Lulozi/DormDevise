@@ -151,6 +151,58 @@ class _AboutPageState extends State<AboutPage> {
     await _launchExternalUrl(context, Uri.parse('https://github.com/Lulozi'));
   }
 
+  Future<void> _showLicenseDialog() async {
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          top: false,
+          child: FractionallySizedBox(
+            heightFactor: 0.92,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    child: Theme(
+                      data: theme,
+                      child: LicensePage(
+                        applicationName: 'DormDevise',
+                        applicationVersion: widget.version,
+                        applicationLegalese: '© 2025 DormDevise',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).padding;
@@ -205,14 +257,7 @@ class _AboutPageState extends State<AboutPage> {
                   icon: Icons.library_books_outlined,
                   title: '开源许可',
                   subtitle: '查看依赖与第三方组件授权',
-                  onTap: (context) async {
-                    showLicensePage(
-                      context: context,
-                      applicationName: 'DormDevise',
-                      applicationVersion: widget.version,
-                      applicationLegalese: '© 2025 DormDevise',
-                    );
-                  },
+                  onTap: (_) => _showLicenseDialog(),
                 ),
                 Text('所有用户配置均存储在本地 SharedPreferences 内，除非主动授权，不会上传至云端。'),
               ],
