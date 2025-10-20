@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -63,11 +64,11 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
   bool get _canSubmit => _isSsidFilled;
 
   Future<void> _scan() async {
-    if (!await _ensureLocationPermission()) {
+    if (!await _ensureWifiScanPermissions()) {
       if (!mounted) return;
       AppToast.show(
         context,
-        '请先授予位置权限以扫描附近的WiFi',
+        '请先授予 Wi-Fi 扫描所需的权限',
         variant: AppToastVariant.warning,
       );
       return;
@@ -166,17 +167,38 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
     }
   }
 
-  Future<bool> _ensureLocationPermission() async {
-    var status = await Permission.locationWhenInUse.status;
-    if (status.isGranted) return true;
-    if (status.isDenied || status.isLimited) {
-      status = await Permission.locationWhenInUse.request();
-      if (status.isGranted) return true;
+  Future<bool> _ensureWifiScanPermissions() async {
+    if (!Platform.isAndroid) {
+      return true;
     }
-    if (status.isPermanentlyDenied) {
-      await openAppSettings();
+
+    Future<bool> requestPermission(Permission permission) async {
+      var status = await permission.status;
+      if (status.isGranted) {
+        return true;
+      }
+      if (status.isDenied || status.isLimited) {
+        status = await permission.request();
+        if (status.isGranted) {
+          return true;
+        }
+      }
+      if (status.isPermanentlyDenied) {
+        await openAppSettings();
+      }
+      return false;
     }
-    return false;
+
+    final locationGranted = await requestPermission(
+      Permission.locationWhenInUse,
+    );
+    if (!locationGranted) {
+      return false;
+    }
+
+    final nearbyPermission = Permission.nearbyWifiDevices;
+    final nearbyGranted = await requestPermission(nearbyPermission);
+    return nearbyGranted;
   }
 
   Future<bool> _ensurePluginRegistered() async {
