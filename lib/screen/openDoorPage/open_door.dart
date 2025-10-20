@@ -93,6 +93,9 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                 }
                                 lastTapTime = now;
                                 if (!isOpen) {
+                                  final messenger = ScaffoldMessenger.maybeOf(
+                                    context,
+                                  );
                                   final prefs =
                                       await SharedPreferences.getInstance();
                                   final topic =
@@ -167,48 +170,45 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                     await _mqttService!.connect();
                                     await _mqttService!.subscribe(topic);
                                     await _mqttService!.publishText(topic, msg);
-                                    if (mounted) {
-                                      setState(() {
-                                        isOpen = true;
-                                      });
-                                      Future.delayed(
-                                        const Duration(seconds: 2),
-                                        () {
-                                          if (mounted) {
-                                            setState(() {
-                                              isOpen = false;
-                                            });
-                                          }
-                                        },
-                                      );
-                                    }
+                                    if (!mounted) return;
+                                    setState(() {
+                                      isOpen = true;
+                                    });
+                                    Future.delayed(
+                                      const Duration(seconds: 2),
+                                      () {
+                                        if (mounted) {
+                                          setState(() {
+                                            isOpen = false;
+                                          });
+                                        }
+                                      },
+                                    );
                                   } catch (e) {
-                                    if (mounted) {
-                                      final messenger =
-                                          ScaffoldMessenger.maybeOf(context);
-                                      if (messenger != null) {
-                                        messenger.showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              '开门失败: $e',
-                                              style: TextStyle(
-                                                color: colorScheme
-                                                    .onSecondaryContainer,
-                                              ),
-                                            ),
-                                            backgroundColor:
-                                                colorScheme.secondaryContainer,
-                                            behavior: SnackBarBehavior.floating,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                            ),
-                                            duration: const Duration(
-                                              milliseconds: 1500,
+                                    if (!mounted) return;
+                                    if (messenger != null) {
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '开门失败: $e',
+                                            style: TextStyle(
+                                              color: colorScheme
+                                                  .onSecondaryContainer,
                                             ),
                                           ),
-                                        );
-                                      }
+                                          backgroundColor:
+                                              colorScheme.secondaryContainer,
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                          duration: const Duration(
+                                            milliseconds: 1500,
+                                          ),
+                                        ),
+                                      );
                                     }
                                   }
                                 }
