@@ -11,6 +11,7 @@ import 'package:pub_semver/pub_semver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// 关于按钮的开合容器
 class AboutOpenContainer extends StatelessWidget {
@@ -179,23 +180,41 @@ class _AboutPageState extends State<AboutPage> {
                   icon: Icons.code,
                   title: 'GitHub 仓库',
                   subtitle: '查看源码、提交 Issue 或参与贡献',
-                  trailing: const Icon(Icons.open_in_new),
                   onTap: (_) => _openRepository(),
                 ),
                 _InfoTile(
                   icon: Icons.new_releases_outlined,
                   title: '版本发布页',
                   subtitle: '浏览历史版本与更新说明',
-                  trailing: const Icon(Icons.open_in_new),
                   onTap: (_) => _openReleasePage(),
                 ),
                 _InfoTile(
                   icon: Icons.support_agent_outlined,
                   title: '反馈问题',
                   subtitle: '给我们留言，帮助 DormDevise 做得更好',
-                  trailing: const Icon(Icons.open_in_new),
                   onTap: (_) => _openIssuePage(),
                 ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              icon: Icons.verified_user_outlined,
+              title: '许可信息',
+              children: [
+                _InfoTile(
+                  icon: Icons.library_books_outlined,
+                  title: '开源许可',
+                  subtitle: '查看依赖与第三方组件授权',
+                  onTap: (context) async {
+                    showLicensePage(
+                      context: context,
+                      applicationName: 'DormDevise',
+                      applicationVersion: widget.version,
+                      applicationLegalese: '© 2025 DormDevise',
+                    );
+                  },
+                ),
+                Text('所有用户配置均存储在本地 SharedPreferences 内，除非主动授权，不会上传至云端。'),
               ],
             ),
             const SizedBox(height: 16),
@@ -421,14 +440,12 @@ class _InfoTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final Widget? trailing;
   final Future<void> Function(BuildContext context)? onTap;
 
   const _InfoTile({
     required this.icon,
     required this.title,
     required this.subtitle,
-    this.trailing,
     this.onTap,
   });
 
@@ -443,7 +460,6 @@ class _InfoTile extends StatelessWidget {
         style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(subtitle, style: textTheme.bodyMedium),
-      trailing: trailing,
       onTap: onTap == null ? null : () => onTap!(context),
     );
   }
