@@ -6,6 +6,7 @@ import 'package:plugin_wifi_connect/plugin_wifi_connect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 import 'package:flutter/services.dart';
+import 'package:dormdevise/widgets/app_toast.dart';
 
 const _ssidPrefKey = 'preferred_wifi_ssid';
 const _passwordPrefKey = 'preferred_wifi_password';
@@ -64,9 +65,11 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
   Future<void> _scan() async {
     if (!await _ensureLocationPermission()) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      AppToast.show(
         context,
-      ).showSnackBar(const SnackBar(content: Text('请先授予位置权限以扫描附近的WiFi')));
+        '请先授予位置权限以扫描附近的WiFi',
+        variant: AppToastVariant.warning,
+      );
       return;
     }
     setState(() => _loading = true);
@@ -89,9 +92,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
       await _showPickSheet();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('扫描失败: $e')));
+      AppToast.show(context, '扫描失败: $e', variant: AppToastVariant.error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

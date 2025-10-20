@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:dormdevise/widgets/app_toast.dart';
 
 /// 关于按钮的开合容器
 class AboutOpenContainer extends StatelessWidget {
@@ -100,7 +101,7 @@ class _AboutPageState extends State<AboutPage> {
       if (!mounted) return;
 
       if (latest == null) {
-        _showSnackBar('暂未找到可用的发布信息');
+        _showToastMessage('暂未找到可用的发布信息', variant: AppToastVariant.warning);
         return;
       }
 
@@ -117,12 +118,15 @@ class _AboutPageState extends State<AboutPage> {
       }
 
       if (!hasNewer) {
-        _showSnackBar('当前已是最新版本');
+        _showToastMessage('当前已是最新版本');
         return;
       }
 
       if (asset == null) {
-        _showSnackBar('未找到适用于 Android 的安装包，请前往发布页手动下载');
+        _showToastMessage(
+          '未找到适用于 Android 的安装包，请前往发布页手动下载',
+          variant: AppToastVariant.warning,
+        );
         return;
       }
 
@@ -139,7 +143,10 @@ class _AboutPageState extends State<AboutPage> {
       await _downloadAndInstallUpdate(context, asset);
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('检查更新失败：${_mapErrorMessage(error)}');
+      _showToastMessage(
+        '检查更新失败：${_mapErrorMessage(error)}',
+        variant: AppToastVariant.error,
+      );
     } finally {
       if (mounted) {
         setState(() => _checkingUpdate = false);
@@ -147,10 +154,12 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+  void _showToastMessage(
+    String message, {
+    AppToastVariant variant = AppToastVariant.info,
+  }) {
+    if (!mounted) return;
+    AppToast.show(context, message, variant: variant);
   }
 
   Future<void> _openRepository() async {
@@ -714,9 +723,7 @@ Future<void> _launchExternalUrl(BuildContext context, Uri uri) async {
   if (openedInSheet) return;
   final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
   if (!context.mounted || launched) return;
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(const SnackBar(content: Text('无法打开链接，请稍后再试')));
+  AppToast.show(context, '无法打开链接，请稍后再试', variant: AppToastVariant.error);
 }
 
 Future<bool> _showInAppWebSheet(BuildContext context, Uri uri) async {
@@ -1293,18 +1300,14 @@ Future<void> _downloadAndInstallUpdate(
   httpClient.close();
 
   if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('已切换到后台下载，完成后会自动打开安装程序')));
+    AppToast.show(context, '已切换到后台下载，完成后会自动打开安装程序');
   }
 
   if (downloadError != null) {
     if (downloadError is _DownloadCancelled ||
         resolvedResult == _DownloadDialogResult.cancelled) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('下载已取消')));
+        AppToast.show(context, '下载已取消', variant: AppToastVariant.warning);
       } else {
         debugPrint('Download cancelled before installer launch');
       }
@@ -1312,9 +1315,7 @@ Future<void> _downloadAndInstallUpdate(
     }
     final message = _mapErrorMessage(downloadError!);
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('下载更新失败：$message')));
+      AppToast.show(context, '下载更新失败：$message', variant: AppToastVariant.error);
     } else {
       debugPrint('下载更新失败：$message');
     }
@@ -1324,9 +1325,7 @@ Future<void> _downloadAndInstallUpdate(
   final file = downloadedFile;
   if (file == null) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('下载完成后未找到安装包。')));
+      AppToast.show(context, '下载完成后未找到安装包。', variant: AppToastVariant.error);
     } else {
       debugPrint('下载完成后未找到安装包');
     }
@@ -1334,9 +1333,7 @@ Future<void> _downloadAndInstallUpdate(
   }
 
   if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('下载完成，正在打开安装程序...')));
+    AppToast.show(context, '下载完成，正在打开安装程序...');
   } else if (resolvedResult == _DownloadDialogResult.background) {
     debugPrint('下载完成，正在尝试打开安装程序');
   }
@@ -1358,9 +1355,11 @@ Future<void> _downloadAndInstallUpdate(
   if (openResult.type != ResultType.done) {
     final message = openResult.message;
     final displayMessage = message.isEmpty ? '请稍后重试' : message;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('无法打开安装包：$displayMessage')));
+    AppToast.show(
+      context,
+      '无法打开安装包：$displayMessage',
+      variant: AppToastVariant.error,
+    );
   }
 }
 

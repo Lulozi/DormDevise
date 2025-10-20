@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dormdevise/widgets/app_toast.dart';
 import 'package:dormdevise/screen/openDoorPage/mqtt_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/screen/openDoorPage/config_all.dart';
@@ -93,9 +94,6 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                 }
                                 lastTapTime = now;
                                 if (!isOpen) {
-                                  final messenger = ScaffoldMessenger.maybeOf(
-                                    context,
-                                  );
                                   final prefs =
                                       await SharedPreferences.getInstance();
                                   final topic =
@@ -186,30 +184,11 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                     );
                                   } catch (e) {
                                     if (!mounted) return;
-                                    if (messenger != null) {
-                                      messenger.showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            '开门失败: $e',
-                                            style: TextStyle(
-                                              color: colorScheme
-                                                  .onSecondaryContainer,
-                                            ),
-                                          ),
-                                          backgroundColor:
-                                              colorScheme.secondaryContainer,
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                          ),
-                                          duration: const Duration(
-                                            milliseconds: 1500,
-                                          ),
-                                        ),
-                                      );
-                                    }
+                                    AppToast.show(
+                                      context,
+                                      '开门失败: $e',
+                                      variant: AppToastVariant.error,
+                                    );
                                   }
                                 }
                               },
