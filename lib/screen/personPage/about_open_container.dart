@@ -795,8 +795,12 @@ Future<bool?> _showUpdateAvailableDialog(
 }
 
 Future<void> _launchExternalUrl(BuildContext context, Uri uri) async {
-  final openedInSheet = await _showInAppWebSheet(context, uri);
-  if (openedInSheet) return;
+  // 如果是http/https，尝试用WebView弹窗，否则直接外部调起
+  if (uri.scheme == 'http' || uri.scheme == 'https') {
+    final openedInSheet = await _showInAppWebSheet(context, uri);
+    if (openedInSheet) return;
+  }
+  // 其它协议（如bilibili://）直接外部调起
   final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
   if (!context.mounted || launched) return;
   AppToast.show(context, '无法打开链接，请稍后再试', variant: AppToastVariant.error);
@@ -809,6 +813,21 @@ Future<bool> _showInAppWebSheet(BuildContext context, Uri uri) async {
   final controller = WebViewController()
     ..setJavaScriptMode(JavaScriptMode.unrestricted)
     ..enableZoom(true)
+    ..setNavigationDelegate(
+      NavigationDelegate(
+        onNavigationRequest: (NavigationRequest request) async {
+          final reqUri = Uri.tryParse(request.url);
+          if (reqUri != null &&
+              reqUri.scheme != 'http' &&
+              reqUri.scheme != 'https') {
+            // 拦截非http/https协议，外部调起
+            await launchUrl(reqUri, mode: LaunchMode.externalApplication);
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
+        },
+      ),
+    )
     ..loadRequest(uri);
 
   bool sheetOpened = false;
