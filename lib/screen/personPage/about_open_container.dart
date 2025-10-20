@@ -62,6 +62,34 @@ class AboutPage extends StatefulWidget {
 
 class _AboutPageState extends State<AboutPage> {
   bool _checkingUpdate = false;
+  bool _hasNewerVersion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_primeLatestVersionStatus());
+  }
+
+  Future<void> _primeLatestVersionStatus() async {
+    try {
+      final latest = await _fetchLatestReleaseInfo();
+      if (!mounted) return;
+      final latestVersion = latest?.version;
+      final currentVersion = _safeParseVersion(widget.version);
+      final hasNewer = latestVersion != null && currentVersion != null
+          ? latestVersion > currentVersion
+          : latestVersion != null;
+      if (_hasNewerVersion != hasNewer) {
+        setState(() => _hasNewerVersion = hasNewer);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      if (_hasNewerVersion) {
+        setState(() => _hasNewerVersion = false);
+      }
+      debugPrint('预检查更新失败：${_mapErrorMessage(error)}');
+    }
+  }
 
   Future<void> _handleCheckForUpdates() async {
     if (_checkingUpdate) return;
@@ -83,6 +111,10 @@ class _AboutPageState extends State<AboutPage> {
       final hasNewer = latestVersion != null && currentVersion != null
           ? latestVersion > currentVersion
           : latestVersion != null;
+
+      if (_hasNewerVersion != hasNewer) {
+        setState(() => _hasNewerVersion = hasNewer);
+      }
 
       if (!hasNewer) {
         _showSnackBar('当前已是最新版本');
@@ -217,6 +249,7 @@ class _AboutPageState extends State<AboutPage> {
             _AboutHeader(
               version: widget.version,
               checkingUpdate: _checkingUpdate,
+              hasNewerVersion: _hasNewerVersion,
               onCheckUpdate: _handleCheckForUpdates,
               onOpenRepository: _openRepository,
               onOpenReleasePage: _openReleasePage,
@@ -283,6 +316,7 @@ class _AboutPageState extends State<AboutPage> {
 class _AboutHeader extends StatelessWidget {
   final String version;
   final bool checkingUpdate;
+  final bool hasNewerVersion;
   final Future<void> Function() onCheckUpdate;
   final Future<void> Function() onOpenRepository;
   final Future<void> Function() onOpenReleasePage;
@@ -292,6 +326,7 @@ class _AboutHeader extends StatelessWidget {
   const _AboutHeader({
     required this.version,
     required this.checkingUpdate,
+    required this.hasNewerVersion,
     required this.onCheckUpdate,
     required this.onOpenRepository,
     required this.onOpenReleasePage,
@@ -303,30 +338,6 @@ class _AboutHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-
-    Widget buildVersionChip() {
-      final avatar = checkingUpdate
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: Padding(
-                padding: EdgeInsets.all(2),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          : Icon(Icons.verified_outlined, color: colorScheme.primary, size: 18);
-
-      return GestureDetector(
-        onTap: checkingUpdate ? null : () => unawaited(onCheckUpdate()),
-        behavior: HitTestBehavior.opaque,
-        child: Chip(
-          label: Text('版本 $version'),
-          avatar: avatar,
-          backgroundColor: colorScheme.primary.withValues(alpha: 0.12),
-          side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.3)),
-        ),
-      );
-    }
 
     return Card(
       elevation: 0,
@@ -363,7 +374,12 @@ class _AboutHeader extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
-            buildVersionChip(),
+            _VersionStatusChip(
+              version: version,
+              checkingUpdate: checkingUpdate,
+              hasNewerVersion: hasNewerVersion,
+              onCheckUpdate: onCheckUpdate,
+            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 12,
@@ -398,6 +414,110 @@ class _AboutHeader extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VersionStatusChip extends StatefulWidget {
+  final String version;
+  final bool checkingUpdate;
+  final bool hasNewerVersion;
+  final Future<void> Function() onCheckUpdate;
+
+  const _VersionStatusChip({
+    required this.version,
+    required this.checkingUpdate,
+    required this.hasNewerVersion,
+    required this.onCheckUpdate,
+  });
+
+  @override
+  State<_VersionStatusChip> createState() => _VersionStatusChipState();
+}
+
+class _VersionStatusChipState extends State<_VersionStatusChip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    if (widget.hasNewerVersion) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _VersionStatusChip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.hasNewerVersion && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.hasNewerVersion && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final baseBackground = colorScheme.primary.withValues(alpha: 0.12);
+    final highlightBackground = colorScheme.primary.withValues(alpha: 0.32);
+    final baseBorder = colorScheme.primary.withValues(alpha: 0.3);
+    final highlightBorder = colorScheme.primary.withValues(alpha: 0.65);
+
+    Widget buildAvatar() {
+      if (widget.checkingUpdate) {
+        return const SizedBox(
+          width: 18,
+          height: 18,
+          child: Padding(
+            padding: EdgeInsets.all(2),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+      return Icon(
+        Icons.verified_outlined,
+        color: colorScheme.primary,
+        size: 18,
+      );
+    }
+
+    return GestureDetector(
+      onTap: widget.checkingUpdate
+          ? null
+          : () => unawaited(widget.onCheckUpdate()),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final progress = widget.hasNewerVersion ? _controller.value : 0.0;
+          final backgroundColor = Color.lerp(
+            baseBackground,
+            highlightBackground,
+            progress,
+          );
+          final borderColor = Color.lerp(baseBorder, highlightBorder, progress);
+
+          return Chip(
+            label: Text('版本 ${widget.version}'),
+            avatar: buildAvatar(),
+            backgroundColor: backgroundColor ?? baseBackground,
+            side: BorderSide(color: borderColor ?? baseBorder),
+          );
+        },
       ),
     );
   }
@@ -1158,8 +1278,6 @@ Future<void> _downloadAndInstallUpdate(
     },
   );
 
-  progressNotifier.dispose();
-
   final resolvedResult =
       dialogResult ??
       (downloadError == null
@@ -1170,6 +1288,8 @@ Future<void> _downloadAndInstallUpdate(
     await downloadCompleted.future;
   }
 
+  progressNotifier.dispose();
+
   httpClient.close();
 
   if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
@@ -1178,41 +1298,62 @@ Future<void> _downloadAndInstallUpdate(
       ..showSnackBar(const SnackBar(content: Text('已切换到后台下载，完成后会自动打开安装程序')));
   }
 
-  if (!context.mounted) {
-    return;
-  }
-
   if (downloadError != null) {
     if (downloadError is _DownloadCancelled ||
         resolvedResult == _DownloadDialogResult.cancelled) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('下载已取消')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('下载已取消')));
+      } else {
+        debugPrint('Download cancelled before installer launch');
+      }
       return;
     }
     final message = _mapErrorMessage(downloadError!);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('下载更新失败：$message')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('下载更新失败：$message')));
+    } else {
+      debugPrint('下载更新失败：$message');
+    }
     return;
   }
 
   final file = downloadedFile;
   if (file == null) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('下载完成后未找到安装包。')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('下载完成后未找到安装包。')));
+    } else {
+      debugPrint('下载完成后未找到安装包');
+    }
     return;
   }
 
-  if (resolvedResult == _DownloadDialogResult.background) {
+  if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('下载完成，正在打开安装程序...')));
+  } else if (resolvedResult == _DownloadDialogResult.background) {
+    debugPrint('下载完成，正在尝试打开安装程序');
   }
 
-  final openResult = await OpenFilex.open(file.path);
-  if (!context.mounted) return;
+  final openResult = await OpenFilex.open(
+    file.path,
+    type: 'application/vnd.android.package-archive',
+  );
+
+  if (!context.mounted) {
+    if (openResult.type != ResultType.done) {
+      final message = openResult.message;
+      final displayMessage = message.isEmpty ? '请稍后重试' : message;
+      debugPrint('无法打开安装包：$displayMessage');
+    }
+    return;
+  }
 
   if (openResult.type != ResultType.done) {
     final message = openResult.message;
