@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:animations/animations.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -90,6 +91,8 @@ class _AboutPageState extends State<AboutPage> {
   bool _hasNewerVersion = false;
   late final _UpdateDownloadCoordinator _downloadCoordinator;
   late final VoidCallback _downloadListener;
+  List<String>? _cachedSupportedAbis;
+  Future<List<String>>? _supportedAbisFuture;
 
   @override
   void initState() {
@@ -101,6 +104,7 @@ class _AboutPageState extends State<AboutPage> {
     };
     _downloadCoordinator.addListener(_downloadListener);
     unawaited(_primeLatestVersionStatus());
+    unawaited(_ensureSupportedAbis());
   }
 
   @override
@@ -145,7 +149,8 @@ class _AboutPageState extends State<AboutPage> {
 
       final latestVersion = latest.version;
       final currentVersion = _safeParseVersion(widget.version);
-      final asset = _selectAndroidAsset(latest.assets);
+      final supportedAbis = await _ensureSupportedAbis();
+      final asset = _selectAndroidAsset(latest.assets, supportedAbis);
 
       final hasNewer = latestVersion != null && currentVersion != null
           ? latestVersion > currentVersion
@@ -162,7 +167,9 @@ class _AboutPageState extends State<AboutPage> {
 
       if (asset == null) {
         _showToastMessage(
-          '未找到适用于 Android 的安装包，请前往发布页手动下载',
+          supportedAbis.isEmpty
+              ? '未找到适用于 Android 的安装包，请前往发布页手动下载'
+              : '未找到适用于当前设备架构的安装包，请前往发布页手动下载',
           variant: AppToastVariant.warning,
         );
         return;
@@ -230,6 +237,36 @@ class _AboutPageState extends State<AboutPage> {
 
   Future<void> _openGitHubPage() async {
     await _launchExternalUrl(context, Uri.parse('https://github.com/Lulozi'));
+  }
+
+  Future<List<String>> _ensureSupportedAbis() {
+    final cached = _cachedSupportedAbis;
+    if (cached != null) {
+      return Future<List<String>>.value(cached);
+    }
+
+    final future = _supportedAbisFuture ??= _loadSupportedAndroidAbis();
+    return future.then((abis) {
+      _cachedSupportedAbis ??= abis;
+      return abis;
+    });
+  }
+
+  Future<List<String>> _loadSupportedAndroidAbis() async {
+    if (!Platform.isAndroid) {
+      return const [];
+    }
+    try {
+      final info = await DeviceInfoPlugin().androidInfo;
+      final abis = info.supportedAbis;
+      return abis
+          .map((abi) => abi.toLowerCase())
+          .where((abi) => abi.isNotEmpty)
+          .toList(growable: false);
+    } catch (error) {
+      debugPrint('无法获取设备 ABI：$error');
+      return const [];
+    }
   }
 
   Future<void> _showLicenseDialog() async {
@@ -1097,14 +1134,128 @@ int _compareReleaseOrder(_ReleaseInfo a, _ReleaseInfo b) {
   return 0;
 }
 
-_ReleaseAsset? _selectAndroidAsset(List<_ReleaseAsset> assets) {
+_ReleaseAsset? _selectAndroidAsset(
+  List<_ReleaseAsset> assets,
+  List<String> preferredAbis,
+) {
   if (assets.isEmpty) return null;
 
   final apkAssets = assets.where((asset) => asset.isAndroidApk).toList();
   if (apkAssets.isEmpty) return null;
 
+  final buckets = <_AndroidApkVariant, List<_ReleaseAsset>>{};
+  for (final asset in apkAssets) {
+    final variant = _inferAndroidApkVariant(asset);
+    buckets.putIfAbsent(variant, () => <_ReleaseAsset>[]).add(asset);
+  }
+
+  for (final abi in preferredAbis) {
+    final variant = _variantForAbi(abi);
+    if (variant == null) continue;
+    final matches = buckets[variant];
+    if (matches == null || matches.isEmpty) {
+      continue;
+    }
+    matches.sort((a, b) => b.size.compareTo(a.size));
+    return matches.first;
+  }
+
+  final universal = buckets[_AndroidApkVariant.universal];
+  if (universal != null && universal.isNotEmpty) {
+    universal.sort((a, b) => b.size.compareTo(a.size));
+    return universal.first;
+  }
+
   apkAssets.sort((a, b) => b.size.compareTo(a.size));
   return apkAssets.first;
+}
+
+enum _AndroidApkVariant {
+  arm64V8a,
+  armeabiV7a,
+  x86_64,
+  x86,
+  universal,
+  unknown,
+}
+
+_AndroidApkVariant _inferAndroidApkVariant(_ReleaseAsset asset) {
+  final fingerprint =
+      '${asset.name}|${asset.browserDownloadUrl}|${asset.contentType}'
+          .toLowerCase();
+
+  bool containsAll(Iterable<String> tokens) =>
+      tokens.every((token) => fingerprint.contains(token));
+
+  bool containsAny(Iterable<String> tokens) =>
+      tokens.any((token) => fingerprint.contains(token));
+
+  if (containsAll(['arm64', 'v8a']) ||
+      fingerprint.contains('arm64v8a') ||
+      fingerprint.contains('aarch64')) {
+    return _AndroidApkVariant.arm64V8a;
+  }
+
+  if ((containsAll(['armeabi', 'v7a']) ||
+          fingerprint.contains('armeabiv7a') ||
+          fingerprint.contains('armv7')) &&
+      !fingerprint.contains('arm64')) {
+    return _AndroidApkVariant.armeabiV7a;
+  }
+
+  if (fingerprint.contains('x86_64') ||
+      fingerprint.contains('x86-64') ||
+      (fingerprint.contains('x64') && !fingerprint.contains('arm64')) ||
+      fingerprint.contains('amd64')) {
+    return _AndroidApkVariant.x86_64;
+  }
+
+  final hasStandaloneX86 = RegExp(
+    r'(^|[^0-9a-z])x86($|[^0-9a-z])',
+  ).hasMatch(fingerprint);
+  if ((hasStandaloneX86 || fingerprint.contains('ia32')) &&
+      !fingerprint.contains('x86_64') &&
+      !fingerprint.contains('x86-64')) {
+    return _AndroidApkVariant.x86;
+  }
+
+  if (containsAny([
+    'universal',
+    'all-abi',
+    'allabi',
+    'multi-abi',
+    'multiabi',
+    'all_arch',
+    'allarch',
+    'anycpu',
+  ])) {
+    return _AndroidApkVariant.universal;
+  }
+
+  return _AndroidApkVariant.unknown;
+}
+
+_AndroidApkVariant? _variantForAbi(String abi) {
+  final normalized = abi.toLowerCase();
+  if (normalized.contains('arm64') || normalized.contains('aarch64')) {
+    return _AndroidApkVariant.arm64V8a;
+  }
+  if (normalized.contains('armeabi') || normalized.contains('armv7')) {
+    return _AndroidApkVariant.armeabiV7a;
+  }
+  if (normalized.contains('x86_64') ||
+      normalized.contains('x86-64') ||
+      (normalized.contains('x64') && !normalized.contains('arm64')) ||
+      normalized.contains('amd64')) {
+    return _AndroidApkVariant.x86_64;
+  }
+  if (normalized.contains('x86') || normalized.contains('ia32')) {
+    return _AndroidApkVariant.x86;
+  }
+  if (normalized.contains('universal') || normalized.contains('allabi')) {
+    return _AndroidApkVariant.universal;
+  }
+  return null;
 }
 
 String _formatFileSize(int bytes) {
