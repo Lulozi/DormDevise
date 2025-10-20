@@ -248,6 +248,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  font_awesome_flutter:
+    dependency: "direct main"
+    description:
+      name: font_awesome_flutter
+      sha256: ef8e9591f6de2bf671c3b6f506f5ff85f03d34403084fccced62d3628fb086b9
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "10.11.0"
   http:
     dependency: "direct main"
     description:
