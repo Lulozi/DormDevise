@@ -324,8 +324,8 @@ class _AboutHeader extends StatelessWidget {
               alignment: WrapAlignment.center,
               children: [
                 ActionChip(
-                  avatar: Icon(
-                    Icons.code,
+                  avatar: FaIcon(
+                    FontAwesomeIcons.github,
                     size: 18,
                     color: colorScheme.primary,
                   ),
@@ -333,8 +333,8 @@ class _AboutHeader extends StatelessWidget {
                   onPressed: () => unawaited(onOpenGitHubPage()),
                 ),
                 ActionChip(
-                  avatar: Icon(
-                    Icons.campaign_outlined,
+                  avatar: FaIcon(
+                    FontAwesomeIcons.bilibili,
                     size: 18,
                     color: colorScheme.primary,
                   ),
