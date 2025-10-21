@@ -3,9 +3,11 @@ import 'package:dormdevise/screens/person/person_page.dart';
 import 'package:dormdevise/screens/table/table_page.dart';
 import 'package:flutter/material.dart';
 
+/// 应用根组件，负责注入基础主题与导航框架。
 class DormDeviseApp extends StatelessWidget {
   const DormDeviseApp({super.key});
 
+  /// 构建顶层 MaterialApp 并指定首页及主题配置。
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -19,9 +21,11 @@ class DormDeviseApp extends StatelessWidget {
   }
 }
 
+/// 主控制台页面，提供底部导航与多页切换。
 class ManagementScreen extends StatefulWidget {
   const ManagementScreen({super.key});
 
+  /// 创建与主页面关联的状态对象。
   @override
   State<ManagementScreen> createState() => ManagementScreenState();
 }
@@ -33,6 +37,7 @@ class ManagementScreenState extends State<ManagementScreen>
   double _page = 1.0;
   bool _isLoading = true;
 
+  /// 根据索引构建对应的业务页面。
   Widget _buildPage(int index) {
     if (index == 2) {
       double progress = 0.0;
@@ -49,6 +54,7 @@ class ManagementScreenState extends State<ManagementScreen>
     return const TablePage();
   }
 
+  /// 为分页添加淡入与平移动画。
   Widget _buildAnimatedPage(BuildContext context, int index) {
     return AnimatedBuilder(
       animation: _pageController,
@@ -77,6 +83,7 @@ class ManagementScreenState extends State<ManagementScreen>
     );
   }
 
+  /// 初始化页面控制器并处理短暂的加载动效。
   @override
   void initState() {
     super.initState();
@@ -92,6 +99,7 @@ class ManagementScreenState extends State<ManagementScreen>
     });
   }
 
+  /// 移除绑定并释放控制器资源。
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -99,6 +107,7 @@ class ManagementScreenState extends State<ManagementScreen>
     super.dispose();
   }
 
+  /// 构建包含底部导航与分页内容的界面结构。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;

@@ -8,9 +8,11 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dormdevise/services/mqtt_service.dart';
 
+/// MQTT 配置与调试页面。
 class MqttSettingsPage extends StatefulWidget {
   const MqttSettingsPage({super.key});
 
+  /// 创建页面状态以处理表单输入与网络交互。
   @override
   State<MqttSettingsPage> createState() => _MqttSettingsPageState();
 }
@@ -56,6 +58,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
   final FocusNode _topicFocusNode = FocusNode();
   final FocusNode _statusTopicFocusNode = FocusNode();
 
+  /// 根据消息内容生成适合预览的字符串。
   String _formatStatusPreview(Map<String, dynamic> data) {
     if (data.length == 1 && data.containsKey('payload')) {
       final value = data['payload'];
@@ -77,6 +80,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 将最近订阅的主题名称持久化。
   Future<void> _persistSubscribedTopic(
     String? topic, {
     SharedPreferences? cachedPrefs,
@@ -90,6 +94,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 弹出对话框提示用户具体信息。
   void _showBubble(BuildContext context, String msg) {
     showDialog(
       context: context,
@@ -106,6 +111,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     );
   }
 
+  /// 更新页面顶部的状态提示。
   void _showStatus(String message, {bool isError = false, IconData? icon}) {
     if (!mounted) return;
     setState(() {
@@ -116,6 +122,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     });
   }
 
+  /// 追加日志条目并维护日志长度。
   void _appendLog(String line) {
     if (!mounted || _isDisposing) return;
     setState(() {
@@ -130,6 +137,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
   bool _statusIsError = false;
   IconData _statusIcon = Icons.check_circle_outline;
 
+  /// 初始化焦点监听并加载配置。
   @override
   void initState() {
     super.initState();
@@ -137,12 +145,14 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     _initAndLoadConfig();
   }
 
+  /// 当主题输入框获得焦点时展开状态设置。
   void _handleTopicFocusChange() {
     if (_topicFocusNode.hasFocus && !_topicExpanded) {
       setState(() => _topicExpanded = true);
     }
   }
 
+  /// 初始化默认客户端 ID 并载入本地配置。
   Future<void> _initAndLoadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     String? cid = prefs.getString('mqtt_clientId');
@@ -153,6 +163,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     await _loadConfig(defaultClientId: cid);
   }
 
+  /// 从本地存储加载配置并刷新表单控件。
   Future<void> _loadConfig({String? defaultClientId}) async {
     await _stopStatusSubscription(silent: true);
     final prefs = await SharedPreferences.getInstance();
@@ -224,6 +235,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 将当前表单配置写入本地存储。
   Future<void> _saveConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('mqtt_host', _hostController.text);
@@ -243,6 +255,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     _showBubble(context, '配置已保存');
   }
 
+  /// 将配置导出为 JSON 并复制到剪贴板。
   Future<void> _exportConfig() async {
     final config = {
       'mqtt_host': _hostController.text,
@@ -265,6 +278,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     _showBubble(context, '配置已导出到剪贴板\n\n$jsonStr');
   }
 
+  /// 从剪贴板导入配置并刷新表单。
   Future<void> _importConfigFromClipboard() async {
     final data = await Clipboard.getData('text/plain');
     if (data == null || data.text == null || data.text!.trim().isEmpty) {
@@ -348,6 +362,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 打开文件选择器并回填路径。
   Future<void> _pickFile(
     TextEditingController controller, {
     String? dialogTitle,
@@ -362,6 +377,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 测试订阅连接以确认配置有效。
   Future<void> _testConnect() async {
     final topic = _topicController.text.trim();
     if (topic.isEmpty) {
@@ -463,6 +479,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 根据当前状态切换状态主题订阅。
   Future<void> _toggleStatusSubscription() async {
     if (_statusSubscriptionService != null) {
       await _stopStatusSubscription();
@@ -471,6 +488,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     await _subscribeStatusTopic();
   }
 
+  /// 发起状态主题订阅并展示最新消息。
   Future<void> _subscribeStatusTopic() async {
     final statusTopic = _statusTopicController.text.trim();
     if (statusTopic.isEmpty) {
@@ -561,6 +579,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 取消状态主题订阅并清空预览。
   Future<void> _stopStatusSubscription({bool silent = false}) async {
     final service = _statusSubscriptionService;
     if (service == null) {
@@ -586,6 +605,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
   }
 
+  /// 当状态主题变更时重置订阅状态。
   void _onStatusTopicChanged(String value) {
     if (_statusSubscriptionService != null) {
       unawaited(_stopStatusSubscription(silent: true));
@@ -598,6 +618,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     });
   }
 
+  /// 释放所有控制器与资源。
   @override
   void dispose() {
     _isDisposing = true;
@@ -623,6 +644,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     super.dispose();
   }
 
+  /// 构建 MQTT 配置表单与工具组件。
   @override
   Widget build(BuildContext context) {
     if (!_isConfigReady) {
@@ -646,6 +668,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     const buttonPadding = EdgeInsets.symmetric(vertical: 14);
     final statusSubscribed = _statusSubscriptionService != null;
 
+    /// 生成统一的输入框装饰样式。
     InputDecoration decoration(
       String label, {
       String? hint,

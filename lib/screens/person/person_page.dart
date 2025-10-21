@@ -7,15 +7,18 @@ import 'package:dormdevise/screens/open_door/wifi_settings_page.dart';
 import 'package:dormdevise/screens/person/about_page.dart';
 import 'package:dormdevise/screens/person/widgets/settings_open_container.dart';
 
+/// 个人中心页面，汇总多类设置入口及动画。
 class PersonPage extends StatefulWidget {
   final double appBarProgress;
   const PersonPage({super.key, this.appBarProgress = 0.0});
 
+  /// 创建状态对象以驱动 UI 动画。
   @override
   State<PersonPage> createState() => _PersonPageState();
 }
 
 class _PersonPageState extends State<PersonPage> {
+  /// 构建包含折叠头部与设置列表的界面。
   @override
   Widget build(BuildContext context) {
     // 渐变区间 0.0~1.0，0.0为不透明，1.0为完全透明
@@ -128,6 +131,7 @@ class _PersonPageState extends State<PersonPage> {
     );
   }
 
+  /// 构建单项设置入口并包装为动效容器。
   Widget _buildSettingsEntry({
     required IconData icon,
     required String title,
@@ -144,6 +148,7 @@ class _PersonPageState extends State<PersonPage> {
   }
 }
 
+/// 构建个人中心的头像与标题区域。
 Widget _buildHead(Color textColor) {
   return Row(
     children: [

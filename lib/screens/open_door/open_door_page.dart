@@ -7,9 +7,11 @@ import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 开门控制主页面，提供快速开门及进入设置的入口。
 class OpenDoorPage extends StatefulWidget {
   const OpenDoorPage({super.key});
 
+  /// 创建页面状态以处理动画与交互。
   @override
   State<OpenDoorPage> createState() => _OpenDoorPageState();
 }
@@ -21,6 +23,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
   DateTime? lastTapTime;
   MqttService? _mqttService;
 
+  /// 长按开始时启动计时进入设置页面。
   void _handleLongPressStart(LongPressStartDetails details) {
     _longPressTimer?.cancel();
     _longPressProgress = 0.0;
@@ -49,6 +52,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
     });
   }
 
+  /// 长按结束时重置进度条状态。
   void _handleLongPressEnd(LongPressEndDetails details) {
     _longPressTimer?.cancel();
     setState(() {
@@ -56,6 +60,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
     });
   }
 
+  /// 构建开门页面主体与提示信息。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -243,6 +248,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
 typedef DoorLongPressCallback = void Function(LongPressStartDetails details);
 typedef DoorLongPressEndCallback = void Function(LongPressEndDetails details);
 
+/// 开门按钮组件，负责展示动画与处理点击逻辑。
 class _CoolDoorButton extends StatefulWidget {
   final bool isOpen;
   final VoidCallback onTap;
@@ -255,6 +261,7 @@ class _CoolDoorButton extends StatefulWidget {
     this.onLongPressEnd,
   });
 
+  /// 创建按钮状态用于管理动画控制器。
   @override
   State<_CoolDoorButton> createState() => _CoolDoorButtonState();
 }
@@ -266,6 +273,7 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
   late Animation<double> _glowAnim;
   bool _pressed = false;
 
+  /// 初始化动画控制器及相关补间。
   @override
   void initState() {
     super.initState();
@@ -283,6 +291,7 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
+  /// 更新状态时根据开门状态触发动画。
   @override
   void didUpdateWidget(covariant _CoolDoorButton oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -291,16 +300,19 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
     }
   }
 
+  /// 释放动画控制器资源。
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  /// 处理点击动作并委托外部回调。
   void _handleTap() {
     widget.onTap();
   }
 
+  /// 绘制带有多层动画效果的开门按钮。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;

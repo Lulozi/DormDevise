@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-/// Lightweight overlay toast for presenting feedback across the app.
+/// 全局轻量浮层提示工具，负责在应用内展示通知。
 class AppToast {
   static OverlayEntry? _activeEntry;
   static Timer? _activeTimer;
 
+  /// 显示带有不同状态样式的提示信息。
   static void show(
     BuildContext context,
     String message, {
@@ -47,6 +48,7 @@ class AppToast {
         break;
     }
 
+    /// 线性插值计算过渡颜色。
     Color blend(Color a, Color b, double t) {
       return Color.lerp(a, b, t) ?? a;
     }
@@ -144,6 +146,7 @@ class AppToast {
     });
   }
 
+  /// 立即关闭当前正在显示的提示。
   static void dismiss() {
     _activeTimer?.cancel();
     _activeEntry?.remove();

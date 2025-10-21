@@ -11,6 +11,7 @@ typedef OnNotification = void Function(String topic, Map<String, dynamic> msg);
 typedef OnLog = void Function(String line);
 typedef OnError = void Function(Object error, [StackTrace? st]);
 
+/// 构建安全连接所需的证书上下文。
 Future<SecurityContext> buildSecurityContext({
   String caAsset = 'assets/certs/ca.pem',
   String? clientCertAsset,
@@ -33,7 +34,9 @@ Future<SecurityContext> buildSecurityContext({
   return sc;
 }
 
+/// 提供 MQTT 连接、订阅与消息发布的封装服务。
 class MqttService {
+  /// 发布纯文本消息到指定主题。
   Future<void> publishText(
     String topic,
     String text, {
@@ -72,6 +75,7 @@ class MqttService {
   bool get isConnected =>
       _client.connectionStatus?.state == MqttConnectionState.connected;
 
+  /// 构造函数，初始化底层客户端及回调。
   MqttService({
     required this.host,
     this.port = 1883,
@@ -113,6 +117,7 @@ class MqttService {
     }
   }
 
+  /// 建立与 MQTT 服务器的连接并监听消息。
   Future<void> connect() async {
     if (isConnected) return;
     try {
@@ -134,6 +139,7 @@ class MqttService {
     }
   }
 
+  /// 订阅主题以便接收消息。
   Future<void> subscribe(
     String topic, {
     MqttQos qos = MqttQos.atLeastOnce,
@@ -146,6 +152,7 @@ class MqttService {
     _client.subscribe(topic, qos);
   }
 
+  /// 发布 JSON 格式的消息。
   Future<void> publishJson(
     String topic,
     Map<String, dynamic> payload, {
@@ -159,6 +166,7 @@ class MqttService {
     _debug('📤 [MQTT] publish $topic: $jsonStr');
   }
 
+  /// 发送请求并等待响应主题返回结果。
   Future<Map<String, dynamic>> sendRequest({
     required String reqTopic,
     required String respTopic,
@@ -189,6 +197,7 @@ class MqttService {
     }
   }
 
+  /// 处理底层客户端推送的所有消息。
   void _onMessage(List<MqttReceivedMessage<MqttMessage>> events) {
     for (final e in events) {
       final topic = e.topic;
@@ -222,6 +231,7 @@ class MqttService {
     }
   }
 
+  /// 连接成功后自动重新订阅并重置重连状态。
   void onConnected() {
     _info('✅ [MQTT] connected');
     _reconnectAttempt = 0;
@@ -232,19 +242,23 @@ class MqttService {
     }
   }
 
+  /// 连接断开时启动手动重连调度。
   void onDisconnected() {
     _warn('⚠️ [MQTT] disconnected');
     _scheduleManualReconnect();
   }
 
+  /// 自动重连开始时记录提示。
   void onAutoReconnect() {
     _warn('⏳ [MQTT] auto reconnecting...');
   }
 
+  /// 自动重连成功后的回调。
   void onAutoReconnected() {
     _info('🔁 [MQTT] auto reconnected');
   }
 
+  /// 启动带抖动的重连定时器。
   void _scheduleManualReconnect() {
     if (isConnected) return;
     _manualReconnectTimer?.cancel();
@@ -266,6 +280,7 @@ class MqttService {
     });
   }
 
+  /// 关闭客户端并清理待完成的请求。
   Future<void> dispose() async {
     _info('🧹 [MQTT] dispose');
     _manualReconnectTimer?.cancel();
@@ -281,14 +296,22 @@ class MqttService {
     }
   }
 
+  /// 生成请求 ID，确保唯一性。
   String _genReqId() {
     final v = List<int>.generate(8, (_) => _rnd.nextInt(256));
     return v.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
+  /// 记录普通信息日志。
   void _info(String s) => log?.call(s);
+
+  /// 记录警告信息。
   void _warn(String s) => log?.call(s);
+
+  /// 记录调试信息。
   void _debug(String s) => log?.call(s);
+
+  /// 记录错误信息并通知外部。
   void _error(String msg, Object e, [StackTrace? st]) {
     log?.call(msg);
     onError?.call(e, st);

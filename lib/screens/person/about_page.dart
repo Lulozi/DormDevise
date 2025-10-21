@@ -19,6 +19,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 
+/// 管理更新下载状态的单例协调器。
 class _UpdateDownloadCoordinator {
   _UpdateDownloadCoordinator._();
   static final _UpdateDownloadCoordinator instance =
@@ -26,26 +27,38 @@ class _UpdateDownloadCoordinator {
 
   final ValueNotifier<bool> _isDownloading = ValueNotifier<bool>(false);
 
+  /// 当前是否存在下载任务。
   bool get isDownloading => _isDownloading.value;
+
+  /// 提供外部监听器所需的可监听对象。
   ValueListenable<bool> get listenable => _isDownloading;
 
+  /// 注册下载状态变化监听。
   void addListener(VoidCallback listener) =>
       _isDownloading.addListener(listener);
+
+  /// 移除下载状态监听。
   void removeListener(VoidCallback listener) =>
       _isDownloading.removeListener(listener);
 
+  /// 标记下载开始。
   void markStarted() => _set(true);
+
+  /// 标记下载进入空闲状态。
   void markIdle() => _set(false);
 
+  /// 内部方法，统一修改下载状态。
   void _set(bool value) {
     if (_isDownloading.value == value) return;
     _isDownloading.value = value;
   }
 }
 
+/// 关于页面，汇总版本信息与更新逻辑。
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
 
+  /// 创建页面状态以处理更新检查与 UI 展示。
   @override
   State<AboutPage> createState() => _AboutPageState();
 }
@@ -59,6 +72,7 @@ class _AboutPageState extends State<AboutPage> {
   List<String>? _cachedSupportedAbis;
   Future<List<String>>? _supportedAbisFuture;
 
+  /// 初始化监听器并预加载版本与设备信息。
   @override
   void initState() {
     super.initState();
@@ -73,12 +87,14 @@ class _AboutPageState extends State<AboutPage> {
     unawaited(_ensureSupportedAbis());
   }
 
+  /// 移除下载监听，防止内存泄漏。
   @override
   void dispose() {
     _downloadCoordinator.removeListener(_downloadListener);
     super.dispose();
   }
 
+  /// 读取当前应用版本并触发更新状态检查。
   Future<void> _initPackageInfo() async {
     try {
       final info = await PackageInfo.fromPlatform();
@@ -92,6 +108,7 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
+  /// 预判远端是否存在更新版本。
   Future<void> _primeLatestVersionStatus() async {
     try {
       final latest = await _fetchLatestReleaseInfo();
@@ -113,6 +130,7 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
+  /// 手动触发更新检查逻辑并提示用户。
   Future<void> _handleCheckForUpdates() async {
     if (_checkingUpdate) return;
     setState(() => _checkingUpdate = true);
@@ -178,6 +196,7 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
+  /// 统一封装的提示入口，便于变更样式。
   void _showToastMessage(
     String message, {
     AppToastVariant variant = AppToastVariant.info,
@@ -216,6 +235,7 @@ class _AboutPageState extends State<AboutPage> {
     await _openExternalUrl('https://github.com/Lulozi');
   }
 
+  /// 确保已获取并缓存设备支持的 ABI 列表。
   Future<List<String>> _ensureSupportedAbis() {
     final cached = _cachedSupportedAbis;
     if (cached != null) {
@@ -229,6 +249,7 @@ class _AboutPageState extends State<AboutPage> {
     });
   }
 
+  /// 读取 Android 设备支持的处理器架构信息。
   Future<List<String>> _loadSupportedAndroidAbis() async {
     if (!Platform.isAndroid) {
       return const [];
@@ -246,6 +267,7 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
+  /// 展示开源许可列表的底部弹窗。
   Future<void> _showLicenseDialog() async {
     if (!mounted) return;
     final theme = Theme.of(context);
@@ -299,6 +321,7 @@ class _AboutPageState extends State<AboutPage> {
     );
   }
 
+  /// 构建关于页面主体列表。
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).padding;
@@ -381,6 +404,7 @@ class _AboutPageState extends State<AboutPage> {
   }
 }
 
+/// 关于页头部卡片，展示当前版本与快捷入口。
 class _AboutHeader extends StatelessWidget {
   final String version;
   final bool checkingUpdate;
@@ -402,6 +426,7 @@ class _AboutHeader extends StatelessWidget {
     required this.onOpenGitHubPage,
   });
 
+  /// 构建包含头像、版本状态与快捷按钮的卡片。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -487,6 +512,7 @@ class _AboutHeader extends StatelessWidget {
   }
 }
 
+/// 显示版本状态并支持点击检查更新的徽章。
 class _VersionStatusChip extends StatefulWidget {
   final String version;
   final bool checkingUpdate;
@@ -508,6 +534,7 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
+  /// 初始化动画控制器，根据是否有新版本触发闪烁。
   @override
   void initState() {
     super.initState();
@@ -520,6 +547,7 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
     }
   }
 
+  /// 在属性变更后更新动画启停状态。
   @override
   void didUpdateWidget(covariant _VersionStatusChip oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -531,12 +559,14 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
     }
   }
 
+  /// 销毁动画控制器资源。
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  /// 绘制能够响应点击与动画的版本状态标签。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -545,6 +575,7 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
     final baseBorder = colorScheme.primary.withValues(alpha: 0.3);
     final highlightBorder = colorScheme.primary.withValues(alpha: 0.65);
 
+    /// 根据当前状态生成前缀图标部件。
     Widget buildAvatar() {
       if (widget.checkingUpdate) {
         return const SizedBox(
@@ -591,6 +622,7 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
   }
 }
 
+/// 通用分区卡片，用于组织页面段落内容。
 class _SectionCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -602,6 +634,7 @@ class _SectionCard extends StatelessWidget {
     required this.children,
   });
 
+  /// 构建带图标标题与子内容的卡片。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -643,11 +676,13 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
+/// 简单的圆点列表项组件。
 class _BulletTile extends StatelessWidget {
   final String text;
 
   const _BulletTile({required this.text});
 
+  /// 绘制带圆点的说明文字。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -671,6 +706,7 @@ class _BulletTile extends StatelessWidget {
   }
 }
 
+/// 带图标的列表入口项。
 class _InfoTile extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -684,6 +720,7 @@ class _InfoTile extends StatelessWidget {
     this.onTap,
   });
 
+  /// 构建支持点击跳转的列表项。
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -700,6 +737,7 @@ class _InfoTile extends StatelessWidget {
   }
 }
 
+/// 将异常信息转换为更易读的字符串。
 String _mapErrorMessage(Object error) {
   final raw = error.toString();
   if (raw.startsWith('Exception: ')) {
@@ -708,6 +746,7 @@ String _mapErrorMessage(Object error) {
   return raw;
 }
 
+/// 弹出新版本可用提示并返回用户选择。
 Future<bool?> _showUpdateAvailableDialog(
   BuildContext context,
   _ReleaseInfo release,
@@ -777,6 +816,7 @@ Future<bool?> _showUpdateAvailableDialog(
   );
 }
 
+/// 打开外部链接，必要时优先尝试内嵌浏览器。
 Future<void> _launchExternalUrl(BuildContext context, Uri uri) async {
   if (!context.mounted) return;
   // 如果是http/https，尝试用WebView弹窗，否则直接外部调起
@@ -800,6 +840,7 @@ Future<void> _launchExternalUrl(BuildContext context, Uri uri) async {
   AppToast.show(context, '无法打开链接，请稍后再试', variant: AppToastVariant.error);
 }
 
+/// 使用底部弹窗展示内嵌 WebView。
 Future<bool> _showInAppWebSheet(BuildContext context, Uri uri) async {
   if (!context.mounted) return false;
   if (uri.scheme != 'https' && uri.scheme != 'http') return false;
@@ -877,11 +918,13 @@ Future<bool> _showInAppWebSheet(BuildContext context, Uri uri) async {
   return sheetOpened;
 }
 
+/// 展示指定版本更新亮点的卡片。
 class ReleaseNotesCard extends StatefulWidget {
   final String appVersion;
 
   const ReleaseNotesCard({super.key, required this.appVersion});
 
+  /// 创建用于加载与展示更新说明的状态对象。
   @override
   State<ReleaseNotesCard> createState() => _ReleaseNotesCardState();
 }
@@ -889,12 +932,14 @@ class ReleaseNotesCard extends StatefulWidget {
 class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
   late final Future<List<String>> _notesFuture;
 
+  /// 初始化时立即触发更新说明的异步加载。
   @override
   void initState() {
     super.initState();
     _notesFuture = _fetchReleaseNotes(widget.appVersion);
   }
 
+  /// 构建包含异步加载状态的说明卡片。
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<String>>(
@@ -942,6 +987,7 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
     );
   }
 
+  /// 拉取指定版本的更新记录，必要时回退至缓存。
   Future<List<String>> _fetchReleaseNotes(String appVersionString) async {
     final normalizedVersion = appVersionString.split('+').first;
     final cacheKey = 'release_notes_$normalizedVersion';
@@ -953,7 +999,7 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
         final cachedList = List<String>.from(jsonDecode(cachedValue) as List);
         return cachedList;
       } catch (_) {
-        // Fall through to refetch if cache is corrupted.
+        // 缓存格式异常时继续从服务器拉取。
       }
     }
 
@@ -1003,6 +1049,7 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
   }
 }
 
+/// 安全解析版本号字符串，异常时返回 null。
 Version? _safeParseVersion(String raw) {
   try {
     final sanitized = raw.split('+').first;
@@ -1033,6 +1080,7 @@ class _ReleaseInfo {
     required this.assets,
   });
 
+  /// 返回优先用于展示的发布标签。
   String? get readableLabel {
     if (tagName != null && tagName!.isNotEmpty) {
       return tagName;
@@ -1046,6 +1094,7 @@ class _ReleaseInfo {
     return null;
   }
 
+  /// 使用 GitHub 返回的字典构造发布信息实例。
   factory _ReleaseInfo.fromJson(Map<String, dynamic> json) {
     final name = json['name'] as String? ?? '';
     final tag = json['tag_name'] as String? ?? '';
@@ -1077,6 +1126,7 @@ class _ReleaseInfo {
   }
 }
 
+/// 获取最新的稳定版本信息，若无稳定版则返回候选。
 Future<_ReleaseInfo?> _fetchLatestReleaseInfo() async {
   final releases = await _loadReleasesFromApi();
   if (releases.isEmpty) return null;
@@ -1097,6 +1147,7 @@ Future<_ReleaseInfo?> _fetchLatestReleaseInfo() async {
   return candidates.first;
 }
 
+/// 从 GitHub API 拉取发布列表。
 Future<List<_ReleaseInfo>> _loadReleasesFromApi() async {
   final uri = Uri.parse(
     'https://api.github.com/repos/Lulozi/DormDevise/releases',
@@ -1121,6 +1172,7 @@ Future<List<_ReleaseInfo>> _loadReleasesFromApi() async {
       .toList();
 }
 
+/// 比较两个发布信息的优先顺序。
 int _compareReleaseOrder(_ReleaseInfo a, _ReleaseInfo b) {
   final Version? versionA = a.version;
   final Version? versionB = b.version;
@@ -1147,6 +1199,7 @@ int _compareReleaseOrder(_ReleaseInfo a, _ReleaseInfo b) {
   return 0;
 }
 
+/// 根据 ABI 优先级挑选合适的 Android 安装包资源。
 _ReleaseAsset? _selectAndroidAsset(
   List<_ReleaseAsset> assets,
   List<String> preferredAbis,
@@ -1192,6 +1245,7 @@ enum _AndroidApkVariant {
   unknown,
 }
 
+/// 通过资源名与元数据推断 APK 所属架构。
 _AndroidApkVariant _inferAndroidApkVariant(_ReleaseAsset asset) {
   final fingerprint =
       '${asset.name}|${asset.browserDownloadUrl}|${asset.contentType}'
@@ -1248,6 +1302,7 @@ _AndroidApkVariant _inferAndroidApkVariant(_ReleaseAsset asset) {
   return _AndroidApkVariant.unknown;
 }
 
+/// 将 ABI 字符串映射为内部枚举类型。
 _AndroidApkVariant? _variantForAbi(String abi) {
   final normalized = abi.toLowerCase();
   if (normalized.contains('arm64') || normalized.contains('aarch64')) {
@@ -1271,6 +1326,7 @@ _AndroidApkVariant? _variantForAbi(String abi) {
   return null;
 }
 
+/// 将字节大小转换为可读字符串。
 String _formatFileSize(int bytes) {
   if (bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -1289,6 +1345,7 @@ enum _DownloadDialogResult { success, failure, background, cancelled }
 class _DownloadCancelled implements Exception {
   const _DownloadCancelled();
 
+  /// 打印调试信息时使用的描述文本。
   @override
   String toString() => 'DownloadCancelled';
 }
@@ -1302,6 +1359,7 @@ class _DownloadProgress {
     required this.totalBytes,
   });
 
+  /// 当前进度所占总量的比例。
   double? get fraction {
     final total = totalBytes;
     if (total == null || total <= 0) return null;
@@ -1310,6 +1368,7 @@ class _DownloadProgress {
   }
 }
 
+/// 根据下载进度生成描述文本。
 String _describeProgress(_DownloadProgress progress) {
   if (progress.receivedBytes <= 0) {
     return '正在准备下载...';
@@ -1328,6 +1387,7 @@ String _describeProgress(_DownloadProgress progress) {
   return '已下载 $percent% ($downloadedLabel / $totalLabel)';
 }
 
+/// 询问用户是否切换到后台下载模式。
 Future<bool> _confirmBackgroundDownload(BuildContext context) async {
   final result = await showDialog<bool>(
     context: context,
@@ -1352,6 +1412,7 @@ Future<bool> _confirmBackgroundDownload(BuildContext context) async {
   return result ?? false;
 }
 
+/// 执行更新包下载流程并尝试唤起安装程序。
 Future<void> _downloadAndInstallUpdate(
   BuildContext context,
   _ReleaseAsset asset,
@@ -1371,6 +1432,7 @@ Future<void> _downloadAndInstallUpdate(
   var dialogClosed = false;
   final httpClient = http.Client();
 
+  /// 实际执行下载流程的内部方法。
   Future<void> runDownload(NavigatorState navigator) async {
     try {
       final file = await _downloadReleaseAsset(
@@ -1576,6 +1638,7 @@ Future<void> _downloadAndInstallUpdate(
   }
 }
 
+/// 下载发布资源并返回临时文件路径。
 Future<File> _downloadReleaseAsset(
   _ReleaseAsset asset, {
   required void Function(int receivedBytes, int? totalBytes) onProgress,
@@ -1630,6 +1693,7 @@ Future<File> _downloadReleaseAsset(
   }
 }
 
+/// 清理文件名中的非法字符。
 String _sanitizeFileName(String raw) {
   final sanitized = raw.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
   if (sanitized.trim().isEmpty) {
@@ -1638,6 +1702,7 @@ String _sanitizeFileName(String raw) {
   return sanitized;
 }
 
+/// 从发布说明文本中抽取项目符号高亮。
 List<String> _extractReleaseHighlights(String body) {
   final lines = body.split(RegExp(r'\r?\n'));
   final notes = <String>[];
@@ -1670,6 +1735,7 @@ class _ReleaseAsset {
     required this.size,
   });
 
+  /// 判断当前资源是否为 Android 安装包。
   bool get isAndroidApk {
     final lowerName = name.toLowerCase();
     final lowerType = contentType.toLowerCase();
@@ -1677,6 +1743,7 @@ class _ReleaseAsset {
         lowerType.contains('application/vnd.android.package-archive');
   }
 
+  /// 从 GitHub 返回的 JSON 实例化资源信息。
   factory _ReleaseAsset.fromJson(Map<String, dynamic> json) {
     return _ReleaseAsset(
       name: json['name'] as String? ?? '',
@@ -1687,6 +1754,7 @@ class _ReleaseAsset {
   }
 }
 
+/// 从发布名称或标签中推断语义化版本号。
 Version? _parseVersionFromMetadata(String name, String tag) {
   final candidates = <String?>[
     tag,

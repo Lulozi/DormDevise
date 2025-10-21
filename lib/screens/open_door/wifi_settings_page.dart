@@ -12,9 +12,11 @@ import 'package:wifi_scan/wifi_scan.dart';
 const _ssidPrefKey = 'preferred_wifi_ssid';
 const _passwordPrefKey = 'preferred_wifi_password';
 
+/// WiFi 网络配置页面，支持扫描、保存与连接。
 class WifiSettingsPage extends StatefulWidget {
   const WifiSettingsPage({super.key});
 
+  /// 创建页面状态以处理交互逻辑。
   @override
   State<WifiSettingsPage> createState() => _WifiSettingsPageState();
 }
@@ -37,6 +39,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
   String? _connectStatusActionLabel;
   VoidCallback? _connectStatusAction;
 
+  /// 初始化监听器并恢复历史保存的网络信息。
   @override
   void initState() {
     super.initState();
@@ -45,8 +48,10 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     _loadSaved();
   }
 
+  /// 刷新状态以更新界面按钮可用性。
   void _refreshState() => setState(() {});
 
+  /// 从本地存储恢复历史的 WiFi 凭据。
   Future<void> _loadSaved() async {
     final prefs = await SharedPreferences.getInstance();
     final ssid = prefs.getString(_ssidPrefKey);
@@ -60,9 +65,13 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     });
   }
 
+  /// 判断当前是否填写了合法的 SSID。
   bool get _isSsidFilled => _ssidController.text.trim().isNotEmpty;
+
+  /// 保存与连接操作是否可执行。
   bool get _canSubmit => _isSsidFilled;
 
+  /// 执行 WiFi 扫描并展示结果列表。
   Future<void> _scan() async {
     if (!await _ensureWifiScanPermissions()) {
       if (!mounted) return;
@@ -99,6 +108,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     }
   }
 
+  /// 展示 WiFi 列表供用户选择。
   Future<void> _showPickSheet() async {
     if (!mounted) return;
     await showModalBottomSheet<WiFiAccessPoint>(
@@ -147,6 +157,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     );
   }
 
+  /// 将当前输入的网络信息持久化到本地。
   Future<void> _save({bool showStatus = true}) async {
     final value = _ssidController.text.trim();
     final password = _passwordController.text.trim();
@@ -167,11 +178,13 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     }
   }
 
+  /// 校验所需的定位与邻近 WiFi 权限是否就绪。
   Future<bool> _ensureWifiScanPermissions() async {
     if (!Platform.isAndroid) {
       return true;
     }
 
+    /// 助手方法：请求指定权限并返回最终状态。
     Future<bool> requestPermission(Permission permission) async {
       var status = await permission.status;
       if (status.isGranted) {
@@ -201,6 +214,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     return nearbyGranted;
   }
 
+  /// 确保插件已完成注册，避免调用异常。
   Future<bool> _ensurePluginRegistered() async {
     if (_pluginRegistered) {
       return true;
@@ -235,6 +249,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     }
   }
 
+  /// 使用保存的凭据尝试连接目标网络。
   Future<void> _connectToSavedNetwork(String target) async {
     if (!await _ensurePluginRegistered()) {
       if (!_warnedMissingPlugin) {
@@ -296,6 +311,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     }
   }
 
+  /// 请求插件断开当前 WiFi 连接。
   Future<void> _disconnectFromCurrentNetwork() async {
     try {
       final bool? success = await PluginWifiConnect.disconnect();
@@ -318,6 +334,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     }
   }
 
+  /// 注销插件回调并重置标记。
   Future<void> _teardownPlugin() async {
     if (!_pluginRegistered) return;
     try {
@@ -328,6 +345,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     }
   }
 
+  /// 更新连接结果提示文案与可选操作。
   void _showConnectStatus(
     String message, {
     bool isError = false,
@@ -345,6 +363,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     });
   }
 
+  /// 记录缺失插件实现的情况并提示用户。
   void _handleMissingPlugin(String action) {
     if (!mounted) {
       return;
@@ -358,6 +377,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     }
   }
 
+  /// 清理控制器监听并注销插件。
   @override
   void dispose() {
     _ssidController.removeListener(_refreshState);
@@ -368,6 +388,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
     super.dispose();
   }
 
+  /// 绘制 WiFi 管理表单与操作按钮。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
