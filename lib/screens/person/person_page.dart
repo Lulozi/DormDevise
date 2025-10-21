@@ -1,11 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
-import 'package:dormdevise/screens/person/widgets/about_open_container.dart';
-import 'package:dormdevise/screens/person/widgets/location_settings_container.dart';
-import 'package:dormdevise/screens/person/widgets/mqtt_settings_container.dart';
-import 'package:dormdevise/screens/person/widgets/wifi_settings_container.dart';
+import 'package:dormdevise/screens/open_door/location_settings_page.dart';
+import 'package:dormdevise/screens/open_door/mqtt_settings_page.dart';
+import 'package:dormdevise/screens/open_door/wifi_settings_page.dart';
+import 'package:dormdevise/screens/person/about_page.dart';
+import 'package:dormdevise/screens/person/widgets/settings_open_container.dart';
 
 class PersonPage extends StatefulWidget {
   final double appBarProgress;
@@ -16,21 +16,6 @@ class PersonPage extends StatefulWidget {
 }
 
 class _PersonPageState extends State<PersonPage> {
-  String _version = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _initPackageInfo();
-  }
-
-  Future<void> _initPackageInfo() async {
-    final info = await PackageInfo.fromPlatform();
-    setState(() {
-      _version = info.version;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     // 渐变区间 0.0~1.0，0.0为不透明，1.0为完全透明
@@ -48,33 +33,37 @@ class _PersonPageState extends State<PersonPage> {
       progress,
     )!;
 
-    // body滑动动画：progress=0时完全显示，progress=0.5后开始滑出，progress=1时完全隐藏
+    // body滑动动画：progress=0时完全显示，progress=0.1后开始滑出，progress=1时完全隐藏
     double bodyProgress = 1.0;
-    if (progress <= 0.7 && progress >= 0.0) {
+    if (progress <= 0.1 && progress >= 0.0) {
       bodyProgress = 1.0;
-    } else if (progress > 0.7 && progress <= 1.0) {
-      bodyProgress = 1.0 - ((progress - 0.7) / 0.3).clamp(0.0, 1.0);
+    } else if (progress > 0.1 && progress <= 1.0) {
+      bodyProgress = 1.0 - ((progress - 0.1) / 0.9).clamp(0.0, 1.0);
     } else if (progress > 1.0) {
       bodyProgress = 0.0;
     }
 
     final List<Widget> cards = [
       // body内容，按顺序排列
-      const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: MqttSettingsContainer(),
+      _buildSettingsEntry(
+        icon: Icons.api_rounded,
+        title: 'MQTT配置',
+        builder: (context) => const MqttSettingsPage(),
       ),
-      const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: WifiSettingsContainer(),
+      _buildSettingsEntry(
+        icon: Icons.wifi,
+        title: 'WiFi设置',
+        builder: (context) => const WifiSettingsPage(),
       ),
-      const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: LocationSettingsContainer(),
+      _buildSettingsEntry(
+        icon: Icons.location_on,
+        title: '定位设置',
+        builder: (context) => const LocationSettingsPage(),
       ),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: AboutOpenContainer(version: _version),
+      _buildSettingsEntry(
+        icon: Icons.info_outline,
+        title: '关于',
+        builder: (context) => const AboutPage(),
       ),
     ];
 
@@ -135,6 +124,21 @@ class _PersonPageState extends State<PersonPage> {
             },
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsEntry({
+    required IconData icon,
+    required String title,
+    required WidgetBuilder builder,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: SettingsOpenContainer(
+        icon: icon,
+        title: title,
+        pageBuilder: builder,
       ),
     );
   }

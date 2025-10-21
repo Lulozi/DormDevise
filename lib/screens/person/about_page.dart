@@ -1,8 +1,9 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:animations/animations.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -41,46 +43,8 @@ class _UpdateDownloadCoordinator {
   }
 }
 
-/// 关于按钮的开合容器
-class AboutOpenContainer extends StatelessWidget {
-  final String version;
-
-  const AboutOpenContainer({super.key, required this.version});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return OpenContainer(
-      transitionType: ContainerTransitionType.fadeThrough,
-      openColor: colorScheme.surface,
-      closedColor: colorScheme.surfaceContainerHighest,
-      closedElevation: 0,
-      openElevation: 0,
-      closedShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      openShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
-      transitionDuration: const Duration(milliseconds: 600),
-      openBuilder: (context, _) => AboutPage(version: version),
-      closedBuilder: (context, openContainer) => ListTile(
-        leading: Icon(Icons.info_outline, color: colorScheme.primary),
-        title: Text(
-          '关于',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        trailing: Icon(Icons.chevron_right, color: colorScheme.outline),
-        onTap: openContainer,
-      ),
-    );
-  }
-}
-
 class AboutPage extends StatefulWidget {
-  final String version;
-
-  const AboutPage({super.key, required this.version});
+  const AboutPage({super.key});
 
   @override
   State<AboutPage> createState() => _AboutPageState();
@@ -89,6 +53,7 @@ class AboutPage extends StatefulWidget {
 class _AboutPageState extends State<AboutPage> {
   bool _checkingUpdate = false;
   bool _hasNewerVersion = false;
+  String _currentVersion = '';
   late final _UpdateDownloadCoordinator _downloadCoordinator;
   late final VoidCallback _downloadListener;
   List<String>? _cachedSupportedAbis;
@@ -103,6 +68,7 @@ class _AboutPageState extends State<AboutPage> {
       setState(() {});
     };
     _downloadCoordinator.addListener(_downloadListener);
+    unawaited(_initPackageInfo());
     unawaited(_primeLatestVersionStatus());
     unawaited(_ensureSupportedAbis());
   }
@@ -113,12 +79,25 @@ class _AboutPageState extends State<AboutPage> {
     super.dispose();
   }
 
+  Future<void> _initPackageInfo() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      if (_currentVersion != info.version) {
+        setState(() => _currentVersion = info.version);
+        unawaited(_primeLatestVersionStatus());
+      }
+    } catch (error) {
+      debugPrint('获取应用版本失败：${_mapErrorMessage(error)}');
+    }
+  }
+
   Future<void> _primeLatestVersionStatus() async {
     try {
       final latest = await _fetchLatestReleaseInfo();
       if (!mounted) return;
       final latestVersion = latest?.version;
-      final currentVersion = _safeParseVersion(widget.version);
+      final currentVersion = _safeParseVersion(_currentVersion);
       final hasNewer = latestVersion != null && currentVersion != null
           ? latestVersion > currentVersion
           : latestVersion != null;
@@ -148,7 +127,7 @@ class _AboutPageState extends State<AboutPage> {
       }
 
       final latestVersion = latest.version;
-      final currentVersion = _safeParseVersion(widget.version);
+      final currentVersion = _safeParseVersion(_currentVersion);
       final supportedAbis = await _ensureSupportedAbis();
       final asset = _selectAndroidAsset(latest.assets, supportedAbis);
 
@@ -187,7 +166,7 @@ class _AboutPageState extends State<AboutPage> {
 
       await _downloadAndInstallUpdate(context, asset);
     } catch (error) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       _showToastMessage(
         '检查更新失败：${_mapErrorMessage(error)}',
         variant: AppToastVariant.error,
@@ -203,40 +182,38 @@ class _AboutPageState extends State<AboutPage> {
     String message, {
     AppToastVariant variant = AppToastVariant.info,
   }) {
-    if (!mounted) return;
+    if (!context.mounted) return;
     AppToast.show(context, message, variant: variant);
   }
 
+  /// 通用外部链接打开方法，传入目标URL字符串
+  Future<void> _openExternalUrl(String url) async {
+    await _launchExternalUrl(context, Uri.parse(url));
+  }
+
+  /// 打开GitHub仓库
   Future<void> _openRepository() async {
-    await _launchExternalUrl(
-      context,
-      Uri.parse('https://github.com/Lulozi/DormDevise'),
-    );
+    await _openExternalUrl('https://github.com/Lulozi/DormDevise');
   }
 
+  /// 打开版本发布页
   Future<void> _openReleasePage() async {
-    await _launchExternalUrl(
-      context,
-      Uri.parse('https://github.com/Lulozi/DormDevise/releases'),
-    );
+    await _openExternalUrl('https://github.com/Lulozi/DormDevise/releases');
   }
 
+  /// 打开Issue反馈页
   Future<void> _openIssuePage() async {
-    await _launchExternalUrl(
-      context,
-      Uri.parse('https://github.com/Lulozi/DormDevise/issues'),
-    );
+    await _openExternalUrl('https://github.com/Lulozi/DormDevise/issues');
   }
 
+  /// 打开Bilibili主页
   Future<void> _openBilibiliPage() async {
-    await _launchExternalUrl(
-      context,
-      Uri.parse('https://space.bilibili.com/212994722'),
-    );
+    await _openExternalUrl('https://space.bilibili.com/212994722');
   }
 
+  /// 打开开发者GitHub主页
   Future<void> _openGitHubPage() async {
-    await _launchExternalUrl(context, Uri.parse('https://github.com/Lulozi'));
+    await _openExternalUrl('https://github.com/Lulozi');
   }
 
   Future<List<String>> _ensureSupportedAbis() {
@@ -272,6 +249,7 @@ class _AboutPageState extends State<AboutPage> {
   Future<void> _showLicenseDialog() async {
     if (!mounted) return;
     final theme = Theme.of(context);
+    final versionLabel = _currentVersion.isEmpty ? '未知版本' : _currentVersion;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -307,7 +285,7 @@ class _AboutPageState extends State<AboutPage> {
                       data: theme,
                       child: LicensePage(
                         applicationName: 'DormDevise',
-                        applicationVersion: widget.version,
+                        applicationVersion: versionLabel,
                         applicationLegalese: '© 2025 DormDevise',
                       ),
                     ),
@@ -324,6 +302,10 @@ class _AboutPageState extends State<AboutPage> {
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).padding;
+    final versionLabel = _currentVersion.isEmpty ? '未知版本' : _currentVersion;
+    final releaseNotesVersion = _currentVersion.isEmpty
+        ? null
+        : _currentVersion;
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
       body: SafeArea(
@@ -331,7 +313,7 @@ class _AboutPageState extends State<AboutPage> {
           padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + padding.bottom),
           children: [
             _AboutHeader(
-              version: widget.version,
+              version: versionLabel,
               checkingUpdate:
                   _checkingUpdate || _downloadCoordinator.isDownloading,
               hasNewerVersion: _hasNewerVersion,
@@ -342,7 +324,8 @@ class _AboutPageState extends State<AboutPage> {
               onOpenGitHubPage: _openGitHubPage,
             ),
             const SizedBox(height: 16),
-            ReleaseNotesCard(appVersion: widget.version),
+            if (releaseNotesVersion != null)
+              ReleaseNotesCard(appVersion: releaseNotesVersion),
             const SizedBox(height: 16),
             _SectionCard(
               icon: Icons.link_outlined,
@@ -799,12 +782,21 @@ Future<void> _launchExternalUrl(BuildContext context, Uri uri) async {
   // 如果是http/https，尝试用WebView弹窗，否则直接外部调起
   if (uri.scheme == 'http' || uri.scheme == 'https') {
     final openedInSheet = await _showInAppWebSheet(context, uri);
-    if (!context.mounted) return;
-    if (openedInSheet) return;
+    if (!context.mounted) {
+      return;
+    }
+    if (openedInSheet) {
+      return;
+    }
   }
   // 其它协议（如bilibili://）直接外部调起
   final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-  if (!context.mounted || launched) return;
+  if (!context.mounted) {
+    return;
+  }
+  if (launched) {
+    return;
+  }
   AppToast.show(context, '无法打开链接，请稍后再试', variant: AppToastVariant.error);
 }
 

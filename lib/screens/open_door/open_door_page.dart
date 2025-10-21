@@ -27,6 +27,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
     const totalMs = 2000;
     var elapsed = 0;
     const tick = 50;
+    // 定时器回调中再获取Navigator，避免context失效
     _longPressTimer = Timer.periodic(const Duration(milliseconds: tick), (
       timer,
     ) {
@@ -40,9 +41,10 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
         if (!mounted) {
           return;
         }
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const OpenDoorSettingsPage()));
+        final navigator = Navigator.of(context);
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const OpenDoorSettingsPage()),
+        );
       }
     });
   }
@@ -185,7 +187,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                       },
                                     );
                                   } catch (e) {
-                                    if (!mounted) return;
+                                    if (!context.mounted) return;
                                     AppToast.show(
                                       context,
                                       '开门失败: $e',

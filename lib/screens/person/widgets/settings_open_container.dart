@@ -1,11 +1,22 @@
 import 'package:animations/animations.dart';
-import 'package:dormdevise/screens/open_door/wifi_settings_page.dart';
 import 'package:flutter/material.dart';
 
-/// 用于包裹WiFi设置按钮，实现Material3风格的丝巾展开动画
-class WifiSettingsContainer extends StatelessWidget {
-  const WifiSettingsContainer({super.key});
+/// 通用的平滑展开动画容器，用于承载各类设置入口。
+class SettingsOpenContainer extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final WidgetBuilder pageBuilder;
+  final Color? iconColor;
 
+  const SettingsOpenContainer({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.pageBuilder,
+    this.iconColor,
+  });
+
+  /// 构建带有 Material motion 动画的设置入口卡片。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -21,17 +32,14 @@ class WifiSettingsContainer extends StatelessWidget {
       openShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
       transitionDuration: const Duration(milliseconds: 600),
       closedBuilder: (context, openContainer) => ListTile(
-        leading: const Icon(Icons.wifi, color: Colors.blueAccent),
-        title: const Text(
-          'WiFi设置',
-          style: TextStyle(fontWeight: FontWeight.w500),
-        ),
+        leading: Icon(icon, color: iconColor ?? colorScheme.primary),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         trailing: const Icon(Icons.chevron_right),
         onTap: openContainer,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         tileColor: colorScheme.surfaceContainerHighest,
       ),
-      openBuilder: (context, _) => const WifiSettingsPage(),
+      openBuilder: (context, _) => pageBuilder(context),
     );
   }
 }
