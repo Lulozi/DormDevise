@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:animations/animations.dart';
-import 'package:dormdevise/screen/openDoorPage/dorm_wifi.dart';
+import 'package:dormdevise/screens/open_door/wifi_settings_page.dart';
+import 'package:flutter/material.dart';
 
 /// 用于包裹WiFi设置按钮，实现Material3风格的丝巾展开动画
 class WifiSettingsContainer extends StatelessWidget {
@@ -31,7 +31,7 @@ class WifiSettingsContainer extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         tileColor: colorScheme.surfaceContainerHighest,
       ),
-      openBuilder: (context, _) => const ConfigWifiPage(),
+      openBuilder: (context, _) => const WifiSettingsPage(),
     );
   }
 }

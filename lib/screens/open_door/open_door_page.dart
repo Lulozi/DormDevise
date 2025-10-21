@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:dormdevise/widgets/app_toast.dart';
-import 'package:dormdevise/screen/openDoorPage/mqtt_client.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:dormdevise/screen/openDoorPage/config_all.dart';
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
+
+import 'package:dormdevise/screens/open_door/open_door_settings_page.dart';
+import 'package:dormdevise/services/mqtt_service.dart';
+import 'package:dormdevise/utils/app_toast.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OpenDoorPage extends StatefulWidget {
   const OpenDoorPage({super.key});
@@ -23,8 +24,8 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
   void _handleLongPressStart(LongPressStartDetails details) {
     _longPressTimer?.cancel();
     _longPressProgress = 0.0;
-    final int totalMs = 2000;
-    int elapsed = 0;
+    const totalMs = 2000;
+    var elapsed = 0;
     const tick = 50;
     _longPressTimer = Timer.periodic(const Duration(milliseconds: tick), (
       timer,
@@ -36,11 +37,12 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
       if (elapsed >= totalMs) {
         timer.cancel();
         _longPressProgress = 0.0;
-        if (mounted) {
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const ConfigPage()));
+        if (!mounted) {
+          return;
         }
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const OpenDoorSettingsPage()));
       }
     });
   }
@@ -236,8 +238,6 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
   }
 }
 
-// ================== 门禁按钮组件 ==================
-
 typedef DoorLongPressCallback = void Function(LongPressStartDetails details);
 typedef DoorLongPressEndCallback = void Function(LongPressEndDetails details);
 
@@ -317,7 +317,6 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
           return Stack(
             alignment: Alignment.center,
             children: [
-              // 外圈发光
               Container(
                 width: widget.isOpen ? 240 : 140,
                 height: widget.isOpen ? 240 : 140,
@@ -336,7 +335,6 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
                   ],
                 ),
               ),
-              // 动态渐变按钮
               Transform.scale(
                 scale: scale,
                 child: AnimatedContainer(
@@ -407,7 +405,6 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
                   ),
                 ),
               ),
-              // 波纹动画
               if (_pressed)
                 Container(
                   width: widget.isOpen ? 220 : 120,

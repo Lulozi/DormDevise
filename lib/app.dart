@@ -1,7 +1,23 @@
-import 'package:dormdevise/screen/openDoorPage/open_door.dart';
-import 'package:dormdevise/screen/personPage/person.dart';
-import 'package:dormdevise/screen/tablePage/table.dart';
+import 'package:dormdevise/screens/open_door/open_door_page.dart';
+import 'package:dormdevise/screens/person/person_page.dart';
+import 'package:dormdevise/screens/table/table_page.dart';
 import 'package:flutter/material.dart';
+
+class DormDeviseApp extends StatelessWidget {
+  const DormDeviseApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
+        useMaterial3: true,
+      ),
+      home: const ManagementScreen(),
+    );
+  }
+}
 
 class ManagementScreen extends StatefulWidget {
   const ManagementScreen({super.key});
@@ -19,7 +35,6 @@ class ManagementScreenState extends State<ManagementScreen>
 
   Widget _buildPage(int index) {
     if (index == 2) {
-      // 修正渐变方向：滑动到person页面时，progress=1为完全显示，progress=0为完全透明
       double progress = 0.0;
       if (_page >= 1.7 && _page <= 2.0) {
         progress = (1 - (_page - 1.7) / 0.3).clamp(0.0, 1.0);
@@ -47,8 +62,7 @@ class ManagementScreenState extends State<ManagementScreen>
           page = selectedIndex.toDouble();
         }
         _page = page;
-        double delta = (index - page).clamp(-1.0, 1.0);
-        // 右进左出滑动+淡入
+        final double delta = (index - page).clamp(-1.0, 1.0);
         final double opacity = 1.0 - delta.abs().clamp(0.0, 1.0);
         final double dx = delta > 0 ? 0.2 * delta : 0.0;
         return Opacity(
@@ -63,14 +77,11 @@ class ManagementScreenState extends State<ManagementScreen>
     );
   }
 
-  // FIXME 流畅度需要优化
-  // MAYBE 更好看的页面切换效果
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: selectedIndex);
-    // 模拟初始化耗时操作，实际可替换为真实初始化逻辑
     Future.microtask(() async {
       await Future.delayed(const Duration(milliseconds: 400));
       if (mounted) {
@@ -87,8 +98,6 @@ class ManagementScreenState extends State<ManagementScreen>
     _pageController.dispose();
     super.dispose();
   }
-
-  // 监听App生命周期（已移除回到前台时的 setState，避免白屏）
 
   @override
   Widget build(BuildContext context) {

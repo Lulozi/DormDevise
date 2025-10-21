@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:dormdevise/screen/personPage/mqtt_settings_open_container.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:dormdevise/screen/personPage/about_open_container.dart';
-import 'package:dormdevise/screen/personPage/location_settings_container.dart';
-import 'package:dormdevise/screen/personPage/wifi_settings_container.dart';
+import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+import 'package:dormdevise/screens/person/widgets/about_open_container.dart';
+import 'package:dormdevise/screens/person/widgets/location_settings_container.dart';
+import 'package:dormdevise/screens/person/widgets/mqtt_settings_container.dart';
+import 'package:dormdevise/screens/person/widgets/wifi_settings_container.dart';
 
 class PersonPage extends StatefulWidget {
   final double appBarProgress;
@@ -14,7 +15,6 @@ class PersonPage extends StatefulWidget {
   State<PersonPage> createState() => _PersonPageState();
 }
 
-//! TODO 个人页面
 class _PersonPageState extends State<PersonPage> {
   String _version = '';
 
@@ -62,7 +62,7 @@ class _PersonPageState extends State<PersonPage> {
       // body内容，按顺序排列
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: MqttSettingsOpenContainer(),
+        child: MqttSettingsContainer(),
       ),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -70,7 +70,7 @@ class _PersonPageState extends State<PersonPage> {
       ),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: LocationSettingsOpenContainer(),
+        child: LocationSettingsContainer(),
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

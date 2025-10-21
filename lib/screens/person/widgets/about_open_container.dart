@@ -15,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:dormdevise/widgets/app_toast.dart';
+import 'package:dormdevise/utils/app_toast.dart';
 
 class _UpdateDownloadCoordinator {
   _UpdateDownloadCoordinator._();
@@ -795,9 +795,11 @@ Future<bool?> _showUpdateAvailableDialog(
 }
 
 Future<void> _launchExternalUrl(BuildContext context, Uri uri) async {
+  if (!context.mounted) return;
   // 如果是http/https，尝试用WebView弹窗，否则直接外部调起
   if (uri.scheme == 'http' || uri.scheme == 'https') {
     final openedInSheet = await _showInAppWebSheet(context, uri);
+    if (!context.mounted) return;
     if (openedInSheet) return;
   }
   // 其它协议（如bilibili://）直接外部调起

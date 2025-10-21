@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'dart:io';
+import 'dart:math';
+
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
@@ -33,7 +34,6 @@ Future<SecurityContext> buildSecurityContext({
 }
 
 class MqttService {
-  /// 发送纯文本消息到指定topic
   Future<void> publishText(
     String topic,
     String text, {
@@ -51,7 +51,7 @@ class MqttService {
   final String clientId;
   final String? username;
   final String? password;
-  final SecurityContext? securityContext; // 可为 null，表示不启用 TLS
+  final SecurityContext? securityContext;
 
   final Set<String> _subscriptions = {};
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
@@ -74,7 +74,7 @@ class MqttService {
 
   MqttService({
     required this.host,
-    this.port = 1883, // 默认非 TLS
+    this.port = 1883,
     required this.clientId,
     this.username,
     this.password,
@@ -84,7 +84,7 @@ class MqttService {
     this.onError,
     this.minBackoff = const Duration(seconds: 1),
     this.maxBackoff = const Duration(seconds: 30),
-    this.securityContext, // 传 null = 不启用 TLS
+    this.securityContext,
   }) {
     _client = MqttServerClient(host, clientId)
       ..port = port

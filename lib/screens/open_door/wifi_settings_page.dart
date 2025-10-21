@@ -1,25 +1,25 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:plugin_wifi_connect/plugin_wifi_connect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wifi_scan/wifi_scan.dart';
-import 'package:flutter/services.dart';
-import 'package:dormdevise/widgets/app_toast.dart';
 
 const _ssidPrefKey = 'preferred_wifi_ssid';
 const _passwordPrefKey = 'preferred_wifi_password';
 
-class ConfigWifiPage extends StatefulWidget {
-  const ConfigWifiPage({super.key});
+class WifiSettingsPage extends StatefulWidget {
+  const WifiSettingsPage({super.key});
 
   @override
-  State<ConfigWifiPage> createState() => _ConfigWifiPage();
+  State<WifiSettingsPage> createState() => _WifiSettingsPageState();
 }
 
-class _ConfigWifiPage extends State<ConfigWifiPage> {
+class _WifiSettingsPageState extends State<WifiSettingsPage> {
   final TextEditingController _ssidController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String? _savedSsid;
@@ -40,12 +40,12 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
   @override
   void initState() {
     super.initState();
-    _ssidController.addListener(_refreshState); // 输入变化时刷新按钮可用态
+    _ssidController.addListener(_refreshState);
     _passwordController.addListener(_refreshState);
     _loadSaved();
   }
 
-  void _refreshState() => setState(() {}); // 触发重建以更新按钮可用态
+  void _refreshState() => setState(() {});
 
   Future<void> _loadSaved() async {
     final prefs = await SharedPreferences.getInstance();
@@ -218,9 +218,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
     try {
       try {
         await PluginWifiConnect.unregister();
-      } catch (_) {
-        // 无需处理，上一次未注册会抛异常，忽略即可
-      }
+      } catch (_) {}
       await PluginWifiConnect.register();
       _pluginRegistered = true;
       completer.complete();
@@ -245,7 +243,7 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
       return;
     }
     final password = _savedPassword?.trim() ?? '';
-    bool retried = false;
+    var retried = false;
     while (true) {
       try {
         final bool? success = password.isEmpty
@@ -325,7 +323,6 @@ class _ConfigWifiPage extends State<ConfigWifiPage> {
     try {
       await PluginWifiConnect.unregister();
     } catch (_) {
-      // 忽略卸载失败
     } finally {
       _pluginRegistered = false;
     }

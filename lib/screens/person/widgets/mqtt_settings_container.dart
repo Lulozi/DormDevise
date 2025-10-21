@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:animations/animations.dart';
-import 'package:dormdevise/screen/openDoorPage/dorm_location.dart';
+import 'package:dormdevise/screens/open_door/mqtt_settings_page.dart';
+import 'package:flutter/material.dart';
 
-/// 用于包裹定位设置按钮，实现Material3风格的丝巾展开动画
-class LocationSettingsOpenContainer extends StatelessWidget {
-  const LocationSettingsOpenContainer({super.key});
+/// 用于包裹 MQTT 设置卡片，提供 Material motion 展开效果。
+class MqttSettingsContainer extends StatelessWidget {
+  const MqttSettingsContainer({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +21,9 @@ class LocationSettingsOpenContainer extends StatelessWidget {
       openShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
       transitionDuration: const Duration(milliseconds: 600),
       closedBuilder: (context, openContainer) => ListTile(
-        leading: const Icon(Icons.location_on, color: Colors.blueAccent),
+        leading: const Icon(Icons.api_rounded, color: Colors.blueAccent),
         title: const Text(
-          '定位设置',
+          'MQTT配置',
           style: TextStyle(fontWeight: FontWeight.w500),
         ),
         trailing: const Icon(Icons.chevron_right),
@@ -31,7 +31,7 @@ class LocationSettingsOpenContainer extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         tileColor: colorScheme.surfaceContainerHighest,
       ),
-      openBuilder: (context, _) => const ConfigLocationPage(),
+      openBuilder: (context, _) => const MqttSettingsPage(),
     );
   }
 }

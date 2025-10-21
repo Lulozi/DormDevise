@@ -2,8 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-enum AppToastVariant { info, success, warning, error }
-
+/// Lightweight overlay toast for presenting feedback across the app.
 class AppToast {
   static OverlayEntry? _activeEntry;
   static Timer? _activeTimer;
@@ -15,8 +14,8 @@ class AppToast {
   }) {
     final overlay = Overlay.of(context, rootOverlay: true);
 
-    _activeTimer?..cancel();
-    _activeEntry?..remove();
+    _activeTimer?.cancel();
+    _activeEntry?.remove();
 
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -146,9 +145,11 @@ class AppToast {
   }
 
   static void dismiss() {
-    _activeTimer?..cancel();
-    _activeEntry?..remove();
+    _activeTimer?.cancel();
+    _activeEntry?.remove();
     _activeTimer = null;
     _activeEntry = null;
   }
 }
+
+enum AppToastVariant { info, success, warning, error }

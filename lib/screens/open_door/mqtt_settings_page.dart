@@ -6,16 +6,16 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'mqtt_client.dart';
+import 'package:dormdevise/services/mqtt_service.dart';
 
-class ConfigMqttPage extends StatefulWidget {
-  const ConfigMqttPage({super.key});
+class MqttSettingsPage extends StatefulWidget {
+  const MqttSettingsPage({super.key});
 
   @override
-  State<ConfigMqttPage> createState() => _ConfigMqttPageState();
+  State<MqttSettingsPage> createState() => _MqttSettingsPageState();
 }
 
-class _ConfigMqttPageState extends State<ConfigMqttPage> {
+class _MqttSettingsPageState extends State<MqttSettingsPage> {
   static const String _subscribedTopicKey = 'mqtt_last_subscribed_topic';
   final List<String> _logLines = [];
   // 配置变量
