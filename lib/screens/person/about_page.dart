@@ -364,8 +364,6 @@ class _AboutPageState extends State<AboutPage> {
     _DownloadDialogResult? dialogResult,
   ) async {
     try {
-      final DownloadResult resolvedDownload =
-          session.downloadResult ?? DownloadResult.failure('下载任务未返回结果');
       final _DownloadDialogResult resolvedDialog =
           dialogResult ?? _mapDialogResult(session.downloadResult);
 
@@ -384,7 +382,9 @@ class _AboutPageState extends State<AboutPage> {
         await session.downloadCompleted.future;
       }
 
-      // FIX 取消下载时显示的是下载失败，应该为：取消下载更新
+      final DownloadResult resolvedDownload =
+          session.downloadResult ?? DownloadResult.failure('下载任务未返回结果');
+
       if (resolvedDownload.isFailure) {
         final Object? error = resolvedDownload.error;
         final String message = error == null ? '未知错误' : _mapErrorMessage(error);
@@ -399,7 +399,7 @@ class _AboutPageState extends State<AboutPage> {
       if (resolvedDownload.isCancelled ||
           resolvedDialog == _DownloadDialogResult.cancelled) {
         if (mounted) {
-          _showToastMessage('下载已取消', variant: AppToastVariant.warning);
+          _showToastMessage('取消下载更新', variant: AppToastVariant.warning);
         } else {
           debugPrint('Download cancelled before installer launch');
         }
