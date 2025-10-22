@@ -36,6 +36,7 @@ class _PersonPageState extends State<PersonPage> {
       progress,
     )!;
 
+    // FIX 返回的页面时，切换页面动画不会自动取消
     // body滑动动画：progress=0时完全显示，progress=0.1后开始滑出，progress=1时完全隐藏
     double bodyProgress = 1.0;
     if (progress <= 0.1 && progress >= 0.0) {
@@ -158,7 +159,7 @@ Widget _buildHead(Color textColor) {
           borderRadius: BorderRadius.circular(32),
           child: CachedNetworkImage(
             imageUrl:
-                'http://minio.xiaoheiwu.fun/imgs/2025-10-13-20:08:59-4ce88e37c9914ac5be496592a103f08d.jpg',
+                'https://minio.xiaoheiwu.fun/imgs/2025-10-22-14:45:35-ff31654892a9466498727306682de17b.jpg',
             width: 48,
             height: 48,
             fit: BoxFit.cover,
