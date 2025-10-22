@@ -3,6 +3,8 @@ import 'package:dormdevise/screens/person/person_page.dart';
 import 'package:dormdevise/screens/table/table_page.dart';
 import 'package:flutter/material.dart';
 
+// TODO 桌面组件
+
 /// 应用根组件，负责注入基础主题与导航框架。
 class DormDeviseApp extends StatelessWidget {
   const DormDeviseApp({super.key});
