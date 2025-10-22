@@ -251,8 +251,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     await prefs.setString('mqtt_status_topic', _statusTopicController.text);
     await prefs.setBool('mqtt_with_tls', _withTls);
     if (!mounted) return;
-    _showStatus('配置已保存');
-    _showBubble(context, '配置已保存');
+    await _subscribeMainTopic(triggeredBySave: true);
   }
 
   /// 将配置导出为 JSON 并复制到剪贴板。
@@ -378,22 +377,26 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
   }
 
   /// 测试订阅连接以确认配置有效。
-  Future<void> _testConnect() async {
+  /// 使用当前配置尝试订阅主主题，并根据触发来源调整提示。
+  Future<bool> _subscribeMainTopic({bool triggeredBySave = false}) async {
     final topic = _topicController.text.trim();
     if (topic.isEmpty) {
-      _showStatus('请先填写订阅主题', isError: true, icon: Icons.info_outline);
-      _showBubble(context, '请先填写订阅主题');
+      final msg = triggeredBySave ? '配置已保存，但订阅失败：请先填写订阅主题' : '请先填写订阅主题';
+      _showStatus(msg, isError: true, icon: Icons.info_outline);
+      _showBubble(context, msg);
       unawaited(_persistSubscribedTopic(null));
-      return;
+      return false;
     }
     setState(() {
       _loading = true;
       _hasSubscribed = false;
     });
-    _showStatus('正在连接...', icon: Icons.hourglass_top);
+    final workingStatus = triggeredBySave ? '配置已保存，正在订阅...' : '正在连接...';
+    _showStatus(workingStatus, icon: Icons.hourglass_top);
     await _persistSubscribedTopic(null);
+    SecurityContext? sc;
+    MqttService? service;
     try {
-      SecurityContext? sc;
       if (_withTls) {
         sc = await buildSecurityContext(
           caAsset: _caPathController.text,
@@ -408,7 +411,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
               : null,
         );
       }
-      final service = MqttService(
+      service = MqttService(
         host: _hostController.text,
         port: int.tryParse(_portController.text) ?? 1883,
         clientId: _clientIdController.text.isNotEmpty
@@ -448,27 +451,39 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       await service.subscribe(topic);
       await _persistSubscribedTopic(topic);
       if (!mounted) {
-        await service.dispose();
-        return;
+        return true;
       }
-      final infoLines = <String>['订阅成功: $topic'];
-      _showStatus('已订阅');
+      final info = '订阅成功: $topic';
       setState(() {
         _hasSubscribed = true;
+        _logLines.add(info);
+        if (_logLines.length > 200) _logLines.removeAt(0);
       });
-      _showBubble(context, infoLines.join('\n\n'));
-      await service.dispose();
+      final successMsg = triggeredBySave ? '配置已保存并已订阅' : '已订阅';
+      _showStatus(successMsg);
+      if (triggeredBySave) {
+        _showBubble(context, successMsg);
+      } else {
+        _showBubble(context, info);
+      }
+      return true;
     } catch (e) {
       await _persistSubscribedTopic(null);
-      if (!mounted) return;
-      setState(() {
-        _logLines.add('连接失败: $e');
-        if (_logLines.length > 200) _logLines.removeAt(0);
-        _hasSubscribed = false;
-      });
-      _showStatus('连接失败: $e', isError: true);
-      _showBubble(context, '连接失败: $e');
+      final failMsg = triggeredBySave ? '配置已保存，但订阅失败: $e' : '连接失败: $e';
+      if (mounted) {
+        setState(() {
+          _logLines.add(failMsg);
+          if (_logLines.length > 200) _logLines.removeAt(0);
+          _hasSubscribed = false;
+        });
+        _showStatus(failMsg, isError: true);
+        _showBubble(context, failMsg);
+      }
+      return false;
     } finally {
+      if (service != null) {
+        await service.dispose();
+      }
       if (mounted) {
         setState(() {
           _loading = false;
@@ -477,6 +492,11 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
         _loading = false;
       }
     }
+  }
+
+  /// 触发主主题订阅测试，用于按钮操作。
+  Future<void> _testConnect() async {
+    await _subscribeMainTopic();
   }
 
   /// 根据当前状态切换状态主题订阅。
