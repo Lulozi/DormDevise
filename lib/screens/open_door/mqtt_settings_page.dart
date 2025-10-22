@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:dormdevise/models/status_topic_suggestion.dart';
 import 'package:dormdevise/services/mqtt_service.dart';
 
 /// MQTT 配置与调试页面。
@@ -19,6 +20,27 @@ class MqttSettingsPage extends StatefulWidget {
 
 class _MqttSettingsPageState extends State<MqttSettingsPage> {
   static const String _subscribedTopicKey = 'mqtt_last_subscribed_topic';
+  static const List<String> _statusSuffixKeywords = <String>[
+    'status',
+    'state',
+    'states',
+    'result',
+    'results',
+    'info',
+    'information',
+    'detail',
+    'details',
+    'report',
+    'reports',
+    'response',
+    'responses',
+    'update',
+    'updates',
+    'summary',
+    'summaries',
+    'overview',
+    'metrics',
+  ];
   final List<String> _logLines = [];
   // 配置变量
   String _host = '';
@@ -78,6 +100,129 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     } catch (_) {
       return data.toString();
     }
+  }
+
+  /// 根据当前输入生成状态主题的联想选项列表。
+  Iterable<StatusTopicSuggestion> _buildStatusTopicSuggestions(
+    TextEditingValue editingValue,
+  ) {
+    final raw = editingValue.text;
+    final trimmed = raw.trim();
+    String normalizePath(String value) {
+      final collapsed = value.replaceAll(RegExp(r'/+'), '/').trim();
+      if (collapsed.isEmpty || collapsed == '/') {
+        return '';
+      }
+      final withoutTrailing = collapsed.endsWith('/') && collapsed.length > 1
+          ? collapsed.substring(0, collapsed.length - 1)
+          : collapsed;
+      return withoutTrailing;
+    }
+
+    final commandTopic = normalizePath(_topicController.text.trim());
+    final hasCommandTopic = commandTopic.isNotEmpty;
+    final commandHasSlash = commandTopic.contains('/');
+    final derivedCommandPrefix = (() {
+      if (!hasCommandTopic) return '';
+      final idx = commandTopic.lastIndexOf('/');
+      if (idx <= 0) {
+        return commandHasSlash ? '' : commandTopic;
+      }
+      return commandTopic.substring(0, idx);
+    })();
+
+    String displayOf(String value) {
+      return value.startsWith('/') ? value.substring(1) : value;
+    }
+
+    final commandCandidates = <String>{};
+    if (commandHasSlash) {
+      if (derivedCommandPrefix.isNotEmpty) {
+        commandCandidates.add(derivedCommandPrefix);
+      }
+    } else if (hasCommandTopic) {
+      commandCandidates.add(commandTopic);
+    }
+
+    if (trimmed.isEmpty) {
+      return const Iterable<StatusTopicSuggestion>.empty();
+    }
+
+    if (!trimmed.contains('/')) {
+      if (commandCandidates.isEmpty) {
+        return const Iterable<StatusTopicSuggestion>.empty();
+      }
+      final filtered = commandCandidates.where(
+        (candidate) =>
+            candidate.toLowerCase().startsWith(trimmed.toLowerCase()),
+      );
+      if (filtered.isEmpty) {
+        return const Iterable<StatusTopicSuggestion>.empty();
+      }
+      final suggestions = filtered
+          .map(
+            (path) =>
+                StatusTopicSuggestion(value: path, display: displayOf(path)),
+          )
+          .toList();
+      return List<StatusTopicSuggestion>.unmodifiable(suggestions);
+    }
+
+    final slashIndex = trimmed.lastIndexOf('/');
+    final rawPrefix = slashIndex <= 0 ? '' : trimmed.substring(0, slashIndex);
+    final inputPrefix = normalizePath(rawPrefix);
+    final suffix = trimmed.substring(slashIndex + 1);
+    final suffixLower = suffix.toLowerCase();
+
+    final prefixCandidates = <String>{};
+    prefixCandidates.addAll(commandCandidates);
+
+    final resolvedPrefixes = prefixCandidates.where((candidate) {
+      if (inputPrefix.isEmpty) {
+        return candidate.isNotEmpty;
+      }
+      return candidate.toLowerCase().startsWith(inputPrefix.toLowerCase());
+    }).toSet();
+
+    if (resolvedPrefixes.isEmpty) {
+      return const Iterable<StatusTopicSuggestion>.empty();
+    }
+
+    if (suffix.isEmpty) {
+      return const Iterable<StatusTopicSuggestion>.empty();
+    }
+
+    final filteredSuffixes = _statusSuffixKeywords
+        .where((keyword) => keyword.startsWith(suffixLower))
+        .toList();
+
+    if (filteredSuffixes.isEmpty) {
+      return const Iterable<StatusTopicSuggestion>.empty();
+    }
+
+    final suggestions = <StatusTopicSuggestion>[];
+    for (final prefix in resolvedPrefixes) {
+      final normalizedPrefix = normalizePath(prefix);
+      if (normalizedPrefix.isEmpty) continue;
+      for (final suffixCandidate in filteredSuffixes) {
+        final suggestionValue = '$normalizedPrefix/$suffixCandidate';
+        if (suggestionValue.toLowerCase() == trimmed.toLowerCase()) {
+          continue;
+        }
+        suggestions.add(
+          StatusTopicSuggestion(
+            value: suggestionValue,
+            display: displayOf(suggestionValue),
+          ),
+        );
+      }
+    }
+
+    if (suggestions.isEmpty) {
+      return const Iterable<StatusTopicSuggestion>.empty();
+    }
+
+    return List<StatusTopicSuggestion>.unmodifiable(suggestions);
   }
 
   /// 将最近订阅的主题名称持久化。
@@ -818,41 +963,23 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const SizedBox(height: 12),
-                                  RawAutocomplete<String>(
+                                  RawAutocomplete<StatusTopicSuggestion>(
                                     key: const ValueKey('statusTopic'),
                                     textEditingController:
                                         _statusTopicController,
                                     focusNode: _statusTopicFocusNode,
                                     optionsBuilder:
-                                        (TextEditingValue textEditingValue) {
-                                          final raw = textEditingValue.text
-                                              .trim();
-                                          if (raw.isEmpty) {
-                                            return const Iterable<
-                                              String
-                                            >.empty();
-                                          }
-                                          final sanitized = raw.replaceAll(
-                                            RegExp(r'/+$'),
-                                            '',
-                                          );
-                                          final suggestion = sanitized.isEmpty
-                                              ? '/status'
-                                              : '$sanitized/status';
-                                          if (suggestion == raw) {
-                                            return const Iterable<
-                                              String
-                                            >.empty();
-                                          }
-                                          return <String>[suggestion];
-                                        },
+                                        _buildStatusTopicSuggestions,
+                                    displayStringForOption: (option) =>
+                                        option.display,
                                     onSelected: (option) {
-                                      _statusTopicController.text = option;
+                                      final value = option.value;
+                                      _statusTopicController.text = value;
                                       _statusTopicController.selection =
                                           TextSelection.fromPosition(
-                                            TextPosition(offset: option.length),
+                                            TextPosition(offset: value.length),
                                           );
-                                      _onStatusTopicChanged(option);
+                                      _onStatusTopicChanged(value);
                                     },
                                     optionsViewBuilder:
                                         (context, onSelected, options) {
@@ -885,7 +1012,9 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                                                             .elementAt(index);
                                                         return ListTile(
                                                           dense: true,
-                                                          title: Text(option),
+                                                          title: Text(
+                                                            option.display,
+                                                          ),
                                                           onTap: () =>
                                                               onSelected(
                                                                 option,
