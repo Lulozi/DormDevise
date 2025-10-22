@@ -10,7 +10,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,41 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
-
-/// 管理更新下载状态的单例协调器。
-class _UpdateDownloadCoordinator {
-  _UpdateDownloadCoordinator._();
-  static final _UpdateDownloadCoordinator instance =
-      _UpdateDownloadCoordinator._();
-
-  final ValueNotifier<bool> _isDownloading = ValueNotifier<bool>(false);
-
-  /// 当前是否存在下载任务。
-  bool get isDownloading => _isDownloading.value;
-
-  /// 提供外部监听器所需的可监听对象。
-  ValueListenable<bool> get listenable => _isDownloading;
-
-  /// 注册下载状态变化监听。
-  void addListener(VoidCallback listener) =>
-      _isDownloading.addListener(listener);
-
-  /// 移除下载状态监听。
-  void removeListener(VoidCallback listener) =>
-      _isDownloading.removeListener(listener);
-
-  /// 标记下载开始。
-  void markStarted() => _set(true);
-
-  /// 标记下载进入空闲状态。
-  void markIdle() => _set(false);
-
-  /// 内部方法，统一修改下载状态。
-  void _set(bool value) {
-    if (_isDownloading.value == value) return;
-    _isDownloading.value = value;
-  }
-}
+import 'package:dormdevise/services/update/update_download_service.dart';
 
 /// 关于页面，汇总版本信息与更新逻辑。
 class AboutPage extends StatefulWidget {
@@ -67,16 +32,20 @@ class _AboutPageState extends State<AboutPage> {
   bool _checkingUpdate = false;
   bool _hasNewerVersion = false;
   String _currentVersion = '';
-  late final _UpdateDownloadCoordinator _downloadCoordinator;
+  late final UpdateDownloadService _downloadService;
+  late final UpdateDownloadCoordinator _downloadCoordinator;
   late final VoidCallback _downloadListener;
   List<String>? _cachedSupportedAbis;
   Future<List<String>>? _supportedAbisFuture;
+  _DownloadSession? _activeDownloadSession;
+  _VersionActionMode _versionActionMode = _VersionActionMode.checkUpdate;
 
   /// 初始化监听器并预加载版本与设备信息。
   @override
   void initState() {
     super.initState();
-    _downloadCoordinator = _UpdateDownloadCoordinator.instance;
+    _downloadService = UpdateDownloadService.instance;
+    _downloadCoordinator = _downloadService.coordinator;
     _downloadListener = () {
       if (!mounted) return;
       setState(() {});
@@ -91,7 +60,22 @@ class _AboutPageState extends State<AboutPage> {
   @override
   void dispose() {
     _downloadCoordinator.removeListener(_downloadListener);
+    final _DownloadSession? session = _activeDownloadSession;
+    if (session != null) {
+      session.cancelRequested = true;
+      session.dispose();
+      _activeDownloadSession = null;
+    }
     super.dispose();
+  }
+
+  /// 更新版本按钮的点击模式。
+  void _setVersionActionMode(_VersionActionMode mode) {
+    if (_versionActionMode == mode || !mounted) {
+      _versionActionMode = mode;
+      return;
+    }
+    setState(() => _versionActionMode = mode);
   }
 
   /// 读取当前应用版本并触发更新状态检查。
@@ -132,6 +116,16 @@ class _AboutPageState extends State<AboutPage> {
 
   /// 手动触发更新检查逻辑并提示用户。
   Future<void> _handleCheckForUpdates() async {
+    final _DownloadSession? activeSession = _activeDownloadSession;
+    if (activeSession != null && activeSession.isActive) {
+      await _presentDownloadDialog(activeSession);
+      return;
+    }
+
+    if (_versionActionMode == _VersionActionMode.showDownload) {
+      _setVersionActionMode(_VersionActionMode.checkUpdate);
+    }
+
     if (_checkingUpdate) return;
     setState(() => _checkingUpdate = true);
 
@@ -182,7 +176,7 @@ class _AboutPageState extends State<AboutPage> {
         return;
       }
 
-      await _downloadAndInstallUpdate(context, asset);
+      await _downloadAndInstallUpdate(asset);
     } catch (error) {
       if (!context.mounted) return;
       _showToastMessage(
@@ -193,6 +187,270 @@ class _AboutPageState extends State<AboutPage> {
       if (mounted) {
         setState(() => _checkingUpdate = false);
       }
+    }
+  }
+
+  /// 通过共享下载服务执行更新下载流程并尝试唤起安装程序。
+  Future<void> _downloadAndInstallUpdate(_ReleaseAsset asset) async {
+    final int? totalHint = asset.size > 0 ? asset.size : null;
+    final _DownloadSession? existing = _activeDownloadSession;
+    if (existing != null && existing.isActive) {
+      await _presentDownloadDialog(existing);
+      return;
+    }
+
+    if (existing != null && !existing.isActive) {
+      existing.dispose();
+      _activeDownloadSession = null;
+    }
+
+    final _DownloadSession session = _DownloadSession(
+      asset: asset,
+      totalHint: totalHint,
+    );
+    _activeDownloadSession = session;
+    _downloadCoordinator.markStarted();
+
+    final Future<_DownloadDialogResult?> dialogFuture = _presentDownloadDialog(
+      session,
+      ensureStarted: true,
+    );
+
+    unawaited(
+      dialogFuture.then(
+        (dialogResult) =>
+            _handleDownloadSessionCompletion(session, dialogResult),
+        onError: (Object error, StackTrace stackTrace) {
+          debugPrint('下载弹窗出现异常：${_mapErrorMessage(error)}');
+          session.cancelRequested = true;
+          return _handleDownloadSessionCompletion(session, null);
+        },
+      ),
+    );
+
+    await dialogFuture;
+  }
+
+  /// 展示下载进度弹窗，必要时启动下载任务。
+  Future<_DownloadDialogResult?> _presentDownloadDialog(
+    _DownloadSession session, {
+    bool ensureStarted = false,
+  }) async {
+    return showDialog<_DownloadDialogResult>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        var registered = false;
+        return StatefulBuilder(
+          builder: (stateContext, _) {
+            final NavigatorState navigator = Navigator.of(dialogContext);
+
+            if (!registered) {
+              registered = true;
+              session.updateNavigator(navigator);
+              if (!session.started && ensureStarted) {
+                Future<void>.microtask(() => _startDownloadSession(session));
+              } else if (session.isFinished && !session.dialogClosed) {
+                Future<void>.microtask(() {
+                  session.popDialog(_mapDialogResult(session.downloadResult));
+                });
+              }
+            } else {
+              session.updateNavigator(navigator);
+            }
+
+            return PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, __) async {
+                if (didPop) {
+                  session.clearNavigator();
+                  return;
+                }
+
+                if (session.downloadCompleted.isCompleted) {
+                  session.popDialog(_mapDialogResult(session.downloadResult));
+                  return;
+                }
+
+                final bool shouldBackground = await _confirmBackgroundDownload(
+                  dialogContext,
+                );
+                if (shouldBackground) {
+                  session.backgroundMode = true;
+                  _setVersionActionMode(_VersionActionMode.showDownload);
+                  session.popDialog(_DownloadDialogResult.background);
+                }
+              },
+              child: ValueListenableBuilder<DownloadProgress>(
+                valueListenable: session.progressNotifier,
+                builder: (context, progress, __) {
+                  return AlertDialog(
+                    title: const Text('下载更新'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LinearProgressIndicator(value: progress.fraction),
+                        const SizedBox(height: 12),
+                        Text(_describeProgress(progress)),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          if (session.downloadCompleted.isCompleted) {
+                            session.popDialog(
+                              _mapDialogResult(session.downloadResult),
+                            );
+                            return;
+                          }
+                          session.cancelRequested = true;
+                          session.popDialog(_DownloadDialogResult.cancelled);
+                        },
+                        child: const Text('取消'),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 启动后台下载任务并维护会话状态。
+  void _startDownloadSession(_DownloadSession session) {
+    if (session.started) {
+      return;
+    }
+    session.started = true;
+    unawaited(() async {
+      try {
+        final DownloadRequest request = DownloadRequest(
+          uri: Uri.parse(session.asset.browserDownloadUrl),
+          fileName: session.asset.name.isEmpty ? null : session.asset.name,
+          totalBytesHint: session.totalHint,
+        );
+        final DownloadResult result = await _downloadService.downloadToTempFile(
+          request: request,
+          onProgress: (DownloadProgress progress) {
+            session.progressNotifier.value = DownloadProgress(
+              receivedBytes: progress.receivedBytes,
+              totalBytes: progress.totalBytes ?? session.totalHint,
+            );
+          },
+          shouldCancel: () => session.cancelRequested,
+          trackCoordinator: false,
+        );
+        session.downloadResult = result;
+      } catch (error) {
+        session.downloadResult = DownloadResult.failure(error);
+      } finally {
+        if (!session.downloadCompleted.isCompleted) {
+          session.downloadCompleted.complete();
+        }
+        if (!session.backgroundMode) {
+          session.popDialog(_mapDialogResult(session.downloadResult));
+        }
+      }
+    }());
+  }
+
+  /// 在下载会话结束后处理结果并触发安装流程。
+  Future<void> _handleDownloadSessionCompletion(
+    _DownloadSession session,
+    _DownloadDialogResult? dialogResult,
+  ) async {
+    try {
+      final DownloadResult resolvedDownload =
+          session.downloadResult ?? DownloadResult.failure('下载任务未返回结果');
+      final _DownloadDialogResult resolvedDialog =
+          dialogResult ?? _mapDialogResult(session.downloadResult);
+
+      if (resolvedDialog == _DownloadDialogResult.background) {
+        if (mounted && _checkingUpdate) {
+          setState(() => _checkingUpdate = false);
+        }
+        if (mounted) {
+          _showToastMessage('已切换到后台下载，完成后会自动打开安装程序');
+        } else {
+          debugPrint('已切换到后台下载，完成后会自动打开安装程序');
+        }
+      }
+
+      if (!session.downloadCompleted.isCompleted) {
+        await session.downloadCompleted.future;
+      }
+
+      // FIX 取消下载时显示的是下载失败，应该为：取消下载更新
+      if (resolvedDownload.isFailure) {
+        final Object? error = resolvedDownload.error;
+        final String message = error == null ? '未知错误' : _mapErrorMessage(error);
+        if (mounted) {
+          _showToastMessage('下载更新失败：$message', variant: AppToastVariant.error);
+        } else {
+          debugPrint('下载更新失败：$message');
+        }
+        return;
+      }
+
+      if (resolvedDownload.isCancelled ||
+          resolvedDialog == _DownloadDialogResult.cancelled) {
+        if (mounted) {
+          _showToastMessage('下载已取消', variant: AppToastVariant.warning);
+        } else {
+          debugPrint('Download cancelled before installer launch');
+        }
+        return;
+      }
+
+      final File? file = resolvedDownload.file;
+      if (file == null) {
+        if (mounted) {
+          _showToastMessage('下载完成后未找到安装包。', variant: AppToastVariant.error);
+        } else {
+          debugPrint('下载完成后未找到安装包');
+        }
+        return;
+      }
+
+      if (resolvedDialog == _DownloadDialogResult.background && mounted) {
+        _showToastMessage('下载完成，正在打开安装程序...');
+      } else if (resolvedDialog == _DownloadDialogResult.background) {
+        debugPrint('下载完成，正在尝试打开安装程序');
+      }
+
+      final OpenResult openResult = await OpenFilex.open(
+        file.path,
+        type: 'application/vnd.android.package-archive',
+      );
+
+      if (!mounted) {
+        if (openResult.type != ResultType.done) {
+          final String message = openResult.message;
+          final String displayMessage = message.isEmpty ? '请稍后重试' : message;
+          debugPrint('无法打开安装包：$displayMessage');
+        }
+        return;
+      }
+
+      if (openResult.type != ResultType.done) {
+        final String message = openResult.message;
+        final String displayMessage = message.isEmpty ? '请稍后重试' : message;
+        _showToastMessage(
+          '无法打开安装包：$displayMessage',
+          variant: AppToastVariant.error,
+        );
+      }
+    } finally {
+      session.dispose();
+      if (identical(_activeDownloadSession, session)) {
+        _activeDownloadSession = null;
+      }
+      _setVersionActionMode(_VersionActionMode.checkUpdate);
+      _downloadCoordinator.markIdle();
     }
   }
 
@@ -329,6 +587,14 @@ class _AboutPageState extends State<AboutPage> {
     final releaseNotesVersion = _currentVersion.isEmpty
         ? null
         : _currentVersion;
+    final bool downloadInProgress =
+        _activeDownloadSession?.isActive ?? _downloadCoordinator.isDownloading;
+    final bool tapDisabled = _checkingUpdate;
+    final bool showBusyIndicator = _checkingUpdate;
+    final String versionHint =
+        _versionActionMode == _VersionActionMode.showDownload
+        ? '点击版本查看下载进度'
+        : '点击版本检查更新';
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
       body: SafeArea(
@@ -337,9 +603,11 @@ class _AboutPageState extends State<AboutPage> {
           children: [
             _AboutHeader(
               version: versionLabel,
-              checkingUpdate:
-                  _checkingUpdate || _downloadCoordinator.isDownloading,
+              busyIndicator: showBusyIndicator,
               hasNewerVersion: _hasNewerVersion,
+              versionHint: versionHint,
+              tapDisabled: tapDisabled,
+              downloadInProgress: downloadInProgress,
               onCheckUpdate: _handleCheckForUpdates,
               onOpenRepository: _openRepository,
               onOpenReleasePage: _openReleasePage,
@@ -407,8 +675,11 @@ class _AboutPageState extends State<AboutPage> {
 /// 关于页头部卡片，展示当前版本与快捷入口。
 class _AboutHeader extends StatelessWidget {
   final String version;
-  final bool checkingUpdate;
+  final bool busyIndicator;
   final bool hasNewerVersion;
+  final bool tapDisabled;
+  final bool downloadInProgress;
+  final String versionHint;
   final Future<void> Function() onCheckUpdate;
   final Future<void> Function() onOpenRepository;
   final Future<void> Function() onOpenReleasePage;
@@ -417,8 +688,11 @@ class _AboutHeader extends StatelessWidget {
 
   const _AboutHeader({
     required this.version,
-    required this.checkingUpdate,
+    required this.busyIndicator,
     required this.hasNewerVersion,
+    required this.tapDisabled,
+    required this.downloadInProgress,
+    required this.versionHint,
     required this.onCheckUpdate,
     required this.onOpenRepository,
     required this.onOpenReleasePage,
@@ -469,8 +743,10 @@ class _AboutHeader extends StatelessWidget {
             const SizedBox(height: 20),
             _VersionStatusChip(
               version: version,
-              checkingUpdate: checkingUpdate,
+              showBusyIndicator: busyIndicator,
               hasNewerVersion: hasNewerVersion,
+              disableTap: tapDisabled,
+              downloadInProgress: downloadInProgress,
               onCheckUpdate: onCheckUpdate,
             ),
             const SizedBox(height: 12),
@@ -501,7 +777,7 @@ class _AboutHeader extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '点击版本检查更新',
+              versionHint,
               style: textTheme.labelSmall?.copyWith(color: Colors.grey),
               textAlign: TextAlign.center,
             ),
@@ -515,14 +791,18 @@ class _AboutHeader extends StatelessWidget {
 /// 显示版本状态并支持点击检查更新的徽章。
 class _VersionStatusChip extends StatefulWidget {
   final String version;
-  final bool checkingUpdate;
+  final bool showBusyIndicator;
   final bool hasNewerVersion;
+  final bool disableTap;
+  final bool downloadInProgress;
   final Future<void> Function() onCheckUpdate;
 
   const _VersionStatusChip({
     required this.version,
-    required this.checkingUpdate,
+    required this.showBusyIndicator,
     required this.hasNewerVersion,
+    required this.disableTap,
+    required this.downloadInProgress,
     required this.onCheckUpdate,
   });
 
@@ -577,7 +857,17 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
 
     /// 根据当前状态生成前缀图标部件。
     Widget buildAvatar() {
-      if (widget.checkingUpdate) {
+      if (widget.showBusyIndicator) {
+        return const SizedBox(
+          width: 18,
+          height: 18,
+          child: Padding(
+            padding: EdgeInsets.all(2),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+      if (widget.downloadInProgress) {
         return const SizedBox(
           width: 18,
           height: 18,
@@ -595,9 +885,7 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
     }
 
     return GestureDetector(
-      onTap: widget.checkingUpdate
-          ? null
-          : () => unawaited(widget.onCheckUpdate()),
+      onTap: widget.disableTap ? null : () => unawaited(widget.onCheckUpdate()),
       behavior: HitTestBehavior.opaque,
       child: AnimatedBuilder(
         animation: _controller,
@@ -1340,36 +1628,69 @@ String _formatFileSize(int bytes) {
   return '${size.toStringAsFixed(precision)} ${units[unitIndex]}';
 }
 
+/// 指示版本按钮当前的点击动作。
+enum _VersionActionMode { checkUpdate, showDownload }
+
+/// 表示下载弹窗的关闭状态枚举。
 enum _DownloadDialogResult { success, failure, background, cancelled }
 
-class _DownloadCancelled implements Exception {
-  const _DownloadCancelled();
+/// 封装一次下载交互所需的状态。
+class _DownloadSession {
+  _DownloadSession({required this.asset, required this.totalHint})
+    : progressNotifier = ValueNotifier<DownloadProgress>(
+        DownloadProgress(receivedBytes: 0, totalBytes: totalHint),
+      );
 
-  /// 打印调试信息时使用的描述文本。
-  @override
-  String toString() => 'DownloadCancelled';
-}
+  final _ReleaseAsset asset;
+  final int? totalHint;
+  final ValueNotifier<DownloadProgress> progressNotifier;
+  final Completer<void> downloadCompleted = Completer<void>();
+  DownloadResult? downloadResult;
+  bool cancelRequested = false;
+  bool backgroundMode = false;
+  bool started = false;
+  bool dialogClosed = true;
+  NavigatorState? _navigator;
 
-class _DownloadProgress {
-  final int receivedBytes;
-  final int? totalBytes;
+  /// 是否仍有下载任务活跃。
+  bool get isActive => !downloadCompleted.isCompleted;
 
-  const _DownloadProgress({
-    required this.receivedBytes,
-    required this.totalBytes,
-  });
+  /// 下载是否已经结束。
+  bool get isFinished => downloadCompleted.isCompleted;
 
-  /// 当前进度所占总量的比例。
-  double? get fraction {
-    final total = totalBytes;
-    if (total == null || total <= 0) return null;
-    if (total == 0) return null;
-    return (receivedBytes / total).clamp(0.0, 1.0);
+  /// 记录当前弹窗关联的导航器并重置背景状态。
+  void updateNavigator(NavigatorState navigatorState) {
+    _navigator = navigatorState;
+    dialogClosed = false;
+    backgroundMode = false;
+  }
+
+  /// 清除已关联的导航器引用。
+  void clearNavigator() {
+    _navigator = null;
+    dialogClosed = true;
+  }
+
+  /// 根据给定结果尝试关闭当前弹窗。
+  void popDialog(_DownloadDialogResult result) {
+    final NavigatorState? nav = _navigator;
+    if (nav == null || !nav.mounted || dialogClosed) {
+      return;
+    }
+    dialogClosed = true;
+    _navigator = null;
+    nav.pop(result);
+  }
+
+  /// 释放会话持有的资源。
+  void dispose() {
+    progressNotifier.dispose();
+    _navigator = null;
   }
 }
 
 /// 根据下载进度生成描述文本。
-String _describeProgress(_DownloadProgress progress) {
+String _describeProgress(DownloadProgress progress) {
   if (progress.receivedBytes <= 0) {
     return '正在准备下载...';
   }
@@ -1412,294 +1733,19 @@ Future<bool> _confirmBackgroundDownload(BuildContext context) async {
   return result ?? false;
 }
 
-/// 执行更新包下载流程并尝试唤起安装程序。
-Future<void> _downloadAndInstallUpdate(
-  BuildContext context,
-  _ReleaseAsset asset,
-) async {
-  final coordinator = _UpdateDownloadCoordinator.instance;
-  coordinator.markStarted();
-  final totalHint = asset.size > 0 ? asset.size : null;
-  final progressNotifier = ValueNotifier<_DownloadProgress>(
-    _DownloadProgress(receivedBytes: 0, totalBytes: totalHint),
-  );
-
-  final downloadCompleted = Completer<void>();
-  File? downloadedFile;
-  Object? downloadError;
-  var backgroundMode = false;
-  var cancelRequested = false;
-  var dialogClosed = false;
-  final httpClient = http.Client();
-
-  /// 实际执行下载流程的内部方法。
-  Future<void> runDownload(NavigatorState navigator) async {
-    try {
-      final file = await _downloadReleaseAsset(
-        asset,
-        onProgress: (received, total) {
-          final effectiveTotal = total ?? totalHint;
-          progressNotifier.value = _DownloadProgress(
-            receivedBytes: received,
-            totalBytes: effectiveTotal,
-          );
-        },
-        client: httpClient,
-        shouldCancel: () => cancelRequested,
-      );
-      downloadedFile = file;
-    } catch (error) {
-      if (cancelRequested) {
-        downloadError = const _DownloadCancelled();
-      } else {
-        downloadError = error;
-      }
-    } finally {
-      if (!downloadCompleted.isCompleted) {
-        downloadCompleted.complete();
-      }
-
-      if (!backgroundMode && navigator.mounted && !dialogClosed) {
-        dialogClosed = true;
-        navigator.pop(
-          downloadError == null
-              ? _DownloadDialogResult.success
-              : _DownloadDialogResult.failure,
-        );
-      }
-    }
+/// 将下载服务返回的结果映射为对话框的结束状态。
+_DownloadDialogResult _mapDialogResult(DownloadResult? result) {
+  final DownloadResult? resolved = result;
+  if (resolved == null) {
+    return _DownloadDialogResult.failure;
   }
-
-  final dialogResult = await showDialog<_DownloadDialogResult>(
-    context: context,
-    barrierDismissible: true,
-    builder: (dialogContext) {
-      var started = false;
-      return StatefulBuilder(
-        builder: (stateContext, _) {
-          final navigator = Navigator.of(dialogContext);
-          if (!started) {
-            started = true;
-            Future<void>.microtask(() => runDownload(navigator));
-          }
-
-          return PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (didPop, __) async {
-              if (didPop) {
-                return;
-              }
-
-              if (downloadCompleted.isCompleted) {
-                if (navigator.mounted) {
-                  dialogClosed = true;
-                  navigator.pop(
-                    downloadError == null
-                        ? _DownloadDialogResult.success
-                        : _DownloadDialogResult.failure,
-                  );
-                }
-                return;
-              }
-
-              final shouldBackground = await _confirmBackgroundDownload(
-                dialogContext,
-              );
-              if (shouldBackground) {
-                backgroundMode = true;
-                if (navigator.mounted) {
-                  dialogClosed = true;
-                  navigator.pop(_DownloadDialogResult.background);
-                }
-              }
-            },
-            child: ValueListenableBuilder<_DownloadProgress>(
-              valueListenable: progressNotifier,
-              builder: (context, progress, __) {
-                return AlertDialog(
-                  title: const Text('下载更新'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LinearProgressIndicator(value: progress.fraction),
-                      const SizedBox(height: 12),
-                      Text(_describeProgress(progress)),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        if (downloadCompleted.isCompleted) {
-                          dialogClosed = true;
-                          navigator.pop(_DownloadDialogResult.cancelled);
-                          return;
-                        }
-                        cancelRequested = true;
-                        httpClient.close();
-                        dialogClosed = true;
-                        navigator.pop(_DownloadDialogResult.cancelled);
-                      },
-                      child: const Text('取消'),
-                    ),
-                  ],
-                );
-              },
-            ),
-          );
-        },
-      );
-    },
-  );
-
-  try {
-    final resolvedResult =
-        dialogResult ??
-        (downloadError == null
-            ? _DownloadDialogResult.success
-            : _DownloadDialogResult.failure);
-
-    if (!downloadCompleted.isCompleted) {
-      await downloadCompleted.future;
-    }
-
-    progressNotifier.dispose();
-
-    httpClient.close();
-
-    if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
-      AppToast.show(context, '已切换到后台下载，完成后会自动打开安装程序');
-    }
-
-    if (downloadError != null) {
-      if (downloadError is _DownloadCancelled ||
-          resolvedResult == _DownloadDialogResult.cancelled) {
-        if (context.mounted) {
-          AppToast.show(context, '下载已取消', variant: AppToastVariant.warning);
-        } else {
-          debugPrint('Download cancelled before installer launch');
-        }
-        return;
-      }
-      final message = _mapErrorMessage(downloadError!);
-      if (context.mounted) {
-        AppToast.show(
-          context,
-          '下载更新失败：$message',
-          variant: AppToastVariant.error,
-        );
-      } else {
-        debugPrint('下载更新失败：$message');
-      }
-      return;
-    }
-
-    final file = downloadedFile;
-    if (file == null) {
-      if (context.mounted) {
-        AppToast.show(context, '下载完成后未找到安装包。', variant: AppToastVariant.error);
-      } else {
-        debugPrint('下载完成后未找到安装包');
-      }
-      return;
-    }
-
-    if (resolvedResult == _DownloadDialogResult.background && context.mounted) {
-      AppToast.show(context, '下载完成，正在打开安装程序...');
-    } else if (resolvedResult == _DownloadDialogResult.background) {
-      debugPrint('下载完成，正在尝试打开安装程序');
-    }
-
-    final openResult = await OpenFilex.open(
-      file.path,
-      type: 'application/vnd.android.package-archive',
-    );
-
-    if (!context.mounted) {
-      if (openResult.type != ResultType.done) {
-        final message = openResult.message;
-        final displayMessage = message.isEmpty ? '请稍后重试' : message;
-        debugPrint('无法打开安装包：$displayMessage');
-      }
-      return;
-    }
-
-    if (openResult.type != ResultType.done) {
-      final message = openResult.message;
-      final displayMessage = message.isEmpty ? '请稍后重试' : message;
-      AppToast.show(
-        context,
-        '无法打开安装包：$displayMessage',
-        variant: AppToastVariant.error,
-      );
-    }
-  } finally {
-    coordinator.markIdle();
+  if (resolved.isCancelled) {
+    return _DownloadDialogResult.cancelled;
   }
-}
-
-/// 下载发布资源并返回临时文件路径。
-Future<File> _downloadReleaseAsset(
-  _ReleaseAsset asset, {
-  required void Function(int receivedBytes, int? totalBytes) onProgress,
-  http.Client? client,
-  bool Function()? shouldCancel,
-}) async {
-  final downloadUri = Uri.parse(asset.browserDownloadUrl);
-  final httpClient = client ?? http.Client();
-  final ownsClient = client == null;
-  try {
-    final request = http.Request('GET', downloadUri);
-    final response = await httpClient.send(request);
-    if (response.statusCode != 200) {
-      throw Exception('下载失败，状态码 ${response.statusCode}');
-    }
-
-    final totalBytes =
-        response.contentLength ?? (asset.size > 0 ? asset.size : null);
-    final tempDir = await getTemporaryDirectory();
-    final fileName = _sanitizeFileName(
-      asset.name.isEmpty ? 'DormDevise-update.apk' : asset.name,
-    );
-    final filePath = '${tempDir.path}${Platform.pathSeparator}$fileName';
-    final file = File(filePath);
-    final sink = file.openWrite();
-    var received = 0;
-    var success = false;
-    onProgress(0, totalBytes);
-    try {
-      await for (final chunk in response.stream) {
-        if (shouldCancel?.call() ?? false) {
-          throw const _DownloadCancelled();
-        }
-        received += chunk.length;
-        sink.add(chunk);
-        onProgress(received, totalBytes);
-      }
-      success = true;
-    } finally {
-      await sink.flush();
-      await sink.close();
-      if (!success && await file.exists()) {
-        await file.delete();
-      }
-    }
-
-    return file;
-  } finally {
-    if (ownsClient) {
-      httpClient.close();
-    }
+  if (resolved.isFailure) {
+    return _DownloadDialogResult.failure;
   }
-}
-
-/// 清理文件名中的非法字符。
-String _sanitizeFileName(String raw) {
-  final sanitized = raw.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-  if (sanitized.trim().isEmpty) {
-    return 'DormDevise-update-${DateTime.now().millisecondsSinceEpoch}.apk';
-  }
-  return sanitized;
+  return _DownloadDialogResult.success;
 }
 
 /// 从发布说明文本中抽取项目符号高亮。
