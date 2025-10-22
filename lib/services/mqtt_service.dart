@@ -64,13 +64,10 @@ class MqttService {
   final OnError? onError;
 
   int keepAliveSeconds;
-  final Duration minBackoff;
-  final Duration maxBackoff;
 
   late final MqttServerClient _client;
-  Timer? _manualReconnectTimer;
-  int _reconnectAttempt = 0;
   final Random _rnd = Random();
+  bool _updatesBound = false;
 
   bool get isConnected =>
       _client.connectionStatus?.state == MqttConnectionState.connected;
@@ -86,20 +83,16 @@ class MqttService {
     this.onNotification,
     this.log,
     this.onError,
-    this.minBackoff = const Duration(seconds: 1),
-    this.maxBackoff = const Duration(seconds: 30),
     this.securityContext,
   }) {
     _client = MqttServerClient(host, clientId)
       ..port = port
       ..keepAlivePeriod = keepAliveSeconds
-      ..autoReconnect = true
-      ..resubscribeOnAutoReconnect = true
+      ..autoReconnect = false
+      ..resubscribeOnAutoReconnect = false
       ..secure = securityContext != null
       ..onConnected = onConnected
       ..onDisconnected = onDisconnected
-      ..onAutoReconnect = onAutoReconnect
-      ..onAutoReconnected = onAutoReconnected
       ..logging(on: false);
     if (securityContext != null) {
       _client.securityContext = securityContext!;
@@ -123,20 +116,30 @@ class MqttService {
     try {
       _info('🔌 [MQTT] connecting to $host:$port (clientId=$clientId)');
       await _client.connect();
-      _client.updates!.listen(
-        _onMessage,
-        onError: (e, st) {
-          _error('❌ [MQTT] stream error: $e', e, st);
-        },
-        onDone: () {
-          _warn('⚠️ [MQTT] update stream done');
-        },
-      );
+      if (!_updatesBound && _client.updates != null) {
+        _client.updates!.listen(
+          _onMessage,
+          onError: (e, st) {
+            _error('❌ [MQTT] stream error: $e', e, st);
+          },
+          onDone: () {
+            _warn('⚠️ [MQTT] update stream done');
+          },
+        );
+        _updatesBound = true;
+      }
     } catch (e, st) {
       _error('🚫 [MQTT] connect failed: $e', e, st);
-      _scheduleManualReconnect();
       rethrow;
     }
+  }
+
+  /// 确保当前已建立连接，在未连接时触发一次立即重连。
+  Future<void> ensureConnected() async {
+    if (isConnected) {
+      return;
+    }
+    await connect();
   }
 
   /// 订阅主题以便接收消息。
@@ -174,6 +177,7 @@ class MqttService {
     Duration timeout = const Duration(seconds: 5),
     MqttQos qos = MqttQos.atLeastOnce,
   }) async {
+    await ensureConnected();
     await subscribe(respTopic, qos: qos);
     final String reqId = (payload['req_id'] as String?) ?? _genReqId();
     payload['req_id'] = reqId;
@@ -231,69 +235,30 @@ class MqttService {
     }
   }
 
-  /// 连接成功后自动重新订阅并重置重连状态。
+  /// 连接成功后自动重新订阅已登记的主题。
   void onConnected() {
     _info('✅ [MQTT] connected');
-    _reconnectAttempt = 0;
-    _manualReconnectTimer?.cancel();
-    _manualReconnectTimer = null;
     for (final t in _subscriptions) {
       _client.subscribe(t, MqttQos.atLeastOnce);
     }
   }
 
-  /// 连接断开时启动手动重连调度。
+  /// 连接断开时仅记录状态，等待业务触发重连。
   void onDisconnected() {
     _warn('⚠️ [MQTT] disconnected');
-    _scheduleManualReconnect();
-  }
-
-  /// 自动重连开始时记录提示。
-  void onAutoReconnect() {
-    _warn('⏳ [MQTT] auto reconnecting...');
-  }
-
-  /// 自动重连成功后的回调。
-  void onAutoReconnected() {
-    _info('🔁 [MQTT] auto reconnected');
-  }
-
-  /// 启动带抖动的重连定时器。
-  void _scheduleManualReconnect() {
-    if (isConnected) return;
-    _manualReconnectTimer?.cancel();
-    final base = minBackoff.inMilliseconds * pow(2, _reconnectAttempt).toInt();
-    final capped = base.clamp(
-      minBackoff.inMilliseconds,
-      maxBackoff.inMilliseconds,
-    );
-    final jitter = (capped * (0.2 * (_rnd.nextDouble() * 2 - 1))).round();
-    final delay = Duration(milliseconds: max(0, capped + jitter));
-    _reconnectAttempt = min(_reconnectAttempt + 1, 10);
-    _warn('🕰️ [MQTT] schedule reconnect in ${delay.inMilliseconds} ms');
-    _manualReconnectTimer = Timer(delay, () async {
-      try {
-        await connect();
-      } catch (_) {
-        _scheduleManualReconnect();
-      }
-    });
   }
 
   /// 关闭客户端并清理待完成的请求。
   Future<void> dispose() async {
     _info('🧹 [MQTT] dispose');
-    _manualReconnectTimer?.cancel();
-    _manualReconnectTimer = null;
     for (final c in _pending.values) {
       if (!c.isCompleted) c.completeError(StateError('MQTT disposed'));
     }
     _pending.clear();
     if (isConnected) {
       _client.disconnect();
-    } else {
-      _client.doAutoReconnect(force: false);
     }
+    _updatesBound = false;
   }
 
   /// 生成请求 ID，确保唯一性。
