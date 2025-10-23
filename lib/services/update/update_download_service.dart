@@ -162,59 +162,159 @@ class UpdateDownloadService {
     if (trackCoordinator) {
       coordinator.markStarted();
     }
-    final http.Client client = request.client ?? http.Client();
-    final bool ownsClient = request.client == null;
+    // 支持从主源下载，当检测到首 2% 过慢（<100KB/s）时，静默切换到备用下载源。
+    // 使用请求提供的 client 或在需要时按需创建。本方法内部的 probe 和下载流程
+    // 各自创建/关闭自己的 client，避免共享 client 的生命周期复杂性。
     File? targetFile;
-    try {
-      final http.Request httpRequest = http.Request('GET', request.uri);
-      final http.StreamedResponse response = await client.send(httpRequest);
-      if (response.statusCode != 200) {
-        throw Exception('下载失败，状态码 ${response.statusCode}');
+
+    // 如果原始是 github 的 asset，自动构造备用下载地址
+    Uri? constructAlternativeUri(Uri original, String fileName) {
+      // 备用源路径规则为: https://download.xiaoheiwu.fun/dormdevise/{filename}
+      try {
+        final sanitizedName = Uri.encodeComponent(fileName);
+        return Uri.parse(
+          'https://download.xiaoheiwu.fun/dormdevise/$sanitizedName',
+        );
+      } catch (_) {
+        return null;
       }
-      final int? totalBytes = response.contentLength ?? request.totalBytesHint;
-      final Directory directory =
-          request.targetDirectory ?? await getTemporaryDirectory();
+    }
+
+    // 之前的流内切换常量已移至探测阶段，如有需要可在请求中参数化。
+
+    try {
+      // 辅助函数：安全地删除可能为 null 的文件，忽略异常
+      Future<void> safeDelete(File? f) async {
+        if (f == null) return;
+        try {
+          if (await f.exists()) {
+            await f.delete();
+          }
+        } catch (_) {
+          // 忽略删除异常
+        }
+      }
+
+      // 准备候选源列表（主源为首选，备用源可选）
+      final List<Uri> sources = <Uri>[];
+      sources.add(request.uri);
       final String resolvedName = sanitizeFileName(
         request.fileName ?? _resolveNameFromUri(request.uri),
       );
-      final String filePath =
-          '${directory.path}${Platform.pathSeparator}$resolvedName';
-      targetFile = File(filePath);
-      final IOSink sink = targetFile.openWrite();
-      int received = 0;
-      onProgress?.call(
-        DownloadProgress(receivedBytes: 0, totalBytes: totalBytes),
-      );
-      try {
-        await for (final List<int> chunk in response.stream) {
-          if (shouldCancel?.call() ?? false) {
-            throw const DownloadCancelled();
+      final Uri? alt = constructAlternativeUri(request.uri, resolvedName);
+      if (alt != null && alt.toString() != request.uri.toString()) {
+        sources.add(alt);
+      }
+
+      // 以前用于记录最后一次失败的占位变量在新流程中已不再需要。
+
+      // 先对 primary（sources[0]）做短时探测（probe），只测速与可用性，不下载完整文件。
+      final Uri primary = sources.first;
+      final Uri? alternative = sources.length > 1 ? sources[1] : null;
+
+      // 探测参数：探测最多读取 probeBytes，超时 probeTimeout
+      const int probeBytes = 64 * 1024; // 64 KB
+      const Duration probeTimeout = Duration(seconds: 5);
+      final int speedThreshold = 200 * 1024; // 200 KB/s
+
+      Future<double?> probeSpeed(Uri uri) async {
+        final http.Client probeClient = request.client ?? http.Client();
+        final bool ownsProbeClient = request.client == null;
+        int received = 0;
+        final sw = Stopwatch()..start();
+        try {
+          final http.Request probeReq = http.Request('GET', uri);
+          // 请求部分字节以避免下载完整文件（如果服务器支持 Range）
+          probeReq.headers['Range'] = 'bytes=0-${probeBytes - 1}';
+          final http.StreamedResponse resp = await probeClient
+              .send(probeReq)
+              .timeout(probeTimeout);
+          if (resp.statusCode != 200 && resp.statusCode != 206) {
+            return null; // 不可用或不支持
           }
-          received += chunk.length;
-          sink.add(chunk);
-          onProgress?.call(
-            DownloadProgress(receivedBytes: received, totalBytes: totalBytes),
-          );
+
+          // 读取直到 probeBytes 或超时
+          await for (final chunk in resp.stream) {
+            received += chunk.length;
+            if (sw.elapsed >= probeTimeout) break;
+            if (received >= probeBytes) break;
+          }
+
+          final elapsedSec = sw.elapsedMilliseconds / 1000.0;
+          if (elapsedSec <= 0) return double.infinity;
+          return received / elapsedSec;
+        } catch (_) {
+          return null;
+        } finally {
+          if (ownsProbeClient) probeClient.close();
         }
+      }
+
+      // 执行对 primary 的探测
+      final double? primarySpeed = await probeSpeed(primary);
+
+      Uri chosen = primary;
+      if ((primarySpeed == null || primarySpeed < speedThreshold) &&
+          alternative != null) {
+        chosen = alternative;
+      }
+
+      // 从选定的源开始完整下载（单源，不在中途切换）
+      final http.Client client = request.client ?? http.Client();
+      final bool ownsLocalClient = request.client == null;
+      try {
+        final http.Request httpRequest = http.Request('GET', chosen);
+        final http.StreamedResponse response = await client.send(httpRequest);
+        if (response.statusCode != 200) {
+          throw Exception('下载失败，状态码 ${response.statusCode}');
+        }
+        final int? totalBytes =
+            response.contentLength ?? request.totalBytesHint;
+        final Directory directory =
+            request.targetDirectory ?? await getTemporaryDirectory();
+        final String filePath =
+            '${directory.path}${Platform.pathSeparator}$resolvedName';
+        targetFile = File(filePath);
+        final IOSink sink = targetFile.openWrite();
+
+        int received = 0;
+        onProgress?.call(
+          DownloadProgress(receivedBytes: 0, totalBytes: totalBytes),
+        );
+        try {
+          await for (final List<int> chunk in response.stream) {
+            if (shouldCancel?.call() ?? false) {
+              throw const DownloadCancelled();
+            }
+            received += chunk.length;
+            sink.add(chunk);
+            onProgress?.call(
+              DownloadProgress(receivedBytes: received, totalBytes: totalBytes),
+            );
+          }
+        } finally {
+          await sink.flush();
+          await sink.close();
+        }
+
+        return DownloadResult.success(file: targetFile);
+      } on DownloadCancelled {
+        await safeDelete(targetFile);
+        if (shouldCancel?.call() ?? false) {
+          return const DownloadResult.cancelled();
+        }
+        return const DownloadResult.cancelled();
+      } catch (error) {
+        await safeDelete(targetFile);
+        return DownloadResult.failure(error);
       } finally {
-        await sink.flush();
-        await sink.close();
+        if (ownsLocalClient) {
+          client.close();
+        }
       }
-      return DownloadResult.success(file: targetFile);
-    } on DownloadCancelled {
-      if (targetFile != null && await targetFile.exists()) {
-        await targetFile.delete();
-      }
-      return const DownloadResult.cancelled();
-    } catch (error) {
-      if (targetFile != null && await targetFile.exists()) {
-        await targetFile.delete();
-      }
-      return DownloadResult.failure(error);
+
+      // 所有流程已完成或失败，控制流将在上面返回相应结果。
     } finally {
-      if (ownsClient) {
-        client.close();
-      }
       if (trackCoordinator) {
         coordinator.markIdle();
       }
