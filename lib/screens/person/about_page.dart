@@ -10,6 +10,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
+import 'package:dormdevise/services/update/update_installer.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,7 @@ class _AboutPageState extends State<AboutPage> {
   late final UpdateDownloadService _downloadService;
   late final UpdateDownloadCoordinator _downloadCoordinator;
   late final VoidCallback _downloadListener;
+  StreamSubscription<String>? _installSubscription;
   List<String>? _cachedSupportedAbis;
   Future<List<String>>? _supportedAbisFuture;
   _DownloadSession? _activeDownloadSession;
@@ -51,6 +53,20 @@ class _AboutPageState extends State<AboutPage> {
       setState(() {});
     };
     _downloadCoordinator.addListener(_downloadListener);
+    // 订阅原生安装完成广播，收到事件后尝试清理临时 APK
+    _installSubscription = UpdateInstaller.onPackageInstalled.listen((pkg) {
+      try {
+        if (!mounted) {
+          debugPrint('收到安装完成事件（后台），包名：$pkg');
+        } else {
+          debugPrint('收到安装完成事件，包名：$pkg');
+        }
+        // 异步清理临时 APK
+        unawaited(UpdateInstaller.cleanupTemporaryApks());
+      } catch (e) {
+        debugPrint('处理安装完成事件出错：$e');
+      }
+    });
     unawaited(_initPackageInfo());
     unawaited(_primeLatestVersionStatus());
     unawaited(_ensureSupportedAbis());
@@ -66,6 +82,8 @@ class _AboutPageState extends State<AboutPage> {
       session.dispose();
       _activeDownloadSession = null;
     }
+    _installSubscription?.cancel();
+    _installSubscription = null;
     super.dispose();
   }
 
@@ -422,27 +440,18 @@ class _AboutPageState extends State<AboutPage> {
         debugPrint('下载完成，正在尝试打开安装程序');
       }
 
-      final OpenResult openResult = await OpenFilex.open(
-        file.path,
-        type: 'application/vnd.android.package-archive',
+      final OpenResult openResult = await UpdateInstaller.openAndCleanup(
+        file,
+        showToast: (msg) {
+          if (!mounted) return;
+          _showToastMessage(msg);
+        },
       );
 
-      if (!mounted) {
-        if (openResult.type != ResultType.done) {
-          final String message = openResult.message;
-          final String displayMessage = message.isEmpty ? '请稍后重试' : message;
-          debugPrint('无法打开安装包：$displayMessage');
-        }
-        return;
-      }
-
-      if (openResult.type != ResultType.done) {
+      if (!mounted && openResult.type != ResultType.done) {
         final String message = openResult.message;
         final String displayMessage = message.isEmpty ? '请稍后重试' : message;
-        _showToastMessage(
-          '无法打开安装包：$displayMessage',
-          variant: AppToastVariant.error,
-        );
+        debugPrint('无法打开安装包：$displayMessage');
       }
     } finally {
       session.dispose();
