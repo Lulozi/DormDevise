@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:dormdevise/screens/open_door/location_settings_page.dart';
@@ -10,7 +9,13 @@ import 'package:dormdevise/screens/person/widgets/settings_open_container.dart';
 /// 个人中心页面，汇总多类设置入口及动画。
 class PersonPage extends StatefulWidget {
   final double appBarProgress;
-  const PersonPage({super.key, this.appBarProgress = 0.0});
+  final ValueChanged<bool>? onInteractionLockChanged;
+
+  const PersonPage({
+    super.key,
+    this.appBarProgress = 0.0,
+    this.onInteractionLockChanged,
+  });
 
   /// 创建状态对象以驱动 UI 动画。
   @override
@@ -36,7 +41,6 @@ class _PersonPageState extends State<PersonPage> {
       progress,
     )!;
 
-    // FIX 返回的页面时，切换页面动画不会自动取消
     // body滑动动画：progress=0时完全显示，progress=0.1后开始滑出，progress=1时完全隐藏
     double bodyProgress = 1.0;
     if (progress <= 0.1 && progress >= 0.0) {
@@ -144,6 +148,8 @@ class _PersonPageState extends State<PersonPage> {
         icon: icon,
         title: title,
         pageBuilder: builder,
+        enableTransition: widget.appBarProgress <= 0.05,
+        onInteractionLockChanged: widget.onInteractionLockChanged,
       ),
     );
   }
@@ -157,18 +163,11 @@ Widget _buildHead(Color textColor) {
         padding: const EdgeInsets.only(left: 12, bottom: 12),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(32),
-          child: CachedNetworkImage(
-            imageUrl:
-                'https://minio.xiaoheiwu.fun/imgs/2025-10-22-14:45:35-ff31654892a9466498727306682de17b.jpg',
+          child: Image.asset(
+            'assets/images/person/person0.jpg',
             width: 48,
             height: 48,
             fit: BoxFit.cover,
-            placeholder: (context, url) => const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            errorWidget: (context, url, error) => const Icon(Icons.error),
           ),
         ),
       ),
