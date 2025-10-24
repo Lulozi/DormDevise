@@ -162,18 +162,18 @@ class UpdateDownloadService {
     if (trackCoordinator) {
       coordinator.markStarted();
     }
-    // 支持从主源下载，当检测到首 2% 过慢（<100KB/s）时，静默切换到备用下载源。
+    // 先尝试 CDN 主站，若探测显示速率不足，再退回 GitHub 作为备用下载源。
     // 使用请求提供的 client 或在需要时按需创建。本方法内部的 probe 和下载流程
     // 各自创建/关闭自己的 client，避免共享 client 的生命周期复杂性。
     File? targetFile;
 
-    // 如果原始是 github 的 asset，自动构造备用下载地址
+    // 如果原始是 github 的 asset，自动构造主 CDN 下载地址
     Uri? constructAlternativeUri(Uri original, String fileName) {
-      // 备用源路径规则为: https://download.xiaoheiwu.fun/dormdevise/{filename}
+      // 主源路径规则为: http://download.cdn.xiaoheiwu.fun/App/dormdevise/{filename}
       try {
         final sanitizedName = Uri.encodeComponent(fileName);
         return Uri.parse(
-          'https://download.xiaoheiwu.fun/dormdevise/$sanitizedName',
+          'http://download.cdn.xiaoheiwu.fun/App/dormdevise/$sanitizedName',
         );
       } catch (_) {
         return null;
@@ -196,14 +196,17 @@ class UpdateDownloadService {
       }
 
       // 准备候选源列表（主源为首选，备用源可选）
-      final List<Uri> sources = <Uri>[];
-      sources.add(request.uri);
       final String resolvedName = sanitizeFileName(
         request.fileName ?? _resolveNameFromUri(request.uri),
       );
-      final Uri? alt = constructAlternativeUri(request.uri, resolvedName);
-      if (alt != null && alt.toString() != request.uri.toString()) {
-        sources.add(alt);
+      final List<Uri> sources = <Uri>[];
+      final Uri? cdnUri = constructAlternativeUri(request.uri, resolvedName);
+      if (cdnUri != null) {
+        sources.add(cdnUri);
+      }
+      if (sources.isEmpty ||
+          sources.first.toString() != request.uri.toString()) {
+        sources.add(request.uri);
       }
 
       // 以前用于记录最后一次失败的占位变量在新流程中已不再需要。
