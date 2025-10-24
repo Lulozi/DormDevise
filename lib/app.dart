@@ -38,6 +38,7 @@ class ManagementScreenState extends State<ManagementScreen>
   late final PageController _pageController;
   double _page = 1.0;
   bool _isLoading = true;
+  bool _navLocked = false;
 
   /// 根据索引构建对应的业务页面。
   Widget _buildPage(int index) {
@@ -48,7 +49,10 @@ class ManagementScreenState extends State<ManagementScreen>
       } else if (_page <= 1.7) {
         progress = 1.0;
       }
-      return PersonPage(appBarProgress: progress);
+      return PersonPage(
+        appBarProgress: progress,
+        onInteractionLockChanged: _handleInteractionLockChanged,
+      );
     }
     if (index == 1) {
       return const OpenDoorPage();
@@ -83,6 +87,16 @@ class ManagementScreenState extends State<ManagementScreen>
       },
       child: const SizedBox.shrink(),
     );
+  }
+
+  /// 控制底部导航交互锁，防止动效未结束时切换页面。
+  void _handleInteractionLockChanged(bool locked) {
+    if (_navLocked == locked) {
+      return;
+    }
+    setState(() {
+      _navLocked = locked;
+    });
   }
 
   /// 初始化页面控制器并处理短暂的加载动效。
@@ -121,43 +135,49 @@ class ManagementScreenState extends State<ManagementScreen>
       resizeToAvoidBottomInset: false,
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.only(bottom: 4),
-        child: NavigationBar(
-          height: 72,
-          backgroundColor: colorScheme.surface,
-          indicatorColor: colorScheme.secondaryContainer,
-          selectedIndex: selectedIndex,
-          onDestinationSelected: (value) {
-            if (selectedIndex == value) return;
-            _pageController.animateToPage(
-              value,
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.ease,
-            );
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.calendar_today_outlined),
-              selectedIcon: Icon(Icons.calendar_today),
-              label: '课表',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.door_front_door_outlined),
-              selectedIcon: Icon(Icons.door_front_door),
-              label: '开门',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: '我的',
-            ),
-          ],
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-          elevation: 0,
-          shadowColor: Colors.transparent,
+        child: IgnorePointer(
+          ignoring: _navLocked,
+          child: NavigationBar(
+            height: 72,
+            backgroundColor: colorScheme.surface,
+            indicatorColor: colorScheme.secondaryContainer,
+            selectedIndex: selectedIndex,
+            onDestinationSelected: (value) {
+              if (_navLocked || selectedIndex == value) {
+                return;
+              }
+              _pageController.animateToPage(
+                value,
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.ease,
+              );
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.calendar_today_outlined),
+                selectedIcon: Icon(Icons.calendar_today),
+                label: '课表',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.door_front_door_outlined),
+                selectedIcon: Icon(Icons.door_front_door),
+                label: '开门',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: '我的',
+              ),
+            ],
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+            elevation: 0,
+            shadowColor: Colors.transparent,
+          ),
         ),
       ),
       body: PageView.builder(
         controller: _pageController,
+        physics: const NeverScrollableScrollPhysics(),
         itemCount: 3,
         itemBuilder: (context, index) => _buildAnimatedPage(context, index),
         onPageChanged: (index) {
