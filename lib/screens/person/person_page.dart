@@ -4,6 +4,7 @@ import 'package:dormdevise/screens/open_door/location_settings_page.dart';
 import 'package:dormdevise/screens/open_door/mqtt_settings_page.dart';
 import 'package:dormdevise/screens/open_door/wifi_settings_page.dart';
 import 'package:dormdevise/screens/person/about_page.dart';
+import 'package:dormdevise/screens/person/door_widget_settings_page.dart';
 import 'package:dormdevise/screens/person/widgets/settings_open_container.dart';
 
 /// 个人中心页面，汇总多类设置入口及动画。
@@ -67,6 +68,11 @@ class _PersonPageState extends State<PersonPage> {
         icon: Icons.location_on,
         title: '定位设置',
         builder: (context) => const LocationSettingsPage(),
+      ),
+      _buildSettingsEntry(
+        icon: Icons.dashboard_customize,
+        title: '桌面微件配置',
+        builder: (context) => const DoorWidgetSettingsPage(),
       ),
       _buildSettingsEntry(
         icon: Icons.info_outline,
