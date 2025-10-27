@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:dormdevise/screens/open_door/door_callbacks.dart';
 import 'package:dormdevise/screens/open_door/open_door_settings_page.dart';
-import 'package:dormdevise/services/mqtt_service.dart';
+import 'package:dormdevise/services/door_trigger_service.dart';
+import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 /// 开门控制主页面，提供快速开门及进入设置的入口。
 class OpenDoorPage extends StatefulWidget {
@@ -21,16 +22,15 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
   double _longPressProgress = 0.0;
   bool isOpen = false;
   DateTime? lastTapTime;
-  MqttService? _mqttService;
+  bool _opening = false;
 
-  /// 长按开始时启动计时进入设置页面。
+  /// 长按开始时启动计时，结束后进入配置页面。
   void _handleLongPressStart(LongPressStartDetails details) {
     _longPressTimer?.cancel();
     _longPressProgress = 0.0;
-    const totalMs = 2000;
-    var elapsed = 0;
-    const tick = 50;
-    // 定时器回调中再获取Navigator，避免context失效
+    const int totalMs = 2000;
+    int elapsed = 0;
+    const int tick = 50;
     _longPressTimer = Timer.periodic(const Duration(milliseconds: tick), (
       timer,
     ) {
@@ -44,10 +44,9 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
         if (!mounted) {
           return;
         }
-        final navigator = Navigator.of(context);
-        navigator.push(
-          MaterialPageRoute(builder: (_) => const OpenDoorSettingsPage()),
-        );
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const OpenDoorSettingsPage()));
       }
     });
   }
@@ -60,10 +59,60 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
     });
   }
 
-  /// 构建开门页面主体与提示信息。
+  /// 执行一次开门动作，复用统一服务并同步桌面微件状态。
+  Future<void> _triggerDoorOpen() async {
+    if (_opening) {
+      return;
+    }
+    final DateTime now = DateTime.now();
+    if (lastTapTime != null &&
+        now.difference(lastTapTime!) < const Duration(seconds: 4)) {
+      return;
+    }
+    lastTapTime = now;
+    if (isOpen) {
+      return;
+    }
+    setState(() {
+      _opening = true;
+    });
+    if (DoorWidgetService.instance.settings.enableHaptics) {
+      await HapticFeedback.mediumImpact();
+    }
+    await DoorWidgetService.instance.markManualTriggerStart();
+    final DoorTriggerResult result = await DoorTriggerService.instance
+        .triggerDoor();
+    if (mounted) {
+      if (result.success) {
+        setState(() {
+          isOpen = true;
+        });
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            isOpen = false;
+          });
+        });
+      } else {
+        AppToast.show(context, result.message, variant: AppToastVariant.error);
+      }
+    }
+    await DoorWidgetService.instance.recordManualTriggerResult(result);
+    if (!mounted) {
+      _opening = false;
+      return;
+    }
+    setState(() {
+      _opening = false;
+    });
+  }
+
+  /// 构建开门页面主体。
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: colorScheme.surface,
@@ -94,115 +143,10 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                           children: [
                             _CoolDoorButton(
                               isOpen: isOpen,
-                              onTap: () async {
-                                final now = DateTime.now();
-                                if (lastTapTime != null &&
-                                    now.difference(lastTapTime!) <
-                                        const Duration(seconds: 4)) {
-                                  return;
-                                }
-                                lastTapTime = now;
-                                if (!isOpen) {
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  final topic =
-                                      prefs.getString('mqtt_topic') ??
-                                      'test/topic';
-                                  final host =
-                                      prefs.getString('mqtt_host') ?? '';
-                                  final port =
-                                      int.tryParse(
-                                        prefs.getString('mqtt_port') ?? '1883',
-                                      ) ??
-                                      1883;
-                                  final clientId =
-                                      prefs.getString('mqtt_clientId') ??
-                                      'flutter_client';
-                                  final username = prefs.getString(
-                                    'mqtt_username',
-                                  );
-                                  final password = prefs.getString(
-                                    'mqtt_password',
-                                  );
-                                  final withTls =
-                                      prefs.getBool('mqtt_with_tls') ?? false;
-                                  final caPath =
-                                      prefs.getString('mqtt_ca') ??
-                                      'assets/certs/ca.pem';
-                                  final certPath = prefs.getString('mqtt_cert');
-                                  final keyPath = prefs.getString('mqtt_key');
-                                  final keyPwd = prefs.getString(
-                                    'mqtt_key_pwd',
-                                  );
-                                  final msg =
-                                      prefs.getString('custom_open_msg') ??
-                                      'OPEN';
-                                  SecurityContext? sc;
-                                  if (withTls) {
-                                    sc = await buildSecurityContext(
-                                      caAsset: caPath,
-                                      clientCertAsset:
-                                          (certPath != null &&
-                                              certPath.isNotEmpty)
-                                          ? certPath
-                                          : null,
-                                      clientKeyAsset:
-                                          (keyPath != null &&
-                                              keyPath.isNotEmpty)
-                                          ? keyPath
-                                          : null,
-                                      clientKeyPassword:
-                                          (keyPwd != null && keyPwd.isNotEmpty)
-                                          ? keyPwd
-                                          : null,
-                                    );
-                                  }
-                                  _mqttService ??= MqttService(
-                                    host: host,
-                                    port: port,
-                                    clientId: clientId,
-                                    username:
-                                        (username != null &&
-                                            username.isNotEmpty)
-                                        ? username
-                                        : null,
-                                    password:
-                                        (password != null &&
-                                            password.isNotEmpty)
-                                        ? password
-                                        : null,
-                                    securityContext: sc,
-                                  );
-                                  try {
-                                    await _mqttService!.connect();
-                                    await _mqttService!.subscribe(topic);
-                                    await _mqttService!.publishText(topic, msg);
-                                    if (!mounted) return;
-                                    setState(() {
-                                      isOpen = true;
-                                    });
-                                    Future.delayed(
-                                      const Duration(seconds: 2),
-                                      () {
-                                        if (mounted) {
-                                          setState(() {
-                                            isOpen = false;
-                                          });
-                                        }
-                                      },
-                                    );
-                                  } catch (e) {
-                                    if (!context.mounted) return;
-                                    AppToast.show(
-                                      context,
-                                      '开门失败: $e',
-                                      variant: AppToastVariant.error,
-                                    );
-                                  }
-                                }
-                              },
+                              onTrigger: _triggerDoorOpen,
                               onLongPressStart: _handleLongPressStart,
                               onLongPressEnd: _handleLongPressEnd,
+                              busy: _opening,
                             ),
                             const SizedBox(height: 24),
                           ],
@@ -245,20 +189,19 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
   }
 }
 
-typedef DoorLongPressCallback = void Function(LongPressStartDetails details);
-typedef DoorLongPressEndCallback = void Function(LongPressEndDetails details);
-
 /// 开门按钮组件，负责展示动画与处理点击逻辑。
 class _CoolDoorButton extends StatefulWidget {
   final bool isOpen;
-  final VoidCallback onTap;
+  final DoorTriggerCallback onTrigger;
   final DoorLongPressCallback? onLongPressStart;
   final DoorLongPressEndCallback? onLongPressEnd;
+  final bool busy;
   const _CoolDoorButton({
     required this.isOpen,
-    required this.onTap,
+    required this.onTrigger,
     this.onLongPressStart,
     this.onLongPressEnd,
+    required this.busy,
   });
 
   /// 创建按钮状态用于管理动画控制器。
@@ -309,13 +252,16 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
 
   /// 处理点击动作并委托外部回调。
   void _handleTap() {
-    widget.onTap();
+    if (widget.busy) {
+      return;
+    }
+    unawaited(widget.onTrigger());
   }
 
   /// 绘制带有多层动画效果的开门按钮。
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: _handleTap,
       onTapDown: (_) => setState(() => _pressed = true),
@@ -326,8 +272,8 @@ class _CoolDoorButtonState extends State<_CoolDoorButton>
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
-          final scale = _pressed ? 0.93 : _scaleAnim.value;
-          final glow = _glowAnim.value;
+          final double scale = _pressed ? 0.93 : _scaleAnim.value;
+          final double glow = _glowAnim.value;
           return Stack(
             alignment: Alignment.center,
             children: [
