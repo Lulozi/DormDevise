@@ -14,7 +14,10 @@ const _passwordPrefKey = 'preferred_wifi_password';
 
 /// WiFi 网络配置页面，支持扫描、保存与连接。
 class WifiSettingsPage extends StatefulWidget {
-  const WifiSettingsPage({super.key});
+  const WifiSettingsPage({super.key, this.showAppBar = true});
+
+  /// 是否展示顶部 AppBar，默认独立页面时开启。
+  final bool showAppBar;
 
   /// 创建页面状态以处理交互逻辑。
   @override
@@ -400,7 +403,7 @@ class _WifiSettingsPageState extends State<WifiSettingsPage> {
       borderRadius: BorderRadius.circular(16),
     );
     return Scaffold(
-      appBar: AppBar(title: const Text('WiFi设置')),
+      appBar: widget.showAppBar ? AppBar(title: const Text('WiFi设置')) : null,
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
