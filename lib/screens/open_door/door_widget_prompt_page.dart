@@ -12,7 +12,7 @@ class DoorWidgetPromptPage extends StatefulWidget {
 }
 
 class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
-  with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _controller;
   bool _closing = false;
   static const MethodChannel _channel = MethodChannel('door_widget/prompt');
@@ -89,20 +89,24 @@ class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: AnimatedBuilder(
                   animation: _controller,
                   builder: (context, child) {
                     return SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.2),
-                        end: Offset.zero,
-                      ).animate(
-                        CurvedAnimation(
-                          parent: _controller,
-                          curve: Curves.easeOutCubic,
-                        ),
-                      ),
+                      position:
+                          Tween<Offset>(
+                            begin: const Offset(0, 0.2),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: _controller,
+                              curve: Curves.easeOutCubic,
+                            ),
+                          ),
                       child: FadeTransition(
                         opacity: CurvedAnimation(
                           parent: _controller,
