@@ -194,7 +194,7 @@ class _AboutPageState extends State<AboutPage> {
         return;
       }
 
-      await _downloadAndInstallUpdate(asset);
+      await _downloadAndInstallUpdate(asset, latestVersion);
     } catch (error) {
       if (!context.mounted) return;
       _showToastMessage(
@@ -209,7 +209,10 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   /// 通过共享下载服务执行更新下载流程并尝试唤起安装程序。
-  Future<void> _downloadAndInstallUpdate(_ReleaseAsset asset) async {
+  Future<void> _downloadAndInstallUpdate(
+    _ReleaseAsset asset,
+    Version? releaseVersion,
+  ) async {
     final int? totalHint = asset.size > 0 ? asset.size : null;
     final _DownloadSession? existing = _activeDownloadSession;
     if (existing != null && existing.isActive) {
@@ -222,9 +225,47 @@ class _AboutPageState extends State<AboutPage> {
       _activeDownloadSession = null;
     }
 
+    final DownloadRequest downloadRequest = DownloadRequest(
+      uri: Uri.parse(asset.browserDownloadUrl),
+      fileName: asset.name.isEmpty ? null : asset.name,
+      totalBytesHint: totalHint,
+    );
+
+    final File? cachedFile = await _downloadService.findCachedFile(
+      request: downloadRequest,
+      expectedBytes: asset.size > 0 ? asset.size : null,
+    );
+    bool shouldReuseCached = cachedFile != null;
+    if (shouldReuseCached) {
+      final Version? currentVersion = _safeParseVersion(_currentVersion);
+      if (releaseVersion != null && currentVersion != null) {
+        shouldReuseCached = releaseVersion > currentVersion;
+      }
+    }
+
+    if (shouldReuseCached && cachedFile != null) {
+      try {
+        if (await cachedFile.length() <= 0) {
+          shouldReuseCached = false;
+        }
+      } catch (_) {
+        shouldReuseCached = false;
+      }
+    }
+
+    if (shouldReuseCached && cachedFile != null) {
+      await _openInstallerFile(
+        cachedFile,
+        toastWhenMounted: '已找到已下载的安装包，正在打开安装程序...',
+        logWhenDetached: '发现缓存安装包，尝试直接安装',
+      );
+      return;
+    }
+
     final _DownloadSession session = _DownloadSession(
       asset: asset,
       totalHint: totalHint,
+      request: downloadRequest,
     );
     _activeDownloadSession = session;
     _downloadCoordinator.markStarted();
@@ -346,13 +387,8 @@ class _AboutPageState extends State<AboutPage> {
     session.started = true;
     unawaited(() async {
       try {
-        final DownloadRequest request = DownloadRequest(
-          uri: Uri.parse(session.asset.browserDownloadUrl),
-          fileName: session.asset.name.isEmpty ? null : session.asset.name,
-          totalBytesHint: session.totalHint,
-        );
         final DownloadResult result = await _downloadService.downloadToTempFile(
-          request: request,
+          request: session.request,
           onProgress: (DownloadProgress progress) {
             session.progressNotifier.value = DownloadProgress(
               receivedBytes: progress.receivedBytes,
@@ -434,25 +470,15 @@ class _AboutPageState extends State<AboutPage> {
         return;
       }
 
-      if (resolvedDialog == _DownloadDialogResult.background && mounted) {
-        _showToastMessage('下载完成，正在打开安装程序...');
-      } else if (resolvedDialog == _DownloadDialogResult.background) {
-        debugPrint('下载完成，正在尝试打开安装程序');
-      }
-
-      final OpenResult openResult = await UpdateInstaller.openAndCleanup(
+      await _openInstallerFile(
         file,
-        showToast: (msg) {
-          if (!mounted) return;
-          _showToastMessage(msg);
-        },
+        toastWhenMounted: resolvedDialog == _DownloadDialogResult.background
+            ? '下载完成，正在打开安装程序...'
+            : null,
+        logWhenDetached: resolvedDialog == _DownloadDialogResult.background
+            ? '下载完成，正在尝试打开安装程序'
+            : null,
       );
-
-      if (!mounted && openResult.type != ResultType.done) {
-        final String message = openResult.message;
-        final String displayMessage = message.isEmpty ? '请稍后重试' : message;
-        debugPrint('无法打开安装包：$displayMessage');
-      }
     } finally {
       session.dispose();
       if (identical(_activeDownloadSession, session)) {
@@ -460,6 +486,37 @@ class _AboutPageState extends State<AboutPage> {
       }
       _setVersionActionMode(_VersionActionMode.checkUpdate);
       _downloadCoordinator.markIdle();
+    }
+  }
+
+  /// 封装安装包打开逻辑，确保提示与日志保持一致。
+  Future<void> _openInstallerFile(
+    File file, {
+    String? toastWhenMounted,
+    String? logWhenDetached,
+  }) async {
+    if (toastWhenMounted != null) {
+      if (mounted) {
+        _showToastMessage(toastWhenMounted);
+      } else {
+        debugPrint(logWhenDetached ?? toastWhenMounted);
+      }
+    } else if (logWhenDetached != null && !mounted) {
+      debugPrint(logWhenDetached);
+    }
+
+    final OpenResult openResult = await UpdateInstaller.openAndCleanup(
+      file,
+      showToast: (msg) {
+        if (!mounted) return;
+        _showToastMessage(msg);
+      },
+    );
+
+    if (!mounted && openResult.type != ResultType.done) {
+      final String message = openResult.message;
+      final String displayMessage = message.isEmpty ? '请稍后重试' : message;
+      debugPrint('无法打开安装包：$displayMessage');
     }
   }
 
@@ -1645,13 +1702,17 @@ enum _DownloadDialogResult { success, failure, background, cancelled }
 
 /// 封装一次下载交互所需的状态。
 class _DownloadSession {
-  _DownloadSession({required this.asset, required this.totalHint})
-    : progressNotifier = ValueNotifier<DownloadProgress>(
-        DownloadProgress(receivedBytes: 0, totalBytes: totalHint),
-      );
+  _DownloadSession({
+    required this.asset,
+    required this.totalHint,
+    required this.request,
+  }) : progressNotifier = ValueNotifier<DownloadProgress>(
+         DownloadProgress(receivedBytes: 0, totalBytes: totalHint),
+       );
 
   final _ReleaseAsset asset;
   final int? totalHint;
+  final DownloadRequest request;
   final ValueNotifier<DownloadProgress> progressNotifier;
   final Completer<void> downloadCompleted = Completer<void>();
   DownloadResult? downloadResult;
