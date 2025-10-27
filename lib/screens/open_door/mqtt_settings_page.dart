@@ -11,7 +11,10 @@ import 'package:dormdevise/services/mqtt_service.dart';
 
 /// MQTT 配置与调试页面。
 class MqttSettingsPage extends StatefulWidget {
-  const MqttSettingsPage({super.key});
+  const MqttSettingsPage({super.key, this.showAppBar = true});
+
+  /// 是否显示顶部 AppBar，嵌入标签页时可隐藏。
+  final bool showAppBar;
 
   /// 创建页面状态以处理表单输入与网络交互。
   @override
@@ -682,7 +685,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
   Widget build(BuildContext context) {
     if (!_isConfigReady) {
       return Scaffold(
-        appBar: AppBar(title: const Text('MQTT配置')),
+        appBar: widget.showAppBar ? AppBar(title: const Text('MQTT配置')) : null,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -718,41 +721,43 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('MQTT配置'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline_rounded),
-            tooltip: '查看MQTT连接情况',
-            onPressed: () {
-              final info = StringBuffer();
-              info.writeln(
-                '服务器: ${_hostController.text}:${_portController.text}',
-              );
-              info.writeln('Client ID: ${_clientIdController.text}');
-              info.writeln('用户名: ${_usernameController.text}');
-              info.writeln('主题: ${_topicController.text}');
-              info.writeln('TLS: ${_withTls ? '启用' : '未启用'}');
-              String statusText;
-              if (_status.contains('连接成功') || _status.contains('订阅连接')) {
-                statusText = '已连接，已订阅';
-              } else if (_status.contains('消息已发送')) {
-                statusText = '已连接，消息已发送';
-              } else if (_status.contains('连接失败')) {
-                statusText = '连接失败';
-              } else if (_status.contains('发送失败')) {
-                statusText = '发送失败';
-              } else if (_status.contains('正在连接')) {
-                statusText = '正在连接...';
-              } else {
-                statusText = _status.isNotEmpty ? _status : '未知';
-              }
-              info.writeln('连接状态: $statusText');
-              _showBubble(context, info.toString());
-            },
-          ),
-        ],
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('MQTT配置'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.info_outline_rounded),
+                  tooltip: '查看MQTT连接情况',
+                  onPressed: () {
+                    final info = StringBuffer();
+                    info.writeln(
+                      '服务器: ${_hostController.text}:${_portController.text}',
+                    );
+                    info.writeln('Client ID: ${_clientIdController.text}');
+                    info.writeln('用户名: ${_usernameController.text}');
+                    info.writeln('主题: ${_topicController.text}');
+                    info.writeln('TLS: ${_withTls ? '启用' : '未启用'}');
+                    String statusText;
+                    if (_status.contains('连接成功') || _status.contains('订阅连接')) {
+                      statusText = '已连接，已订阅';
+                    } else if (_status.contains('消息已发送')) {
+                      statusText = '已连接，消息已发送';
+                    } else if (_status.contains('连接失败')) {
+                      statusText = '连接失败';
+                    } else if (_status.contains('发送失败')) {
+                      statusText = '发送失败';
+                    } else if (_status.contains('正在连接')) {
+                      statusText = '正在连接...';
+                    } else {
+                      statusText = _status.isNotEmpty ? _status : '未知';
+                    }
+                    info.writeln('连接状态: $statusText');
+                    _showBubble(context, info.toString());
+                  },
+                ),
+              ],
+            )
+          : null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
