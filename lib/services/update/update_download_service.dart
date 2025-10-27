@@ -152,6 +152,38 @@ class UpdateDownloadService {
   final UpdateDownloadCoordinator coordinator =
       UpdateDownloadCoordinator.instance;
 
+  /// 根据下载请求推导出最终写入的目标文件。
+  Future<File> resolveTargetFile({required DownloadRequest request}) async {
+    final String resolvedName = _resolveSanitizedFileName(request);
+    final Directory directory =
+        request.targetDirectory ?? await getTemporaryDirectory();
+    final String filePath =
+        '${directory.path}${Platform.pathSeparator}$resolvedName';
+    return File(filePath);
+  }
+
+  /// 在临时目录中查找匹配下载请求的缓存文件。
+  Future<File?> findCachedFile({
+    required DownloadRequest request,
+    int? expectedBytes,
+  }) async {
+    final File candidate = await resolveTargetFile(request: request);
+    if (!await candidate.exists()) {
+      return null;
+    }
+    if (expectedBytes != null) {
+      try {
+        final int length = await candidate.length();
+        if (length != expectedBytes) {
+          return null;
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return candidate;
+  }
+
   /// 将网络资源下载至临时目录并返回结果。
   Future<DownloadResult> downloadToTempFile({
     required DownloadRequest request,
@@ -196,9 +228,7 @@ class UpdateDownloadService {
       }
 
       // 准备候选源列表（主源为首选，备用源可选）
-      final String resolvedName = sanitizeFileName(
-        request.fileName ?? _resolveNameFromUri(request.uri),
-      );
+      final String resolvedName = _resolveSanitizedFileName(request);
       final List<Uri> sources = <Uri>[];
       final Uri? cdnUri = constructAlternativeUri(request.uri, resolvedName);
       if (cdnUri != null) {
@@ -273,11 +303,7 @@ class UpdateDownloadService {
         }
         final int? totalBytes =
             response.contentLength ?? request.totalBytesHint;
-        final Directory directory =
-            request.targetDirectory ?? await getTemporaryDirectory();
-        final String filePath =
-            '${directory.path}${Platform.pathSeparator}$resolvedName';
-        targetFile = File(filePath);
+        targetFile = await resolveTargetFile(request: request);
         final IOSink sink = targetFile.openWrite();
 
         int received = 0;
@@ -332,6 +358,13 @@ class UpdateDownloadService {
       }
     }
     return 'download-${DateTime.now().millisecondsSinceEpoch}.bin';
+  }
+
+  /// 生成经过去除非法字符后的文件名。
+  String _resolveSanitizedFileName(DownloadRequest request) {
+    return sanitizeFileName(
+      request.fileName ?? _resolveNameFromUri(request.uri),
+    );
   }
 }
 
