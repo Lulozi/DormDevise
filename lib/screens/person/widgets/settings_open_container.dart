@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/rendering.dart';
 
 /// 通用的平滑展开动画容器，用于承载各类设置入口。
 class SettingsOpenContainer extends StatefulWidget {
@@ -668,9 +667,7 @@ class _HideableState extends State<_Hideable> {
 
 /// 可翻转的补间序列，便于在动画反向时沿用相同步骤。
 class _FlippableTweenSequence<T> extends TweenSequence<T> {
-  _FlippableTweenSequence(List<TweenSequenceItem<T>> items)
-    : _items = items,
-      super(items);
+  _FlippableTweenSequence(super.items) : _items = items;
 
   final List<TweenSequenceItem<T>> _items;
   _FlippableTweenSequence<T>? _flipped;
