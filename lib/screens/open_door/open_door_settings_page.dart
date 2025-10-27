@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 
 /// 开门相关设置页，整合多项配置标签。
 class OpenDoorSettingsPage extends StatefulWidget {
-  const OpenDoorSettingsPage({super.key});
+  const OpenDoorSettingsPage({super.key, this.initialTabIndex = 0});
+
+  /// 指定初始展示的标签索引，默认显示第一个标签。
+  final int initialTabIndex;
 
   /// 创建状态对象以驱动标签页控制器。
   @override
@@ -26,7 +29,12 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
+    final int initialIndex = widget.initialTabIndex.clamp(0, _tabs.length - 1);
+    _tabController = TabController(
+      length: _tabs.length,
+      vsync: this,
+      initialIndex: initialIndex,
+    );
   }
 
   /// 释放标签控制器资源。
@@ -54,9 +62,9 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       body: TabBarView(
         controller: _tabController,
         children: const [
-          WifiSettingsPage(),
-          MqttSettingsPage(),
-          LocationSettingsPage(),
+          WifiSettingsPage(showAppBar: false),
+          MqttSettingsPage(showAppBar: false),
+          LocationSettingsPage(showAppBar: false),
         ],
       ),
     );
