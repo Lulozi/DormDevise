@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="door_widget_default_message">未开门</string>
+    <string name="door_widget_hint">轻点以打开滑动弹窗</string>
+    <string name="door_widget_refresh_description">刷新状态</string>
+    <string name="door_widget_name">舍设开门</string>
+    <string name="door_widget_action_label">轻点开门</string>
+</resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- Android 12 及以上启动样式，补充官方新增的 SplashScreen 配置 -->
+	<style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+		<item name="android:windowBackground">@drawable/launch_background</item>
+		<item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+		<item name="android:windowSplashScreenBackground">@android:color/transparent</item>
+		<item name="android:windowSplashScreenBrandingImage">@null</item>
+	</style>
+
+	<!-- 正常运行态主题配置，与低版本保持一致 -->
+	<style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+		<item name="android:windowBackground">?android:colorBackground</item>
+	</style>
+
+	<!-- 桌面微件浮层 Activity 在 Android 12+ 的透明主题 -->
+	<style name="DoorWidgetPromptTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+		<item name="android:windowIsTranslucent">true</item>
+		<item name="android:windowBackground">@android:color/transparent</item>
+		<item name="android:backgroundDimEnabled">false</item>
+		<item name="android:statusBarColor">@android:color/transparent</item>
+		<item name="android:navigationBarColor">@android:color/transparent</item>
+	</style>
+</resources>
