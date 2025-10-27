@@ -11,6 +11,14 @@ class MainActivity : FlutterActivity() {
 	private var receiver: PackageInstallReceiver? = null
 	private var eventSink: EventChannel.EventSink? = null
 
+	/**
+	 * 解析启动参数中的路由信息，支持直接进入配置页面。
+	 */
+	override fun getInitialRoute(): String {
+		val route = intent?.getStringExtra("route")?.trim()
+		return if (route.isNullOrEmpty()) "/" else route
+	}
+
 	override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
 		super.configureFlutterEngine(flutterEngine)
 
@@ -48,5 +56,21 @@ class MainActivity : FlutterActivity() {
 				eventSink = null
 			}
 		})
+
+		handlePendingRoute(intent)
+	}
+
+	override fun onNewIntent(intent: Intent) {
+		super.onNewIntent(intent)
+		setIntent(intent)
+		handlePendingRoute(intent)
+	}
+
+	private fun handlePendingRoute(intent: Intent?) {
+		val route = intent?.getStringExtra("route")?.trim()
+		if (!route.isNullOrEmpty()) {
+			flutterEngine?.navigationChannel?.pushRoute(route)
+			intent.removeExtra("route")
+		}
 	}
 }
