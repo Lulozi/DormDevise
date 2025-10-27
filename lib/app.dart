@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:dormdevise/screens/open_door/open_door_page.dart';
+import 'package:dormdevise/screens/open_door/open_door_settings_page.dart';
+import 'package:dormdevise/screens/open_door/door_widget_prompt_page.dart';
+import 'package:dormdevise/screens/open_door/widgets/door_widget_dialog.dart';
 import 'package:dormdevise/screens/person/person_page.dart';
 import 'package:dormdevise/screens/table/table_page.dart';
+import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:flutter/material.dart';
-
-// TODO 桌面组件
 
 /// 应用根组件，负责注入基础主题与导航框架。
 class DormDeviseApp extends StatelessWidget {
@@ -12,13 +16,39 @@ class DormDeviseApp extends StatelessWidget {
   /// 构建顶层 MaterialApp 并指定首页及主题配置。
   @override
   Widget build(BuildContext context) {
+    final String initialRoute =
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
-      home: const ManagementScreen(),
+      initialRoute: initialRoute,
+      onGenerateRoute: (RouteSettings settings) {
+        switch (settings.name) {
+          case '/':
+          case null:
+            return MaterialPageRoute<void>(
+              builder: (_) => const ManagementScreen(),
+            );
+          case 'door_widget_prompt':
+            return PageRouteBuilder<void>(
+              pageBuilder: (_, __, ___) => const DoorWidgetPromptPage(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+              opaque: false,
+            );
+          case 'open_door_settings/mqtt':
+            return MaterialPageRoute<void>(
+              builder: (_) => const OpenDoorSettingsPage(initialTabIndex: 1),
+            );
+          default:
+            return MaterialPageRoute<void>(
+              builder: (_) => const ManagementScreen(),
+            );
+        }
+      },
     );
   }
 }
@@ -39,6 +69,8 @@ class ManagementScreenState extends State<ManagementScreen>
   double _page = 1.0;
   bool _isLoading = true;
   bool _navLocked = false;
+  StreamSubscription<Uri?>? _widgetLaunchSubscription;
+  bool _widgetDialogVisible = false;
 
   /// 根据索引构建对应的业务页面。
   Widget _buildPage(int index) {
@@ -105,6 +137,7 @@ class ManagementScreenState extends State<ManagementScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: selectedIndex);
+    _bindWidgetLaunchEvents();
     Future.microtask(() async {
       await Future.delayed(const Duration(milliseconds: 400));
       if (mounted) {
@@ -119,8 +152,77 @@ class ManagementScreenState extends State<ManagementScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _widgetLaunchSubscription?.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// 绑定桌面微件事件流，支持轻点微件后自动弹出滑动对话框。
+  void _bindWidgetLaunchEvents() {
+    _widgetLaunchSubscription?.cancel();
+    _widgetLaunchSubscription = DoorWidgetService.instance.launchEvents.listen(
+      _handleWidgetLaunchUri,
+    );
+    final Uri? initialUri = DoorWidgetService.instance.takeLatestLaunchUri();
+    if (initialUri != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleWidgetLaunchUri(initialUri);
+      });
+    }
+  }
+
+  /// 处理桌面微件传入的 URI 请求，触发弹窗或其他操作。
+  void _handleWidgetLaunchUri(Uri? uri) {
+    if (!mounted || uri == null || uri.host != 'door_widget') {
+      return;
+    }
+    if (uri.pathSegments.isEmpty) {
+      return;
+    }
+    final String action = uri.pathSegments.first;
+    switch (action) {
+      case 'prompt':
+        if (selectedIndex != 1) {
+          setState(() {
+            selectedIndex = 1;
+          });
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(1);
+          }
+        } else if (_pageController.hasClients) {
+          _pageController.jumpToPage(1);
+        }
+        _showDoorWidgetDialog();
+        break;
+      case 'open':
+      case 'refresh':
+        // 若应用前台接收到后台操作请求，直接交由微件服务处理。
+        unawaited(DoorWidgetService.instance.handleWidgetInteraction(uri));
+        break;
+      default:
+        break;
+    }
+  }
+
+  /// 展示滑动开门弹窗，防止重复打开。
+  Future<void> _showDoorWidgetDialog() async {
+    if (!mounted || _widgetDialogVisible) {
+      return;
+    }
+    setState(() {
+      _widgetDialogVisible = true;
+    });
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => const DoorWidgetDialog(),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _widgetDialogVisible = false;
+    });
   }
 
   /// 构建包含底部导航与分页内容的界面结构。
