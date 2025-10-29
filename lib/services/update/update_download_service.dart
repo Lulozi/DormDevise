@@ -239,57 +239,16 @@ class UpdateDownloadService {
         sources.add(request.uri);
       }
 
-      // 以前用于记录最后一次失败的占位变量在新流程中已不再需要。
-
-      // 先对 primary（sources[0]）做短时探测（probe），只测速与可用性，不下载完整文件。
-      final Uri primary = sources.first;
-      final Uri? alternative = sources.length > 1 ? sources[1] : null;
-
-      // 探测参数：探测最多读取 probeBytes，超时 probeTimeout
-      const int probeBytes = 64 * 1024; // 64 KB
-      const Duration probeTimeout = Duration(seconds: 5);
-      final int speedThreshold = 200 * 1024; // 200 KB/s
-
-      Future<double?> probeSpeed(Uri uri) async {
-        final http.Client probeClient = request.client ?? http.Client();
-        final bool ownsProbeClient = request.client == null;
-        int received = 0;
-        final sw = Stopwatch()..start();
-        try {
-          final http.Request probeReq = http.Request('GET', uri);
-          // 请求部分字节以避免下载完整文件（如果服务器支持 Range）
-          probeReq.headers['Range'] = 'bytes=0-${probeBytes - 1}';
-          final http.StreamedResponse resp = await probeClient
-              .send(probeReq)
-              .timeout(probeTimeout);
-          if (resp.statusCode != 200 && resp.statusCode != 206) {
-            return null; // 不可用或不支持
-          }
-
-          // 读取直到 probeBytes 或超时
-          await for (final chunk in resp.stream) {
-            received += chunk.length;
-            if (sw.elapsed >= probeTimeout) break;
-            if (received >= probeBytes) break;
-          }
-
-          final elapsedSec = sw.elapsedMilliseconds / 1000.0;
-          if (elapsedSec <= 0) return double.infinity;
-          return received / elapsedSec;
-        } catch (_) {
-          return null;
-        } finally {
-          if (ownsProbeClient) probeClient.close();
-        }
-      }
-
-      // 执行对 primary 的探测
-      final double? primarySpeed = await probeSpeed(primary);
-
-      Uri chosen = primary;
-      if ((primarySpeed == null || primarySpeed < speedThreshold) &&
-          alternative != null) {
-        chosen = alternative;
+      // 依据主备源并行测速后的决策选择最终下载地址。
+      final Uri chosen;
+      try {
+        chosen = await _selectPreferredSource(
+          primary: sources.first,
+          backup: sources.length > 1 ? sources[1] : null,
+          shouldCancel: shouldCancel,
+        );
+      } on DownloadCancelled {
+        return const DownloadResult.cancelled();
       }
 
       // 从选定的源开始完整下载（单源，不在中途切换）
@@ -350,6 +309,94 @@ class UpdateDownloadService {
     }
   }
 
+  /// 并行探测主备源下载速度，快速决定最终下载地址。
+  Future<Uri> _selectPreferredSource({
+    required Uri primary,
+    Uri? backup,
+    bool Function()? shouldCancel,
+  }) async {
+    if (backup == null) {
+      return primary;
+    }
+
+    if (shouldCancel?.call() ?? false) {
+      throw const DownloadCancelled();
+    }
+
+    final _DownloadProbe primaryProbe = _DownloadProbe(primary);
+    final _DownloadProbe backupProbe = _DownloadProbe(backup);
+    await Future.wait(<Future<void>>[
+      primaryProbe.start(),
+      backupProbe.start(),
+    ]);
+
+    const Duration decisionWindow = Duration(seconds: 3);
+    const Duration backupCheckWindow = Duration(seconds: 5);
+    const double backupSpeedThreshold = 400 * 1024; // 400 KB/s
+
+    final Stopwatch stopwatch = Stopwatch()..start();
+    Uri? provisional;
+    bool provisionalIsBackup = false;
+
+    try {
+      while (stopwatch.elapsed < backupCheckWindow) {
+        if (shouldCancel?.call() ?? false) {
+          throw const DownloadCancelled();
+        }
+
+        await Future.delayed(const Duration(milliseconds: 120));
+
+        final Duration elapsed = stopwatch.elapsed;
+        if (provisional == null && elapsed >= decisionWindow) {
+          final double primarySpeed = primaryProbe.speedAt(decisionWindow) ?? 0;
+          final double backupSpeed = backupProbe.speedAt(decisionWindow) ?? 0;
+
+          if (backupSpeed > primarySpeed && backupSpeed > 0) {
+            provisional = backup;
+            provisionalIsBackup = true;
+          } else if (primaryProbe.isReachable) {
+            provisional = primary;
+            provisionalIsBackup = false;
+            break;
+          } else if (backupSpeed > 0) {
+            provisional = backup;
+            provisionalIsBackup = true;
+          }
+        }
+
+        if (elapsed >= backupCheckWindow) {
+          break;
+        }
+      }
+
+      final bool primaryUsable = primaryProbe.isReachable;
+      final bool backupUsable = backupProbe.isReachable;
+
+      Uri? finalSelection = provisional;
+      if (finalSelection == null) {
+        finalSelection = primaryUsable
+            ? primary
+            : (backupUsable ? backup : primary);
+      } else if (provisionalIsBackup) {
+        final double backupSpeedForCheck =
+            backupProbe.speedAt(backupCheckWindow) ??
+            backupProbe.currentAverageSpeed;
+        if (backupSpeedForCheck < backupSpeedThreshold && primaryUsable) {
+          finalSelection = primary;
+        }
+      }
+
+      return finalSelection;
+    } finally {
+      primaryProbe.stop();
+      backupProbe.stop();
+      await Future.wait(<Future<void>>[
+        primaryProbe.completed,
+        backupProbe.completed,
+      ]);
+    }
+  }
+
   String _resolveNameFromUri(Uri uri) {
     if (uri.pathSegments.isNotEmpty) {
       final String lastSegment = uri.pathSegments.last.trim();
@@ -365,6 +412,142 @@ class UpdateDownloadService {
     return sanitizeFileName(
       request.fileName ?? _resolveNameFromUri(request.uri),
     );
+  }
+}
+
+/// 探测速时记录的采样点。
+class _ProbeSample {
+  const _ProbeSample(this.elapsed, this.bytes);
+
+  final Duration elapsed;
+  final int bytes;
+}
+
+/// 负责对单个地址执行限时限量的并行测速。
+class _DownloadProbe {
+  _DownloadProbe(this.uri);
+
+  static const int _limitBytes = 512 * 1024; // 最多下载 512KB 用于测速
+  static const Duration _maxDuration = Duration(seconds: 5);
+
+  final Uri uri;
+  final http.Client _client = http.Client();
+  final Stopwatch _stopwatch = Stopwatch();
+  final Completer<void> _doneCompleter = Completer<void>();
+  final List<_ProbeSample> _samples = <_ProbeSample>[];
+
+  StreamSubscription<List<int>>? _subscription;
+  Timer? _timer;
+  int _received = 0;
+  bool _completed = false;
+  bool _reachable = false;
+
+  /// 是否已经成功收到数据。
+  bool get isReachable => _reachable;
+
+  /// 当前平均下载速度（字节/秒）。
+  double get currentAverageSpeed {
+    if (_samples.isEmpty) {
+      return 0;
+    }
+    final _ProbeSample last = _samples.last;
+    final int millis = last.elapsed.inMilliseconds;
+    if (millis <= 0) {
+      return 0;
+    }
+    return last.bytes / (millis / 1000.0);
+  }
+
+  /// 等待测速流程结束。
+  Future<void> get completed => _doneCompleter.future;
+
+  /// 启动测速流程。
+  Future<void> start() async {
+    if (_completed) {
+      return;
+    }
+
+    try {
+      final http.Request request = http.Request('GET', uri)
+        ..headers['Range'] = 'bytes=0-${_limitBytes - 1}'
+        ..headers['Accept-Encoding'] = 'identity';
+      final http.StreamedResponse response = await _client
+          .send(request)
+          .timeout(_maxDuration);
+      if (response.statusCode != 200 && response.statusCode != 206) {
+        _complete();
+        return;
+      }
+
+      _reachable = true;
+      _stopwatch.start();
+      _timer = Timer(_maxDuration, _complete);
+      _subscription = response.stream.listen(
+        (List<int> chunk) {
+          if (_completed) {
+            return;
+          }
+          _received += chunk.length;
+          final Duration elapsed = _stopwatch.elapsed;
+          _samples.add(_ProbeSample(elapsed, _received));
+          if (_received >= _limitBytes) {
+            _complete();
+          }
+        },
+        onDone: _complete,
+        onError: (Object _, StackTrace __) {
+          _complete();
+        },
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _complete();
+    }
+  }
+
+  /// 停止测速流程，释放网络资源。
+  void stop() {
+    _complete();
+  }
+
+  /// 在指定时间点估算平均速度（字节/秒）。
+  double? speedAt(Duration duration) {
+    if (_samples.isEmpty) {
+      return null;
+    }
+    _ProbeSample? candidate;
+    for (final _ProbeSample sample in _samples) {
+      candidate = sample;
+      if (sample.elapsed >= duration) {
+        break;
+      }
+    }
+    candidate ??= _samples.last;
+    final int millis = candidate.elapsed >= duration
+        ? duration.inMilliseconds
+        : candidate.elapsed.inMilliseconds;
+    if (millis <= 0) {
+      return null;
+    }
+    return candidate.bytes / (millis / 1000.0);
+  }
+
+  void _complete() {
+    if (_completed) {
+      return;
+    }
+    _completed = true;
+    _timer?.cancel();
+    if (_stopwatch.isRunning) {
+      _stopwatch.stop();
+    }
+    _timer = null;
+    unawaited(_subscription?.cancel());
+    _subscription = null;
+    _client.close();
+    if (!_doneCompleter.isCompleted) {
+      _doneCompleter.complete();
+    }
   }
 }
 
