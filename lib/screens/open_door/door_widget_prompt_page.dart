@@ -26,6 +26,7 @@ class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
       vsync: this,
       duration: const Duration(milliseconds: 200),
     );
+    _applyImmersiveMode();
     _playEntranceAnimation();
   }
 
@@ -33,6 +34,7 @@ class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
   /// 销毁动画控制器释放系统资源。
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _restoreSystemUi();
     _controller.dispose();
     super.dispose();
   }
@@ -41,8 +43,25 @@ class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
   /// 监听生命周期变化，在重新激活时重置动效。
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _applyImmersiveMode();
       _playEntranceAnimation();
     }
+  }
+
+  /// 切换至沉浸式模式以隐藏系统状态栏，仅保留底部导航栏。
+  void _applyImmersiveMode() {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.immersiveSticky,
+      overlays: const [SystemUiOverlay.bottom],
+    );
+  }
+
+  /// 恢复默认的系统栏显示策略，避免影响宿主桌面。
+  void _restoreSystemUi() {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
   }
 
   /// 播放浮层出现动画并重置关闭标记。
@@ -74,60 +93,70 @@ class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
   /// 构建透明背景与底部浮层组合界面。
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: _closePrompt,
-              child: Container(color: Colors.transparent),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _closePrompt,
+                behavior: HitTestBehavior.opaque,
+                child: Container(color: Colors.transparent),
+              ),
             ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    return SlideTransition(
-                      position:
-                          Tween<Offset>(
-                            begin: const Offset(0, 0.2),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(
-                              parent: _controller,
-                              curve: Curves.easeOutCubic,
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      return SlideTransition(
+                        position:
+                            Tween<Offset>(
+                              begin: const Offset(0, 0.2),
+                              end: Offset.zero,
+                            ).animate(
+                              CurvedAnimation(
+                                parent: _controller,
+                                curve: Curves.easeOutCubic,
+                              ),
                             ),
+                        child: FadeTransition(
+                          opacity: CurvedAnimation(
+                            parent: _controller,
+                            curve: Curves.easeOut,
                           ),
-                      child: FadeTransition(
-                        opacity: CurvedAnimation(
-                          parent: _controller,
-                          curve: Curves.easeOut,
+                          child: child,
                         ),
-                        child: child,
+                      );
+                    },
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: scheme.surface,
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                    );
-                  },
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(20),
+                      child: DoorWidgetPanel(onClose: _closePrompt),
                     ),
-                    child: DoorWidgetPanel(onClose: _closePrompt),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
