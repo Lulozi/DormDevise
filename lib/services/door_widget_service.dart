@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dormdevise/models/door_widget_settings.dart';
 import 'package:dormdevise/models/door_widget_state.dart';
 import 'package:dormdevise/services/door_trigger_service.dart';
+import 'package:dormdevise/services/mqtt_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,6 +38,16 @@ class DoorWidgetService {
       StreamController<Uri?>.broadcast();
   Uri? _latestLaunchUri;
   Timer? _successResetTimer;
+  MqttService? _statusMqttService;
+  Timer? _statusReconnectTimer;
+  bool _statusEnsuring = false;
+  String? _statusFingerprint;
+  String? _statusTopic;
+  String? _statusIdleMessage;
+
+  /// 记录下一次允许展示“设备在线”提示的时间点，避免短时间内重复刷新。
+  DateTime? _nextOnlineAllowedAt;
+  bool _disposed = false;
 
   /// 对外暴露的可监听状态，便于设置页面实时刷新。
   final ValueNotifier<DoorWidgetState> stateNotifier =
@@ -59,6 +71,7 @@ class DoorWidgetService {
     if (_initialized) {
       return;
     }
+    _disposed = false;
     WidgetsFlutterBinding.ensureInitialized();
     await _ensureLoaded();
     stateNotifier.value = _state;
@@ -70,6 +83,7 @@ class DoorWidgetService {
     await _persistStateToWidget();
     await syncWidget();
     _scheduleAutoRefresh();
+    unawaited(_ensureStatusListener());
     _initialized = true;
   }
 
@@ -79,10 +93,14 @@ class DoorWidgetService {
     _autoRefreshTimer = null;
     _successResetTimer?.cancel();
     _successResetTimer = null;
+    _statusReconnectTimer?.cancel();
+    _statusReconnectTimer = null;
+    await _teardownStatusListener();
     _hasHydrated = false;
     await _widgetClickSubscription?.cancel();
     await _launchEventsController.close();
     _latestLaunchUri = null;
+    _disposed = true;
   }
 
   /// 更新桌面微件设置项并持久化。
@@ -128,6 +146,9 @@ class DoorWidgetService {
     await _persistStateToWidget();
     await syncWidget();
     if (result.success) {
+      if (_statusTopic != null && _statusTopic!.isNotEmpty) {
+        _nextOnlineAllowedAt = DateTime.now().add(const Duration(minutes: 1));
+      }
       _scheduleSuccessReset();
     }
   }
@@ -142,6 +163,11 @@ class DoorWidgetService {
     } catch (err, stackTrace) {
       debugPrint('刷新桌面微件失败: $err\n$stackTrace');
     }
+  }
+
+  /// 强制重建状态订阅监听，用于配置变更后即时生效。
+  Future<void> refreshStatusListener() async {
+    await _ensureStatusListener(force: true);
   }
 
   /// 处理桌面微件发起的交互请求，例如滑动开门或手动刷新。
@@ -278,19 +304,29 @@ class DoorWidgetService {
     if (_state.busy) {
       return '正在开门…';
     }
-    if (!_settings.showLastResult ||
-        _state.lastResultMessage == null ||
-        _state.lastResultMessage!.isEmpty) {
+    final bool hasStatusTopic =
+        _statusTopic != null && _statusTopic!.isNotEmpty;
+    final String? message = _state.lastResultMessage;
+    if (!_settings.showLastResult || message == null || message.isEmpty) {
+      if (hasStatusTopic && _statusIdleMessage?.isNotEmpty == true) {
+        return _statusIdleMessage!;
+      }
       return '未开门';
     }
     if (_state.lastResultSuccess == true) {
-      return _state.lastResultMessage!;
+      return message;
+    }
+    if (hasStatusTopic && message == _statusIdleMessage) {
+      return message;
+    }
+    if (message == '未开门') {
+      return message;
     }
     final String timestamp = _state.lastUpdatedAt != null
         ? _formatTimestamp(_state.lastUpdatedAt!)
         : '';
     final String suffix = timestamp.isEmpty ? '' : ' · $timestamp';
-    return _state.lastResultMessage! + suffix;
+    return message + suffix;
   }
 
   String _formatTimestamp(DateTime value) {
@@ -319,6 +355,218 @@ class DoorWidgetService {
     );
   }
 
+  Future<void> _ensureStatusListener({bool force = false}) async {
+    if (_statusEnsuring) {
+      return;
+    }
+    _statusEnsuring = true;
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String host = prefs.getString('mqtt_host')?.trim() ?? '';
+      final String statusTopic =
+          prefs.getString('mqtt_status_topic')?.trim() ?? '';
+      final bool statusEnabled = prefs.getBool('mqtt_status_enabled') ?? false;
+      if (host.isEmpty || statusTopic.isEmpty) {
+        await _teardownStatusListener();
+        _statusIdleMessage = null;
+        _nextOnlineAllowedAt = null;
+        return;
+      }
+      if (!statusEnabled) {
+        await _teardownStatusListener();
+        _statusIdleMessage = null;
+        _nextOnlineAllowedAt = null;
+        return;
+      }
+      final int port =
+          int.tryParse(prefs.getString('mqtt_port') ?? '1883') ?? 1883;
+      final String baseClientId =
+          prefs.getString('mqtt_clientId')?.trim() ?? 'flutter_client';
+      final String username = prefs.getString('mqtt_username')?.trim() ?? '';
+      final String password = prefs.getString('mqtt_password')?.trim() ?? '';
+      final bool withTls = prefs.getBool('mqtt_with_tls') ?? false;
+      final String caPath = prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
+      final String certPath = prefs.getString('mqtt_cert')?.trim() ?? '';
+      final String keyPath = prefs.getString('mqtt_key')?.trim() ?? '';
+      final String keyPwd = prefs.getString('mqtt_key_pwd')?.trim() ?? '';
+
+      final String fingerprint = <String>[
+        host,
+        port.toString(),
+        baseClientId,
+        username,
+        password,
+        withTls ? '1' : '0',
+        certPath,
+        keyPath,
+        statusTopic,
+      ].join('|');
+
+      if (!force &&
+          _statusMqttService != null &&
+          _statusFingerprint == fingerprint &&
+          _statusMqttService!.isConnected) {
+        return;
+      }
+
+      await _teardownStatusListener();
+
+      SecurityContext? securityContext;
+      if (withTls) {
+        securityContext = await buildSecurityContext(
+          caAsset: caPath,
+          clientCertAsset: certPath.isNotEmpty ? certPath : null,
+          clientKeyAsset: keyPath.isNotEmpty ? keyPath : null,
+          clientKeyPassword: keyPwd.isNotEmpty ? keyPwd : null,
+        );
+      }
+
+      final MqttService service = MqttService(
+        host: host,
+        port: port,
+        clientId: '${baseClientId}_widget_status',
+        username: username.isEmpty ? null : username,
+        password: password.isEmpty ? null : password,
+        securityContext: securityContext,
+        onNotification: (String topic, Map<String, dynamic> data) {
+          _handleStatusNotification(topic, data);
+        },
+        log: (String line) {
+          debugPrint('桌面微件状态监听: $line');
+        },
+        onError: (Object error, [StackTrace? _]) {
+          debugPrint('桌面微件状态监听异常: $error');
+          _scheduleStatusReconnect();
+        },
+      );
+
+      _statusMqttService = service;
+      _statusFingerprint = fingerprint;
+      _statusTopic = statusTopic;
+
+      try {
+        await service.connect();
+        await service.subscribe(statusTopic);
+      } catch (error) {
+        debugPrint('桌面微件状态订阅失败: $error');
+        await _teardownStatusListener();
+        _scheduleStatusReconnect();
+      }
+    } finally {
+      _statusEnsuring = false;
+    }
+  }
+
+  Future<void> _teardownStatusListener() async {
+    _statusReconnectTimer?.cancel();
+    _statusReconnectTimer = null;
+    final MqttService? service = _statusMqttService;
+    _statusMqttService = null;
+    _statusFingerprint = null;
+    _statusTopic = null;
+    if (service != null) {
+      try {
+        await service.dispose();
+      } catch (_) {
+        // 忽略释放异常
+      }
+    }
+    _statusIdleMessage = null;
+    _nextOnlineAllowedAt = null;
+  }
+
+  void _scheduleStatusReconnect() {
+    if (_disposed) {
+      return;
+    }
+    if (_statusReconnectTimer?.isActive ?? false) {
+      return;
+    }
+    _statusReconnectTimer = Timer(const Duration(seconds: 8), () {
+      _statusReconnectTimer = null;
+      if (_disposed) {
+        return;
+      }
+      unawaited(_ensureStatusListener(force: true));
+    });
+  }
+
+  void _handleStatusNotification(String topic, Map<String, dynamic> data) {
+    if (_disposed) {
+      return;
+    }
+    if (_statusTopic == null || topic != _statusTopic) {
+      return;
+    }
+    final dynamic raw =
+        data['payload'] ?? data['message'] ?? data['data'] ?? data['value'];
+    if (raw == null) {
+      return;
+    }
+    final String payload = raw.toString().trim();
+    if (payload.isEmpty) {
+      return;
+    }
+    final String normalized = payload.toLowerCase();
+    final DateTime now = DateTime.now();
+    if (normalized == 'online') {
+      if (_canApplyOnlineMessage(now)) {
+        _statusIdleMessage = '设备在线';
+        _nextOnlineAllowedAt = now.add(const Duration(minutes: 1));
+        unawaited(
+          _applyStatusMessage(
+            message: '设备在线',
+            success: null,
+            scheduleReset: false,
+          ),
+        );
+      }
+    } else if (normalized == 'on') {
+      _nextOnlineAllowedAt = now.add(const Duration(minutes: 1));
+      _statusIdleMessage = '设备在线';
+      unawaited(
+        _applyStatusMessage(
+          message: '开门成功',
+          success: true,
+          scheduleReset: true,
+        ),
+      );
+    }
+  }
+
+  /// 判断是否可以立即展示“设备在线”提示，节流间隔为 1 分钟。
+  bool _canApplyOnlineMessage(DateTime now) {
+    if (_statusTopic == null || _statusTopic!.isEmpty) {
+      return false;
+    }
+    if (_nextOnlineAllowedAt == null) {
+      return true;
+    }
+    return !now.isBefore(_nextOnlineAllowedAt!);
+  }
+
+  Future<void> _applyStatusMessage({
+    required String message,
+    bool? success,
+    bool scheduleReset = false,
+  }) async {
+    await _ensureLoaded();
+    _successResetTimer?.cancel();
+    _state = _state.copyWith(
+      busy: false,
+      lastResultSuccess: success,
+      lastResultMessage: message,
+      lastUpdatedAt: DateTime.now(),
+    );
+    stateNotifier.value = _state;
+    await _saveState();
+    await _persistStateToWidget();
+    await syncWidget();
+    if (scheduleReset && success == true) {
+      _scheduleSuccessReset();
+    }
+  }
+
   /// 成功开门后延时恢复默认提示，保持微件状态清爽。
   void _scheduleSuccessReset() {
     _successResetTimer?.cancel();
@@ -327,9 +575,15 @@ class DoorWidgetService {
       if (_state.busy) {
         return;
       }
+      final bool hasStatusTopic =
+          _statusTopic != null && _statusTopic!.isNotEmpty;
+      final String? fallbackMessage = hasStatusTopic
+          ? (_statusIdleMessage?.isNotEmpty == true ? _statusIdleMessage : null)
+          : _statusIdleMessage;
       _state = _state.copyWith(
         lastResultSuccess: null,
-        lastResultMessage: null,
+        lastResultMessage: fallbackMessage ?? '未开门',
+        lastUpdatedAt: DateTime.now(),
       );
       stateNotifier.value = _state;
       await _saveState();
