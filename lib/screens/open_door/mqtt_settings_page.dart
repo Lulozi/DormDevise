@@ -6,9 +6,11 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:dormdevise/models/mqtt_config.dart';
 import 'package:dormdevise/models/status_topic_suggestion_builder.dart';
-import 'package:dormdevise/services/mqtt_service.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
+import 'package:dormdevise/services/mqtt_config_service.dart';
+import 'package:dormdevise/services/mqtt_service.dart';
 
 /// MQTT 配置与调试页面。
 class MqttSettingsPage extends StatefulWidget {
@@ -24,7 +26,6 @@ class MqttSettingsPage extends StatefulWidget {
 
 class _MqttSettingsPageState extends State<MqttSettingsPage> {
   static const String _subscribedTopicKey = 'mqtt_last_subscribed_topic';
-  static const String _statusEnabledKey = 'mqtt_status_enabled';
   final StatusTopicSuggestionBuilder _suggestionBuilder =
       const StatusTopicSuggestionBuilder();
   final List<String> _logLines = [];
@@ -185,22 +186,18 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
 
   /// 从本地存储加载配置并刷新表单控件。
   Future<void> _loadConfig({String? defaultClientId}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString('mqtt_host') ?? '';
-    final port = prefs.getString('mqtt_port') ?? '1883';
-    final topic = prefs.getString('mqtt_topic') ?? '';
-    final username = prefs.getString('mqtt_username') ?? '';
-    final password = prefs.getString('mqtt_password') ?? '';
-    final clientId =
-        prefs.getString('mqtt_clientId') ?? (defaultClientId ?? '');
-    final caPath = prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
-    final certPath = prefs.getString('mqtt_cert') ?? '';
-    final keyPath = prefs.getString('mqtt_key') ?? '';
-    final keyPwd = prefs.getString('mqtt_key_pwd') ?? '';
-    final withTls = prefs.getBool('mqtt_with_tls') ?? false;
-    final loadedStatusTopic = prefs.getString('mqtt_status_topic') ?? '';
-    final lastSubscribedTopic = prefs.getString(_subscribedTopicKey) ?? '';
-    final bool statusEnabled = prefs.getBool(_statusEnabledKey) ?? false;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    MqttConfig config = await MqttConfigService.instance.loadConfig(
+      forceRefresh: true,
+    );
+    if ((config.clientId.isEmpty) &&
+        defaultClientId != null &&
+        defaultClientId.isNotEmpty) {
+      config = config.copyWith(clientId: defaultClientId);
+      await MqttConfigService.instance.saveConfig(config);
+    }
+    final String lastSubscribedTopic =
+        prefs.getString(_subscribedTopicKey) ?? '';
     final oldControllers = _isConfigReady
         ? <TextEditingController>[
             _hostController,
@@ -217,31 +214,33 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
             _customMsgController,
           ]
         : const <TextEditingController>[];
-    _statusMonitorEnabled = statusEnabled;
-    _statusEnabledPersisted = statusEnabled;
+    _statusMonitorEnabled = config.statusEnabled;
+    _statusEnabledPersisted = config.statusEnabled;
     setState(() {
-      _host = host;
-      _port = port;
-      _topic = topic;
-      _username = username;
-      _password = password;
-      _clientId = clientId;
-      _caPath = caPath;
-      _certPath = certPath;
-      _keyPath = keyPath;
-      _keyPwd = keyPwd;
-      _withTls = withTls;
-      _customMsg = 'OPEN';
-      _topicExpanded = loadedStatusTopic.isNotEmpty;
+      _host = config.host;
+      _port = config.port.toString();
+      _topic = config.commandTopic;
+      _username = config.username ?? '';
+      _password = config.password ?? '';
+      _clientId = config.clientId;
+      _caPath = config.caPath;
+      _certPath = config.certPath ?? '';
+      _keyPath = config.keyPath ?? '';
+      _keyPwd = config.keyPassword ?? '';
+      _withTls = config.withTls;
+      _customMsg = config.customMessage;
+      _topicExpanded = (config.statusTopic ?? '').isNotEmpty;
       _statusPreview = '';
-      _hasSubscribed = topic.isNotEmpty && lastSubscribedTopic.isNotEmpty
-          ? lastSubscribedTopic == topic
+      _hasSubscribed = _topic.isNotEmpty && lastSubscribedTopic.isNotEmpty
+          ? lastSubscribedTopic == _topic
           : false;
       // 重新创建 controller
       _hostController = TextEditingController(text: _host);
       _portController = TextEditingController(text: _port);
       _topicController = TextEditingController(text: _topic);
-      _statusTopicController = TextEditingController(text: loadedStatusTopic);
+      _statusTopicController = TextEditingController(
+        text: config.statusTopic ?? '',
+      );
       _clientIdController = TextEditingController(text: _clientId);
       _usernameController = TextEditingController(text: _username);
       _passwordController = TextEditingController(text: _password);
@@ -255,26 +254,55 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     for (final controller in oldControllers) {
       controller.dispose();
     }
-    if (statusEnabled && loadedStatusTopic.isNotEmpty && mounted) {
+    if (config.statusEnabled &&
+        (config.statusTopic?.isNotEmpty ?? false) &&
+        mounted) {
       unawaited(_subscribeStatusTopic(autoResume: true));
     }
   }
 
   /// 将当前表单配置写入本地存储。
+  /// 根据当前表单输入生成标准配置对象。
+  MqttConfig _buildConfigFromInputs() {
+    final String host = _hostController.text.trim();
+    final int port = int.tryParse(_portController.text.trim()) ?? 1883;
+    final String topic = _topicController.text.trim();
+    final String clientId = _clientIdController.text.trim();
+    final String username = _usernameController.text.trim();
+    final String password = _passwordController.text.trim();
+    final String caPath = _caPathController.text.trim();
+    final String certPath = _certPathController.text.trim();
+    final String keyPath = _keyPathController.text.trim();
+    final String keyPwd = _keyPwdController.text.trim();
+    final String statusTopic = _statusTopicController.text.trim();
+    final String customMsg = _customMsgController.text.trim().isEmpty
+        ? 'OPEN'
+        : _customMsgController.text.trim();
+    String resolvedClientId = clientId;
+    if (resolvedClientId.isEmpty) {
+      resolvedClientId = _clientId.isNotEmpty ? _clientId : const Uuid().v4();
+    }
+    return MqttConfig(
+      host: host,
+      port: port,
+      commandTopic: topic,
+      clientId: resolvedClientId,
+      username: username.isEmpty ? null : username,
+      password: password.isEmpty ? null : password,
+      withTls: _withTls,
+      caPath: caPath.isEmpty ? 'assets/certs/ca.pem' : caPath,
+      certPath: certPath.isEmpty ? null : certPath,
+      keyPath: keyPath.isEmpty ? null : keyPath,
+      keyPassword: keyPwd.isEmpty ? null : keyPwd,
+      statusTopic: statusTopic.isEmpty ? null : statusTopic,
+      statusEnabled: _statusEnabledPersisted || _statusMonitorEnabled,
+      customMessage: customMsg,
+    );
+  }
+
   Future<void> _saveConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('mqtt_host', _hostController.text);
-    await prefs.setString('mqtt_port', _portController.text);
-    await prefs.setString('mqtt_topic', _topicController.text);
-    await prefs.setString('mqtt_clientId', _clientIdController.text);
-    await prefs.setString('mqtt_username', _usernameController.text);
-    await prefs.setString('mqtt_password', _passwordController.text);
-    await prefs.setString('mqtt_ca', _caPathController.text);
-    await prefs.setString('mqtt_cert', _certPathController.text);
-    await prefs.setString('mqtt_key', _keyPathController.text);
-    await prefs.setString('mqtt_key_pwd', _keyPwdController.text);
-    await prefs.setString('mqtt_status_topic', _statusTopicController.text);
-    await prefs.setBool('mqtt_with_tls', _withTls);
+    final MqttConfig config = _buildConfigFromInputs();
+    await MqttConfigService.instance.saveConfig(config);
     if (!mounted) return;
     await _subscribeMainTopic(triggeredBySave: true);
     // 保存状态主题后立即刷新桌面微件的状态订阅。
@@ -283,21 +311,23 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
 
   /// 将配置导出为 JSON 并复制到剪贴板。
   Future<void> _exportConfig() async {
-    final config = {
-      'mqtt_host': _hostController.text,
-      'mqtt_port': _portController.text,
-      'mqtt_topic': _topicController.text,
-      'mqtt_username': _usernameController.text,
-      'mqtt_password': _passwordController.text,
-      'mqtt_ca': _caPathController.text,
-      'mqtt_cert': _certPathController.text,
-      'mqtt_key': _keyPathController.text,
-      'mqtt_key_pwd': _keyPwdController.text,
-      'mqtt_status_topic': _statusTopicController.text,
-      'mqtt_with_tls': _withTls,
-      // 不导出 clientId/uuid
+    final MqttConfig config = _buildConfigFromInputs();
+    final Map<String, Object?> exportMap = <String, Object?>{
+      'mqtt_host': config.host,
+      'mqtt_port': config.port.toString(),
+      'mqtt_topic': config.commandTopic,
+      'mqtt_username': config.username ?? '',
+      'mqtt_password': config.password ?? '',
+      'mqtt_ca': config.caPath,
+      'mqtt_cert': config.certPath ?? '',
+      'mqtt_key': config.keyPath ?? '',
+      'mqtt_key_pwd': config.keyPassword ?? '',
+      'mqtt_status_topic': config.statusTopic ?? '',
+      'mqtt_with_tls': config.withTls,
+      'custom_open_msg': config.customMessage,
+      'mqtt_status_enabled': config.statusEnabled,
     };
-    final jsonStr = JsonEncoder.withIndent('  ').convert(config);
+    final jsonStr = JsonEncoder.withIndent('  ').convert(exportMap);
     await Clipboard.setData(ClipboardData(text: jsonStr));
     if (!mounted) return;
     _showStatus('配置已导出到剪贴板');
@@ -314,70 +344,31 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       return;
     }
     try {
-      final map = jsonDecode(data.text!);
-      if (map is! Map) throw Exception('格式错误');
+      final dynamic decoded = jsonDecode(data.text!);
+      if (decoded is! Map) throw Exception('格式错误');
+      final Map<String, Object?> storageMap = <String, Object?>{
+        'mqtt_host': decoded['mqtt_host'],
+        'mqtt_port': decoded['mqtt_port'],
+        'mqtt_topic': decoded['mqtt_topic'],
+        'mqtt_username': decoded['mqtt_username'],
+        'mqtt_password': decoded['mqtt_password'],
+        'mqtt_ca': decoded['mqtt_ca'],
+        'mqtt_cert': decoded['mqtt_cert'],
+        'mqtt_key': decoded['mqtt_key'],
+        'mqtt_key_pwd': decoded['mqtt_key_pwd'],
+        'mqtt_status_topic': decoded['mqtt_status_topic'],
+        'mqtt_with_tls': decoded['mqtt_with_tls'],
+        'custom_open_msg': decoded['custom_open_msg'],
+        'mqtt_status_enabled': decoded['mqtt_status_enabled'],
+        'mqtt_clientId': decoded['mqtt_clientId'],
+      };
+      final MqttConfig config = MqttConfig.fromStorage(storageMap);
       await _stopStatusSubscription(silent: true);
-      final oldControllers = _isConfigReady
-          ? <TextEditingController>[
-              _hostController,
-              _portController,
-              _topicController,
-              _statusTopicController,
-              _usernameController,
-              _passwordController,
-              _caPathController,
-              _certPathController,
-              _keyPathController,
-              _keyPwdController,
-            ]
-          : const <TextEditingController>[];
-      final importedStatusTopic = map['mqtt_status_topic'] ?? '';
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _host = map['mqtt_host'] ?? '';
-        _port = map['mqtt_port'] ?? '1883';
-        _topic = map['mqtt_topic'] ?? '';
-        _username = map['mqtt_username'] ?? '';
-        _password = map['mqtt_password'] ?? '';
-        _caPath = map['mqtt_ca'] ?? 'assets/certs/ca.pem';
-        _certPath = map['mqtt_cert'] ?? '';
-        _keyPath = map['mqtt_key'] ?? '';
-        _keyPwd = map['mqtt_key_pwd'] ?? '';
-        _withTls = map['mqtt_with_tls'] ?? false;
-        _topicExpanded = importedStatusTopic.isNotEmpty;
-        _statusPreview = '';
-        _hasSubscribed = false;
-        // 重新创建 controller
-        _hostController = TextEditingController(text: _host);
-        _portController = TextEditingController(text: _port);
-        _topicController = TextEditingController(text: _topic);
-        _statusTopicController = TextEditingController(
-          text: importedStatusTopic,
-        );
-        _usernameController = TextEditingController(text: _username);
-        _passwordController = TextEditingController(text: _password);
-        _caPathController = TextEditingController(text: _caPath);
-        _certPathController = TextEditingController(text: _certPath);
-        _keyPathController = TextEditingController(text: _keyPath);
-        _keyPwdController = TextEditingController(text: _keyPwd);
-      });
-      for (final controller in oldControllers) {
-        controller.dispose();
-      }
+      await MqttConfigService.instance.saveConfig(config);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
       unawaited(_persistSubscribedTopic(null, cachedPrefs: prefs));
-      // 只保存配置到本地，不弹“配置已保存”弹窗
-      await prefs.setString('mqtt_host', _host);
-      await prefs.setString('mqtt_port', _port);
-      await prefs.setString('mqtt_topic', _topic);
-      await prefs.setString('mqtt_username', _username);
-      await prefs.setString('mqtt_password', _password);
-      await prefs.setString('mqtt_ca', _caPath);
-      await prefs.setString('mqtt_cert', _certPath);
-      await prefs.setString('mqtt_key', _keyPath);
-      await prefs.setString('mqtt_key_pwd', _keyPwd);
-      await prefs.setString('mqtt_status_topic', importedStatusTopic);
-      await prefs.setBool('mqtt_with_tls', _withTls);
-      final importStr = JsonEncoder.withIndent('  ').convert(map);
+      await _loadConfig();
+      final importStr = JsonEncoder.withIndent('  ').convert(decoded);
       if (!mounted) return;
       _showStatus('配置已从剪贴板导入');
       _showBubble(context, '配置已从剪贴板导入\n\n$importStr\n\n点击确定保存配置');
@@ -614,8 +605,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       if (!autoResume) {
         _showStatus('状态主题订阅成功');
       }
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_statusEnabledKey, true);
+      await MqttConfigService.instance.setStatusEnabled(true);
       await DoorWidgetService.instance.refreshStatusListener();
     } catch (e) {
       debugPrint('订阅状态主题失败: $e');
@@ -645,8 +635,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       _statusEnabledPersisted = false;
       _statusPreview = '';
     });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_statusEnabledKey, false);
+    await MqttConfigService.instance.setStatusEnabled(false);
     await DoorWidgetService.instance.refreshStatusListener();
     try {
       if (service != null) {
