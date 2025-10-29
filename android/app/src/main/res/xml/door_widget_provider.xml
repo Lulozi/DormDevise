@@ -8,7 +8,7 @@
     android:updatePeriodMillis="0"
     android:resizeMode="none"
     android:widgetCategory="home_screen"
-    android:previewLayout="@layout/widget_door"
+    android:previewLayout="@layout/widget_door_preview"
     android:targetCellWidth="1"
     android:targetCellHeight="1"
     android:description="@string/door_widget_default_message"
