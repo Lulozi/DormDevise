@@ -124,24 +124,23 @@ class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
                   child: AnimatedBuilder(
                     animation: _controller,
                     builder: (context, child) {
-                      return SlideTransition(
-                        position:
-                            Tween<Offset>(
-                              begin: const Offset(0, 0.2),
-                              end: Offset.zero,
-                            ).animate(
-                              CurvedAnimation(
-                                parent: _controller,
-                                curve: Curves.easeOutCubic,
-                              ),
+                      final Animation<Offset> slide =
+                          Tween<Offset>(
+                            begin: const Offset(0, 1),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: _controller,
+                              curve: Curves.easeOutCubic,
                             ),
-                        child: FadeTransition(
-                          opacity: CurvedAnimation(
-                            parent: _controller,
-                            curve: Curves.easeOut,
-                          ),
-                          child: child,
-                        ),
+                          );
+                      final Animation<double> fade = CurvedAnimation(
+                        parent: _controller,
+                        curve: Curves.easeOut,
+                      );
+                      return SlideTransition(
+                        position: slide,
+                        child: FadeTransition(opacity: fade, child: child),
                       );
                     },
                     child: DecoratedBox(
