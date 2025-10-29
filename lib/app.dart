@@ -67,7 +67,6 @@ class ManagementScreenState extends State<ManagementScreen>
   int selectedIndex = 1;
   late final PageController _pageController;
   double _page = 1.0;
-  bool _isLoading = true;
   bool _navLocked = false;
   StreamSubscription<Uri?>? _widgetLaunchSubscription;
   bool _widgetDialogVisible = false;
@@ -138,14 +137,6 @@ class ManagementScreenState extends State<ManagementScreen>
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: selectedIndex);
     _bindWidgetLaunchEvents();
-    Future.microtask(() async {
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    });
   }
 
   /// 移除绑定并释放控制器资源。
@@ -229,9 +220,6 @@ class ManagementScreenState extends State<ManagementScreen>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: false,
