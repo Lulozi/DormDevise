@@ -11,6 +11,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.GeneratedPluginRegistrant
+import kotlin.jvm.Volatile
 
 /**
  * 桌面微件专用入口 Activity，使用预热 Flutter 引擎加载底部浮层界面。
@@ -19,19 +21,31 @@ class DoorWidgetPromptActivity : FlutterActivity() {
 
     companion object {
         private const val ENGINE_ID = "door_widget_prompt_engine"
+        @Volatile
+        private var isShowing = false
 
         /**
-         * 预热并缓存专用 Flutter 引擎，加速后续启动。
+         * 预热并缓存专用 Flutter 引擎，加速后续启动，并确保插件注册完成。
          */
         fun ensureEngine(context: Context) {
             val cache = FlutterEngineCache.getInstance()
             if (cache.contains(ENGINE_ID)) return
             val engine = FlutterEngine(context.applicationContext)
             engine.navigationChannel.setInitialRoute("door_widget_prompt")
+            GeneratedPluginRegistrant.registerWith(engine)
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault(),
             )
             cache.put(ENGINE_ID, engine)
+        }
+
+        /**
+         * 当前浮层是否已经显示，供路由侧进行防抖判断。
+         */
+        fun isActive(): Boolean = isShowing
+
+        internal fun markActive(active: Boolean) {
+            isShowing = active
         }
     }
 
@@ -44,6 +58,7 @@ class DoorWidgetPromptActivity : FlutterActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setBackgroundDrawableResource(android.R.color.transparent)
         super.onCreate(savedInstanceState)
+        markActive(true)
     }
 
     /**
@@ -55,7 +70,8 @@ class DoorWidgetPromptActivity : FlutterActivity() {
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "close" -> {
-                    moveTaskToBackground()
+                    finish()
+                    overridePendingTransition(0, 0)
                     result.success(null)
                 }
                 "openSettings" -> {
@@ -74,6 +90,7 @@ class DoorWidgetPromptActivity : FlutterActivity() {
     override fun onDestroy() {
         methodChannel?.setMethodCallHandler(null)
         methodChannel = null
+        markActive(false)
         super.onDestroy()
     }
 
