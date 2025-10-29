@@ -16,38 +16,16 @@ class DoorWidgetRouterActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val launchData = intent?.data
-        if (isMqttConfigured()) {
-            if (DoorWidgetPromptActivity.isActive()) {
-                finish()
-                return
-            }
-            DoorWidgetPromptActivity.ensureEngine(applicationContext)
-            val promptIntent = Intent(this, DoorWidgetPromptActivity::class.java).apply {
-                data = launchData
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            }
-            startActivity(promptIntent)
-        } else {
-            val settingsIntent = Intent(this, MainActivity::class.java).apply {
-                putExtra("route", "open_door_settings/mqtt")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                data = launchData
-            }
-            startActivity(settingsIntent)
+        if (DoorWidgetPromptActivity.isActive()) {
+            finish()
+            return
         }
+        DoorWidgetPromptActivity.ensureEngine(applicationContext)
+        val promptIntent = Intent(this, DoorWidgetPromptActivity::class.java).apply {
+            data = launchData
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        startActivity(promptIntent)
         finish()
-    }
-
-    /**
-    * 判断用户是否配置了必要的 MQTT 主机与主题。
-    */
-    /**
-    * 读取 SharedPreferences 判断 MQTT 必要参数是否存在。
-    */
-    private fun isMqttConfigured(): Boolean {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-        val host = prefs.getString("flutter.mqtt_host", "")?.trim().orEmpty()
-        val topic = prefs.getString("flutter.mqtt_topic", "")?.trim().orEmpty()
-        return host.isNotEmpty() && topic.isNotEmpty()
     }
 }
