@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dormdevise/models/mqtt_config.dart';
+import 'package:dormdevise/services/mqtt_config_service.dart';
 import 'package:dormdevise/services/mqtt_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// 保存开门触发结果，便于页面和组件统一处理反馈。
 class DoorTriggerResult {
@@ -24,21 +25,32 @@ class DoorTriggerService {
   /// 触发开门动作，返回结果信息用于展示反馈。
   Future<DoorTriggerResult> triggerDoor() async {
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String topic = prefs.getString('mqtt_topic') ?? 'test/topic';
-      final String host = prefs.getString('mqtt_host') ?? '';
-      final int port =
-          int.tryParse(prefs.getString('mqtt_port') ?? '1883') ?? 1883;
-      final String clientId =
-          prefs.getString('mqtt_clientId') ?? 'flutter_client';
-      final String? username = prefs.getString('mqtt_username');
-      final String? password = prefs.getString('mqtt_password');
-      final bool withTls = prefs.getBool('mqtt_with_tls') ?? false;
-      final String caPath = prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
-      final String? certPath = prefs.getString('mqtt_cert');
-      final String? keyPath = prefs.getString('mqtt_key');
-      final String? keyPwd = prefs.getString('mqtt_key_pwd');
-      final String msg = prefs.getString('custom_open_msg') ?? 'OPEN';
+      MqttConfig config = await MqttConfigService.instance.loadConfig();
+      if (!config.isCommandReady) {
+        config = await MqttConfigService.instance.loadConfig(
+          forceRefresh: true,
+        );
+      }
+      if (!config.isCommandReady) {
+        return const DoorTriggerResult(
+          success: false,
+          message: '请先在MQTT设置中填写服务器与主题',
+        );
+      }
+      final String topic = config.commandTopic;
+      final String host = config.host;
+      final int port = config.port;
+      final String clientId = config.clientId.isNotEmpty
+          ? config.clientId
+          : 'flutter_client';
+      final String? username = config.username;
+      final String? password = config.password;
+      final bool withTls = config.withTls;
+      final String caPath = config.caPath;
+      final String? certPath = config.certPath;
+      final String? keyPath = config.keyPath;
+      final String? keyPwd = config.keyPassword;
+      final String msg = config.customMessage;
       SecurityContext? sc;
       if (withTls) {
         sc = await buildSecurityContext(
@@ -54,16 +66,7 @@ class DoorTriggerService {
               : null,
         );
       }
-      final String fingerprint = [
-        host,
-        port.toString(),
-        clientId,
-        username ?? '',
-        password ?? '',
-        (withTls ? '1' : '0'),
-        certPath ?? '',
-        keyPath ?? '',
-      ].join('|');
+      final String fingerprint = config.buildFingerprint();
       if (_mqttService == null || _lastFingerprint != fingerprint) {
         await _mqttService?.dispose();
         _mqttService = null;
