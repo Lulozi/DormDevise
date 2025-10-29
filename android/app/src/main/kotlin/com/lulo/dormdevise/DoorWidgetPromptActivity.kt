@@ -106,6 +106,17 @@ class DoorWidgetPromptActivity : FlutterActivity() {
     }
 
     /**
+     * 当用户进入多任务视图或退后台时立即关闭浮层，避免在最近任务中展示。
+     */
+    override fun onPause() {
+        super.onPause()
+        if (!isFinishing) {
+            finish()
+            overridePendingTransition(0, 0)
+        }
+    }
+
+    /**
      * 提供预热后的缓存引擎以缩短启动时间。
      */
     override fun provideFlutterEngine(context: Context): FlutterEngine? {
