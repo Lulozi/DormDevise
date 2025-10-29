@@ -17,19 +17,23 @@ class DoorWidgetRouterActivity : Activity() {
         super.onCreate(savedInstanceState)
         val launchData = intent?.data
         if (isMqttConfigured()) {
-        DoorWidgetPromptActivity.ensureEngine(applicationContext)
-        val promptIntent = Intent(this, DoorWidgetPromptActivity::class.java).apply {
-            data = launchData
-            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        }
-        startActivity(promptIntent)
+            if (DoorWidgetPromptActivity.isActive()) {
+                finish()
+                return
+            }
+            DoorWidgetPromptActivity.ensureEngine(applicationContext)
+            val promptIntent = Intent(this, DoorWidgetPromptActivity::class.java).apply {
+                data = launchData
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(promptIntent)
         } else {
-        val settingsIntent = Intent(this, MainActivity::class.java).apply {
-            putExtra("route", "open_door_settings/mqtt")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            data = launchData
-        }
-        startActivity(settingsIntent)
+            val settingsIntent = Intent(this, MainActivity::class.java).apply {
+                putExtra("route", "open_door_settings/mqtt")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                data = launchData
+            }
+            startActivity(settingsIntent)
         }
         finish()
     }
