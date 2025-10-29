@@ -35,9 +35,11 @@ class DoorWidgetPanel extends StatefulWidget {
 
 class _DoorWidgetPanelState extends State<DoorWidgetPanel> {
   bool _opening = false;
+  bool _triggeredOnce = false;
   String? _statusMessage;
   late final DoorWidgetService _service;
   static const String _defaultStatus = '准备滑动触发开门';
+  int _resetNonce = 0;
 
   @override
   /// 初始化服务引用并读取上次结果文案。
@@ -51,11 +53,12 @@ class _DoorWidgetPanelState extends State<DoorWidgetPanel> {
 
   /// 处理滑动触发事件，串联微件服务与开门逻辑。
   Future<void> _handleTrigger() async {
-    if (_opening) {
+    if (_opening || _triggeredOnce) {
       return;
     }
     setState(() {
       _opening = true;
+      _triggeredOnce = true;
       _statusMessage = '正在开门，请稍候…';
     });
     await _service.markManualTriggerStart();
@@ -79,11 +82,19 @@ class _DoorWidgetPanelState extends State<DoorWidgetPanel> {
           if (mounted) {
             setState(() {
               _statusMessage = _defaultStatus;
+              _triggeredOnce = false;
+              _resetNonce++;
             });
             widget.onClose?.call();
           }
         }),
       );
+    } else if (!result.success && mounted) {
+      // 失败时允许用户重新尝试触发。
+      setState(() {
+        _triggeredOnce = false;
+        _resetNonce++;
+      });
     }
   }
 
@@ -126,6 +137,7 @@ class _DoorWidgetPanelState extends State<DoorWidgetPanel> {
               onTrigger: _handleTrigger,
               busy: _opening,
               axis: Axis.horizontal,
+              resetToken: _resetNonce,
             ),
           ),
           const SizedBox(height: 16),
