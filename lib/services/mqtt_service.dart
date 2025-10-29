@@ -55,6 +55,7 @@ class MqttService {
   final String? username;
   final String? password;
   final SecurityContext? securityContext;
+  final void Function()? onConnected;
 
   final Set<String> _subscriptions = {};
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
@@ -84,6 +85,7 @@ class MqttService {
     this.log,
     this.onError,
     this.securityContext,
+    this.onConnected,
   }) {
     _client = MqttServerClient(host, clientId)
       ..port = port
@@ -91,7 +93,7 @@ class MqttService {
       ..autoReconnect = false
       ..resubscribeOnAutoReconnect = false
       ..secure = securityContext != null
-      ..onConnected = onConnected
+      ..onConnected = _handleConnected
       ..onDisconnected = onDisconnected
       ..logging(on: false);
     if (securityContext != null) {
@@ -236,10 +238,15 @@ class MqttService {
   }
 
   /// 连接成功后自动重新订阅已登记的主题。
-  void onConnected() {
+  void _handleConnected() {
     _info('✅ [MQTT] connected');
     for (final t in _subscriptions) {
       _client.subscribe(t, MqttQos.atLeastOnce);
+    }
+    try {
+      onConnected?.call();
+    } catch (e, st) {
+      _error('⚠️ [MQTT] onConnected callback error: $e', e, st);
     }
   }
 
