@@ -4,7 +4,9 @@ import 'dart:io';
 
 import 'package:dormdevise/models/door_widget_settings.dart';
 import 'package:dormdevise/models/door_widget_state.dart';
+import 'package:dormdevise/models/mqtt_config.dart';
 import 'package:dormdevise/services/door_trigger_service.dart';
+import 'package:dormdevise/services/mqtt_config_service.dart';
 import 'package:dormdevise/services/mqtt_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:home_widget/home_widget.dart';
@@ -355,52 +357,39 @@ class DoorWidgetService {
     );
   }
 
+  /// 根据 MQTT 配置确保状态监听连接保持最新，必要时重建连接。
   Future<void> _ensureStatusListener({bool force = false}) async {
     if (_statusEnsuring) {
       return;
     }
     _statusEnsuring = true;
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String host = prefs.getString('mqtt_host')?.trim() ?? '';
-      final String statusTopic =
-          prefs.getString('mqtt_status_topic')?.trim() ?? '';
-      final bool statusEnabled = prefs.getBool('mqtt_status_enabled') ?? false;
-      if (host.isEmpty || statusTopic.isEmpty) {
+      final MqttConfig config = await MqttConfigService.instance.loadConfig(
+        forceRefresh: force,
+      );
+      if (!config.isStatusReady) {
         await _teardownStatusListener();
         _statusIdleMessage = null;
         _nextOnlineAllowedAt = null;
         return;
       }
-      if (!statusEnabled) {
-        await _teardownStatusListener();
-        _statusIdleMessage = null;
-        _nextOnlineAllowedAt = null;
-        return;
-      }
-      final int port =
-          int.tryParse(prefs.getString('mqtt_port') ?? '1883') ?? 1883;
-      final String baseClientId =
-          prefs.getString('mqtt_clientId')?.trim() ?? 'flutter_client';
-      final String username = prefs.getString('mqtt_username')?.trim() ?? '';
-      final String password = prefs.getString('mqtt_password')?.trim() ?? '';
-      final bool withTls = prefs.getBool('mqtt_with_tls') ?? false;
-      final String caPath = prefs.getString('mqtt_ca') ?? 'assets/certs/ca.pem';
-      final String certPath = prefs.getString('mqtt_cert')?.trim() ?? '';
-      final String keyPath = prefs.getString('mqtt_key')?.trim() ?? '';
-      final String keyPwd = prefs.getString('mqtt_key_pwd')?.trim() ?? '';
+      final String host = config.host;
+      final int port = config.port;
+      final String statusTopic = config.statusTopic!;
+      final String baseClientId = config.clientId.isNotEmpty
+          ? config.clientId
+          : 'flutter_client';
+      final String? username = config.username;
+      final String? password = config.password;
+      final bool withTls = config.withTls;
+      final String caPath = config.caPath;
+      final String? certPath = config.certPath;
+      final String? keyPath = config.keyPath;
+      final String? keyPwd = config.keyPassword;
 
-      final String fingerprint = <String>[
-        host,
-        port.toString(),
-        baseClientId,
-        username,
-        password,
-        withTls ? '1' : '0',
-        certPath,
-        keyPath,
-        statusTopic,
-      ].join('|');
+      final String fingerprint = config.buildFingerprint(
+        includeStatusTopic: true,
+      );
 
       if (!force &&
           _statusMqttService != null &&
@@ -415,9 +404,15 @@ class DoorWidgetService {
       if (withTls) {
         securityContext = await buildSecurityContext(
           caAsset: caPath,
-          clientCertAsset: certPath.isNotEmpty ? certPath : null,
-          clientKeyAsset: keyPath.isNotEmpty ? keyPath : null,
-          clientKeyPassword: keyPwd.isNotEmpty ? keyPwd : null,
+          clientCertAsset: (certPath != null && certPath.isNotEmpty)
+              ? certPath
+              : null,
+          clientKeyAsset: (keyPath != null && keyPath.isNotEmpty)
+              ? keyPath
+              : null,
+          clientKeyPassword: (keyPwd != null && keyPwd.isNotEmpty)
+              ? keyPwd
+              : null,
         );
       }
 
@@ -425,8 +420,8 @@ class DoorWidgetService {
         host: host,
         port: port,
         clientId: '${baseClientId}_widget_status',
-        username: username.isEmpty ? null : username,
-        password: password.isEmpty ? null : password,
+        username: username,
+        password: password,
         securityContext: securityContext,
         onNotification: (String topic, Map<String, dynamic> data) {
           _handleStatusNotification(topic, data);
