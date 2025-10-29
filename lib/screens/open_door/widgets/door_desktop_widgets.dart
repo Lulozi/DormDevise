@@ -260,12 +260,14 @@ class DoorSlideTile extends StatefulWidget {
   final bool busy;
   final Axis axis;
   final Duration reboundDuration;
+  final int? resetToken;
 
   const DoorSlideTile({
     super.key,
     required this.onTrigger,
     required this.busy,
     required this.axis,
+    this.resetToken,
     this.reboundDuration = const Duration(milliseconds: 260),
   });
 
@@ -276,9 +278,11 @@ class DoorSlideTile extends StatefulWidget {
 
 class _DoorSlideTileState extends State<DoorSlideTile>
     with SingleTickerProviderStateMixin {
+  static const double _travelInsetFraction = 0.15;
   late AnimationController _progressController;
   bool _triggered = false;
   Size _lastSize = Size.zero;
+  int? _lastResetToken;
 
   /// 初始化进度控制器用于控制滑块位置。
   @override
@@ -299,15 +303,19 @@ class _DoorSlideTileState extends State<DoorSlideTile>
     super.dispose();
   }
 
-  /// 记录布局尺寸，供拖动计算使用。
-  void _onConstraintsChanged(BoxConstraints constraints) {
-    _lastSize = Size(constraints.maxWidth, constraints.maxHeight);
+  /// 记录有效滑动区域尺寸，供拖动计算使用。
+  void _updateTrackSize(Size size) {
+    _lastSize = size;
   }
 
   /// 处理拖动起始事件，重置触发标记。
   void _handlePanStart(DragStartDetails details) {
     if (widget.busy) {
       return;
+    }
+    if (widget.resetToken != null && widget.resetToken != _lastResetToken) {
+      _progressController.value = 0;
+      _lastResetToken = widget.resetToken;
     }
     _triggered = false;
     _progressController.stop();
@@ -364,6 +372,7 @@ class _DoorSlideTileState extends State<DoorSlideTile>
       duration: widget.reboundDuration,
       curve: Curves.easeOutCubic,
     );
+    _lastResetToken = widget.resetToken;
   }
 
   /// 绘制滑槽与滑块，展示当前进度位置。
@@ -372,7 +381,11 @@ class _DoorSlideTileState extends State<DoorSlideTile>
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
-        _onConstraintsChanged(constraints);
+        if (widget.resetToken != null && widget.resetToken != _lastResetToken) {
+          _lastResetToken = widget.resetToken;
+          _triggered = false;
+          _progressController.value = 0;
+        }
         return GestureDetector(
           onPanStart: _handlePanStart,
           onPanUpdate: _handlePanUpdate,
@@ -382,64 +395,101 @@ class _DoorSlideTileState extends State<DoorSlideTile>
             animation: _progressController,
             builder: (context, _) {
               final double progress = _progressController.value;
-              final double sliderSize = 52;
+              final double horizontalPadding = widget.axis == Axis.horizontal
+                  ? constraints.maxWidth * _travelInsetFraction
+                  : 0;
+              final double verticalPadding = widget.axis == Axis.horizontal
+                  ? 0
+                  : constraints.maxHeight * _travelInsetFraction;
+              final double trackWidth =
+                  constraints.maxWidth - horizontalPadding * 2;
+              final double trackHeight =
+                  constraints.maxHeight - verticalPadding * 2;
+              _updateTrackSize(Size(trackWidth, trackHeight));
+
               final Alignment alignment = widget.axis == Axis.horizontal
                   ? Alignment(-1 + progress * 2, 0)
                   : Alignment(0, 1 - progress * 2);
-              return Stack(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: LinearGradient(
-                        colors: [
-                          colorScheme.primaryContainer.withAlpha(
-                            (0.25 * 255).round(),
-                          ),
-                          colorScheme.surface.withAlpha((0.6 * 255).round()),
-                        ],
-                        begin: widget.axis == Axis.horizontal
-                            ? Alignment.centerLeft
-                            : Alignment.bottomCenter,
-                        end: widget.axis == Axis.horizontal
-                            ? Alignment.centerRight
-                            : Alignment.topCenter,
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: alignment,
-                    child: Container(
-                      width: widget.axis == Axis.horizontal
-                          ? sliderSize
-                          : math.min(sliderSize, constraints.maxWidth),
-                      height: widget.axis == Axis.horizontal
-                          ? math.min(sliderSize, constraints.maxHeight)
-                          : sliderSize,
+
+              final double trackThickness = widget.axis == Axis.horizontal
+                  ? trackHeight
+                  : trackWidth;
+              final double handleThickness = math.min(trackThickness, 56);
+              final double handleLength = widget.axis == Axis.horizontal
+                  ? math.min(trackWidth * 0.65, handleThickness * 1.6)
+                  : math.min(trackHeight * 0.65, handleThickness * 1.6);
+              final double handleWidth = widget.axis == Axis.horizontal
+                  ? handleLength
+                  : handleThickness;
+              final double handleHeight = widget.axis == Axis.horizontal
+                  ? handleThickness
+                  : handleLength;
+              final double handleRadius =
+                  (widget.axis == Axis.horizontal
+                      ? handleHeight
+                      : handleWidth) /
+                  2;
+
+              return Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: verticalPadding,
+                ),
+                child: Stack(
+                  children: [
+                    Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        color: colorScheme.primary,
-                        boxShadow: [
-                          BoxShadow(
-                            color: colorScheme.primary.withAlpha(
+                        borderRadius: BorderRadius.circular(
+                          widget.axis == Axis.horizontal
+                              ? trackHeight / 2
+                              : trackWidth / 2,
+                        ),
+                        gradient: LinearGradient(
+                          colors: [
+                            colorScheme.primaryContainer.withAlpha(
                               (0.3 * 255).round(),
                             ),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(
-                        widget.axis == Axis.horizontal
-                            ? Icons.arrow_forward_rounded
-                            : Icons.keyboard_arrow_up_rounded,
-                        color: colorScheme.onPrimary,
-                        size: 28,
+                            colorScheme.surface.withAlpha((0.7 * 255).round()),
+                          ],
+                          begin: widget.axis == Axis.horizontal
+                              ? Alignment.centerLeft
+                              : Alignment.bottomCenter,
+                          end: widget.axis == Axis.horizontal
+                              ? Alignment.centerRight
+                              : Alignment.topCenter,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    Align(
+                      alignment: alignment,
+                      child: Container(
+                        width: handleWidth,
+                        height: handleHeight,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(handleRadius),
+                          color: colorScheme.primary,
+                          boxShadow: [
+                            BoxShadow(
+                              color: colorScheme.primary.withAlpha(
+                                (0.28 * 255).round(),
+                              ),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          widget.axis == Axis.horizontal
+                              ? Icons.arrow_forward_rounded
+                              : Icons.keyboard_arrow_up_rounded,
+                          color: colorScheme.onPrimary,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               );
             },
           ),
