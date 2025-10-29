@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dormdevise/models/status_topic_suggestion_builder.dart';
 import 'package:dormdevise/services/mqtt_service.dart';
+import 'package:dormdevise/services/door_widget_service.dart';
 
 /// MQTT 配置与调试页面。
 class MqttSettingsPage extends StatefulWidget {
@@ -23,6 +24,7 @@ class MqttSettingsPage extends StatefulWidget {
 
 class _MqttSettingsPageState extends State<MqttSettingsPage> {
   static const String _subscribedTopicKey = 'mqtt_last_subscribed_topic';
+  static const String _statusEnabledKey = 'mqtt_status_enabled';
   final StatusTopicSuggestionBuilder _suggestionBuilder =
       const StatusTopicSuggestionBuilder();
   final List<String> _logLines = [];
@@ -46,6 +48,8 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
   bool _isConfigReady = false;
   bool _isDisposing = false;
   bool _hasSubscribed = false;
+  bool _statusMonitorEnabled = false;
+  bool _statusEnabledPersisted = false;
   MqttService? _statusSubscriptionService;
 
   // controller 只在变量变更时重建，避免 labelText 闪烁
@@ -181,7 +185,6 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
 
   /// 从本地存储加载配置并刷新表单控件。
   Future<void> _loadConfig({String? defaultClientId}) async {
-    await _stopStatusSubscription(silent: true);
     final prefs = await SharedPreferences.getInstance();
     final host = prefs.getString('mqtt_host') ?? '';
     final port = prefs.getString('mqtt_port') ?? '1883';
@@ -197,6 +200,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     final withTls = prefs.getBool('mqtt_with_tls') ?? false;
     final loadedStatusTopic = prefs.getString('mqtt_status_topic') ?? '';
     final lastSubscribedTopic = prefs.getString(_subscribedTopicKey) ?? '';
+    final bool statusEnabled = prefs.getBool(_statusEnabledKey) ?? false;
     final oldControllers = _isConfigReady
         ? <TextEditingController>[
             _hostController,
@@ -213,6 +217,8 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
             _customMsgController,
           ]
         : const <TextEditingController>[];
+    _statusMonitorEnabled = statusEnabled;
+    _statusEnabledPersisted = statusEnabled;
     setState(() {
       _host = host;
       _port = port;
@@ -249,6 +255,9 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     for (final controller in oldControllers) {
       controller.dispose();
     }
+    if (statusEnabled && loadedStatusTopic.isNotEmpty && mounted) {
+      unawaited(_subscribeStatusTopic(autoResume: true));
+    }
   }
 
   /// 将当前表单配置写入本地存储。
@@ -268,6 +277,8 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     await prefs.setBool('mqtt_with_tls', _withTls);
     if (!mounted) return;
     await _subscribeMainTopic(triggeredBySave: true);
+    // 保存状态主题后立即刷新桌面微件的状态订阅。
+    await DoorWidgetService.instance.refreshStatusListener();
   }
 
   /// 将配置导出为 JSON 并复制到剪贴板。
@@ -517,7 +528,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
 
   /// 根据当前状态切换状态主题订阅。
   Future<void> _toggleStatusSubscription() async {
-    if (_statusSubscriptionService != null) {
+    if (_statusEnabledPersisted || _statusMonitorEnabled) {
       await _stopStatusSubscription();
       return;
     }
@@ -525,7 +536,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
   }
 
   /// 发起状态主题订阅并展示最新消息。
-  Future<void> _subscribeStatusTopic() async {
+  Future<void> _subscribeStatusTopic({bool autoResume = false}) async {
     final statusTopic = _statusTopicController.text.trim();
     if (statusTopic.isEmpty) {
       _showStatus('请先填写状态主题', isError: true, icon: Icons.info_outline);
@@ -536,7 +547,9 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
     setState(() {
       _statusFetching = true;
-      _statusPreview = '';
+      if (!autoResume) {
+        _statusPreview = '';
+      }
     });
     SecurityContext? sc;
     MqttService? service;
@@ -593,10 +606,17 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       setState(() {
         _statusSubscriptionService = service;
         _statusFetching = false;
+        _statusMonitorEnabled = true;
+        _statusEnabledPersisted = true;
       });
       service = null;
       _appendLog('已订阅状态主题: $statusTopic');
-      _showStatus('状态主题订阅成功');
+      if (!autoResume) {
+        _showStatus('状态主题订阅成功');
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_statusEnabledKey, true);
+      await DoorWidgetService.instance.refreshStatusListener();
     } catch (e) {
       debugPrint('订阅状态主题失败: $e');
       _appendLog('订阅状态失败: $e');
@@ -618,16 +638,20 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
   /// 取消状态主题订阅并清空预览。
   Future<void> _stopStatusSubscription({bool silent = false}) async {
     final service = _statusSubscriptionService;
-    if (service == null) {
-      return;
-    }
     setState(() {
       _statusSubscriptionService = null;
       _statusFetching = false;
+      _statusMonitorEnabled = false;
+      _statusEnabledPersisted = false;
       _statusPreview = '';
     });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_statusEnabledKey, false);
+    await DoorWidgetService.instance.refreshStatusListener();
     try {
-      await service.dispose();
+      if (service != null) {
+        await service.dispose();
+      }
       if (!silent) {
         _appendLog('已取消状态主题订阅');
         _showStatus('状态主题订阅已停止');
@@ -643,9 +667,6 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
 
   /// 当状态主题变更时重置订阅状态。
   void _onStatusTopicChanged(String value) {
-    if (_statusSubscriptionService != null) {
-      unawaited(_stopStatusSubscription(silent: true));
-    }
     setState(() {
       if (!_topicExpanded) {
         _topicExpanded = true;
@@ -702,7 +723,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       borderRadius: BorderRadius.circular(16),
     );
     const buttonPadding = EdgeInsets.symmetric(vertical: 14);
-    final statusSubscribed = _statusSubscriptionService != null;
+    final statusSubscribed = _statusEnabledPersisted || _statusMonitorEnabled;
 
     /// 生成统一的输入框装饰样式。
     InputDecoration decoration(
