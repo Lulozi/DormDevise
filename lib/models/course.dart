@@ -59,6 +59,32 @@ class CourseSession {
     }
     return isEvenWeek;
   }
+
+  /// 将对象转换为 JSON Map。
+  Map<String, dynamic> toJson() {
+    return {
+      'weekday': weekday,
+      'startSection': startSection,
+      'sectionCount': sectionCount,
+      'location': location,
+      'startWeek': startWeek,
+      'endWeek': endWeek,
+      'weekType': weekType.index,
+    };
+  }
+
+  /// 从 JSON Map 创建对象。
+  factory CourseSession.fromJson(Map<String, dynamic> json) {
+    return CourseSession(
+      weekday: json['weekday'] as int,
+      startSection: json['startSection'] as int,
+      sectionCount: json['sectionCount'] as int,
+      location: json['location'] as String,
+      startWeek: json['startWeek'] as int,
+      endWeek: json['endWeek'] as int,
+      weekType: CourseWeekType.values[json['weekType'] as int],
+    );
+  }
 }
 
 /// 表示一门课程及其全部排课安排。
@@ -85,5 +111,27 @@ class Course {
   /// 根据当前周次筛选需要呈现的排课列表。
   List<CourseSession> sessionsForWeek(int week) {
     return sessions.where((session) => session.occursInWeek(week)).toList();
+  }
+
+  /// 将对象转换为 JSON Map。
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'teacher': teacher,
+      'color': color.value, // ignore: deprecated_member_use
+      'sessions': sessions.map((s) => s.toJson()).toList(),
+    };
+  }
+
+  /// 从 JSON Map 创建对象。
+  factory Course.fromJson(Map<String, dynamic> json) {
+    return Course(
+      name: json['name'] as String,
+      teacher: json['teacher'] as String,
+      color: Color(json['color'] as int),
+      sessions: (json['sessions'] as List)
+          .map((e) => CourseSession.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
   }
 }
