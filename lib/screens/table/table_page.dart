@@ -30,7 +30,6 @@ class _TablePageState extends State<TablePage> {
   /// 课程格子的尺寸
   static const double _sectionHeight = 80.0;
   static const double _weekColumnWidth = 50.0;
-  static const double _dayColumnWidth = 80.0;
 
   @override
   void initState() {
@@ -200,10 +199,8 @@ class _TablePageState extends State<TablePage> {
           course.weeks.contains(_config.currentWeek);
     }).toList();
 
-    return SizedBox(
-      width: _dayColumnWidth,
-      child: Column(
-        children: [
+    return Column(
+      children: [
           // 星期标题
           Container(
             height: 50,
@@ -336,7 +333,6 @@ class _TablePageState extends State<TablePage> {
             ),
           ),
         ],
-      ),
     );
   }
 
