@@ -275,7 +275,12 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   value: index + 1,
                   child: Text('第${index + 1}节'),
                 ),
-              ).where((item) => item.value! >= _startSection).toList(),
+              )
+                  .where((item) {
+                    final value = item.value;
+                    return value != null && value >= _startSection;
+                  })
+                  .toList(),
               onChanged: (value) {
                 if (value != null) {
                   setState(() {

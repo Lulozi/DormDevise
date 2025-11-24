@@ -139,8 +139,6 @@ class _TablePageState extends State<TablePage> {
     }
   }
 
-
-
   /// 构建周次列
   Widget _buildWeekColumn() {
     return Container(

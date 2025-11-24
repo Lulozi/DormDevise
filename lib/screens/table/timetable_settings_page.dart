@@ -175,7 +175,14 @@ class _TimetableSettingsPageState extends State<TimetableSettingsPage> {
                 onChanged: (value) {
                   if (value != null) {
                     setState(() {
-                      _config = _config.copyWith(totalWeeks: value);
+                      // 确保当前周次不超过总周数
+                      final newCurrentWeek = _config.currentWeek > value
+                          ? value
+                          : _config.currentWeek;
+                      _config = _config.copyWith(
+                        totalWeeks: value,
+                        currentWeek: newCurrentWeek,
+                      );
                     });
                   }
                 },
