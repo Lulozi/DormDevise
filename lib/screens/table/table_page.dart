@@ -17,11 +17,12 @@ class _TablePageState extends State<TablePage> {
   final TimetableService _service = TimetableService();
   final ScrollController _verticalController = ScrollController();
   final ScrollController _weekColumnController = ScrollController();
-  final PageController _pageController = PageController();
+  late PageController _pageController;
   
   List<Course> _courses = [];
   TimetableConfig _config = TimetableConfig.defaultConfig();
   bool _isLoading = true;
+  int _currentWeekday = 1; // 当前显示的星期几
 
   /// 星期标签
   final List<String> _weekdays = ['一', '二', '三', '四', '五', '六', '日'];
@@ -34,6 +35,8 @@ class _TablePageState extends State<TablePage> {
   @override
   void initState() {
     super.initState();
+    // 使用大数作为初始页，实现无限循环效果
+    _pageController = PageController(initialPage: 10000);
     _loadData();
     _setupScrollSync();
   }
@@ -137,120 +140,7 @@ class _TablePageState extends State<TablePage> {
     }
   }
 
-  /// 获取指定位置的课程
-  Course? _getCourseAt(int weekday, int section) {
-    return _courses.firstWhere(
-      (course) =>
-          course.weekday == weekday &&
-          course.startSection <= section &&
-          course.endSection >= section &&
-          course.weeks.contains(_config.currentWeek),
-      orElse: () => Course(
-        id: '',
-        name: '',
-        weekday: 0,
-        startSection: 0,
-        endSection: 0,
-        weeks: [],
-        color: 0,
-      ),
-    ).id.isEmpty
-        ? null
-        : _courses.firstWhere(
-            (course) =>
-                course.weekday == weekday &&
-                course.startSection <= section &&
-                course.endSection >= section &&
-                course.weeks.contains(_config.currentWeek),
-          );
-  }
 
-  /// 构建课程格子
-  Widget _buildCourseCell(int weekday, int section) {
-    final course = _getCourseAt(weekday, section);
-    
-    if (course == null) {
-      // 空白格子，可点击添加课程
-      return GestureDetector(
-        onTap: () => _openCourseEdit(weekday: weekday),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: const Center(
-            child: Icon(Icons.add, color: Colors.grey, size: 16),
-          ),
-        ),
-      );
-    }
-
-    // 只在课程开始节次显示课程信息
-    if (course.startSection != section) {
-      return Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-      );
-    }
-
-    // 计算课程占据的节数
-    final spanSections = course.endSection - course.startSection + 1;
-    final height = _sectionHeight * spanSections;
-
-    return GestureDetector(
-      onTap: () => _openCourseEdit(course: course),
-      onLongPress: () => _deleteCourse(course),
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: Color(course.color).withOpacity(0.7),
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        padding: const EdgeInsets.all(4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              course.name,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (course.location != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                course.location!,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.white,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            if (course.teacher != null && spanSections > 1) ...[
-              const SizedBox(height: 2),
-              Text(
-                course.teacher!,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.white,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 
   /// 构建周次列
   Widget _buildWeekColumn() {
@@ -304,6 +194,12 @@ class _TablePageState extends State<TablePage> {
 
   /// 构建单天的课程列
   Widget _buildDayColumn(int weekday) {
+    // 获取该天的所有课程
+    final dayCourses = _courses.where((course) {
+      return course.weekday == weekday &&
+          course.weeks.contains(_config.currentWeek);
+    }).toList();
+
     return SizedBox(
       width: _dayColumnWidth,
       child: Column(
@@ -321,18 +217,122 @@ class _TablePageState extends State<TablePage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          // 课程格子
+          // 课程区域
           Expanded(
-            child: ListView.builder(
-              controller: _verticalController,
-              itemCount: _config.sectionsPerDay,
-              itemBuilder: (context, index) {
-                final section = index + 1;
-                return SizedBox(
-                  height: _sectionHeight,
-                  child: _buildCourseCell(weekday, section),
-                );
-              },
+            child: Stack(
+              children: [
+                // 背景网格
+                ListView.builder(
+                  controller: _verticalController,
+                  itemCount: _config.sectionsPerDay,
+                  itemBuilder: (context, index) {
+                    return GestureDetector(
+                      onTap: () => _openCourseEdit(weekday: weekday),
+                      child: Container(
+                        height: _sectionHeight,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          color: Colors.white,
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.add, color: Colors.grey, size: 16),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                // 课程卡片层
+                ...dayCourses.map((course) {
+                  final top = (course.startSection - 1) * _sectionHeight;
+                  final spanSections =
+                      course.endSection - course.startSection + 1;
+                  final height = _sectionHeight * spanSections;
+
+                  return Positioned(
+                    top: top,
+                    left: 0,
+                    right: 0,
+                    height: height,
+                    child: GestureDetector(
+                      onTap: () => _openCourseEdit(course: course),
+                      onLongPress: () => _deleteCourse(course),
+                      child: Container(
+                        margin: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Color(course.color).withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 2,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            Text(
+                              course.name,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (course.location != null) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.location_on,
+                                      size: 10, color: Colors.white),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      course.location!,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.white,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            if (course.teacher != null && spanSections > 1) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  const Icon(Icons.person,
+                                      size: 10, color: Colors.white),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      course.teacher!,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.white,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ],
             ),
           ),
         ],
@@ -350,7 +350,7 @@ class _TablePageState extends State<TablePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('第${_config.currentWeek}周'),
+        title: Text('第${_config.currentWeek}周 周${_weekdays[_currentWeekday - 1]}'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -362,13 +362,18 @@ class _TablePageState extends State<TablePage> {
         children: [
           // 左侧周次列
           _buildWeekColumn(),
-          // 右侧课程表，支持横向滑动切换周一到周日
+          // 右侧课程表，支持横向滑动切换周一到周日（无限循环）
           Expanded(
             child: PageView.builder(
               controller: _pageController,
-              itemCount: 7,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentWeekday = (index % 7) + 1;
+                });
+              },
               itemBuilder: (context, index) {
-                final weekday = index + 1;
+                // 使用模运算实现周一到周日的循环
+                final weekday = (index % 7) + 1;
                 return _buildDayColumn(weekday);
               },
             ),
