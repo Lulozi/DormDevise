@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:dormdevise/screens/open_door/door_callbacks.dart';
-import 'package:dormdevise/screens/open_door/open_door_settings_page.dart';
+import 'door_callbacks.dart';
+import 'open_door_settings_page.dart';
 import 'package:dormdevise/services/door_trigger_service.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';

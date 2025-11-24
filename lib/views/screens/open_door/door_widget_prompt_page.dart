@@ -1,4 +1,4 @@
-import 'package:dormdevise/screens/open_door/widgets/door_widget_dialog.dart';
+import 'package:dormdevise/widgets/door_widget_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 

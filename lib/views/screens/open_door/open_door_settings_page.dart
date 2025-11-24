@@ -1,6 +1,6 @@
-import 'package:dormdevise/screens/open_door/location_settings_page.dart';
-import 'package:dormdevise/screens/open_door/mqtt_settings_page.dart';
-import 'package:dormdevise/screens/open_door/wifi_settings_page.dart';
+import 'location_settings_page.dart';
+import 'mqtt_settings_page.dart';
+import 'wifi_settings_page.dart';
 import 'package:flutter/material.dart';
 
 /// 开门相关设置页，整合多项配置标签。

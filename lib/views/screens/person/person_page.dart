@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'package:dormdevise/screens/open_door/location_settings_page.dart';
-import 'package:dormdevise/screens/open_door/mqtt_settings_page.dart';
-import 'package:dormdevise/screens/open_door/wifi_settings_page.dart';
-import 'package:dormdevise/screens/person/about_page.dart';
-import 'package:dormdevise/screens/person/door_widget_settings_page.dart';
-import 'package:dormdevise/screens/person/widgets/settings_open_container.dart';
+import '../open_door/location_settings_page.dart';
+import '../open_door/mqtt_settings_page.dart';
+import '../open_door/wifi_settings_page.dart';
+import 'about_page.dart';
+import 'door_widget_settings_page.dart';
+import 'widgets/settings_open_container.dart';
 
 /// 个人中心页面，汇总多类设置入口及动画。
 class PersonPage extends StatefulWidget {

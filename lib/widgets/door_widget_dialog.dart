@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:dormdevise/screens/open_door/widgets/door_desktop_widgets.dart';
+import 'door_desktop_widgets.dart';
 import 'package:dormdevise/services/door_trigger_service.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:flutter/material.dart';

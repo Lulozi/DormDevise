@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../door_callbacks.dart';
+import '../../../views/screens/open_door/door_callbacks.dart';
 
 /// 滑动开关控件，根据方向拖动至末端后触发开门。
 class DoorSlideTile extends StatefulWidget {
