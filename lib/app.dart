@@ -1,13 +1,14 @@
 import 'dart:async';
 
-import 'package:dormdevise/screens/open_door/open_door_page.dart';
-import 'package:dormdevise/screens/open_door/open_door_settings_page.dart';
-import 'package:dormdevise/screens/open_door/door_widget_prompt_page.dart';
-import 'package:dormdevise/screens/open_door/widgets/door_widget_dialog.dart';
-import 'package:dormdevise/screens/person/person_page.dart';
-import 'package:dormdevise/screens/table/table_page.dart';
+import 'package:dormdevise/views/screens/open_door/open_door_page.dart';
+import 'package:dormdevise/views/screens/open_door/open_door_settings_page.dart';
+import 'package:dormdevise/views/screens/open_door/door_widget_prompt_page.dart';
+import 'package:dormdevise/widgets/door_widget_dialog.dart';
+import 'package:dormdevise/views/screens/person/person_page.dart';
+import 'package:dormdevise/views/screens/table/table_page.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 /// 应用根组件，负责注入基础主题与导航框架。
 class DormDeviseApp extends StatelessWidget {
@@ -24,6 +25,12 @@ class DormDeviseApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
       initialRoute: initialRoute,
       onGenerateRoute: (RouteSettings settings) {
         switch (settings.name) {
