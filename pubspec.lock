@@ -190,6 +190,11 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "5.0.0"
+  flutter_localizations:
+    dependency: "direct main"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
   flutter_native_splash:
     dependency: "direct dev"
     description:
@@ -312,6 +317,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "4.5.4"
+  intl:
+    dependency: "direct main"
+    description:
+      name: intl
+      sha256: "3df61194eb431efc39c4ceba583b95633a403f46c9fd341e550ce0bfa50e9aa5"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.20.2"
   js:
     dependency: transitive
     description:
@@ -344,6 +357,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "3.0.2"
+  linked_scroll_controller:
+    dependency: "direct main"
+    description:
+      name: linked_scroll_controller
+      sha256: e6020062bcf4ffc907ee7fd090fa971e65d8dfaac3c62baf601a3ced0b37986a
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.2.0"
   lints:
     dependency: transitive
     description:
@@ -384,6 +405,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "10.11.1"
+  nested:
+    dependency: transitive
+    description:
+      name: nested
+      sha256: "03bac4c528c64c95c722ec99280375a6f2fc708eec17c7b3f07253b626cd2a20"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.0.0"
   open_filex:
     dependency: "direct main"
     description:
@@ -552,6 +581,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "6.0.3"
+  provider:
+    dependency: "direct main"
+    description:
+      name: provider
+      sha256: "4e82183fa20e5ca25703ead7e05de9e4cceed1fbd1eadc1ac3cb6f565a09f272"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "6.1.5+1"
   pub_semver:
     dependency: "direct main"
     description:

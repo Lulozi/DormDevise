@@ -53,6 +53,11 @@ dependencies:
   path_provider: ^2.1.4
   open_filex: ^4.5.0
   home_widget: ^0.8.1
+  provider: ^6.1.5+1
+  linked_scroll_controller: ^0.2.0
+  intl: ^0.20.2
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
@@ -80,15 +85,6 @@ flutter:
   assets:
     - assets/images/person/
     - assets/images/start/
-
-flutter_native_splash:
-  color: "#FFFFFF"
-  image: assets/images/start/start.jpg
-  android_gravity: fill
-  ios_content_mode: scaleAspectFill
-  android_12:
-    image: assets/images/start/start.jpg
-    color: "#FFFFFF"
 
   # To add assets to your application, add an assets section, like this:
   # assets:
