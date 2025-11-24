@@ -94,6 +94,43 @@ class ScheduleSegmentConfig {
       perBreakDurations: perBreakDurations ?? this.perBreakDurations,
     );
   }
+
+  /// 将对象转换为 JSON Map。
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'startTime': {'hour': startTime.hour, 'minute': startTime.minute},
+      'classCount': classCount,
+      'classDuration': classDuration?.inMinutes,
+      'breakDuration': breakDuration?.inMinutes,
+      'perClassDurations': perClassDurations?.map((d) => d.inMinutes).toList(),
+      'perBreakDurations': perBreakDurations?.map((d) => d.inMinutes).toList(),
+    };
+  }
+
+  /// 从 JSON Map 创建对象。
+  factory ScheduleSegmentConfig.fromJson(Map<String, dynamic> json) {
+    return ScheduleSegmentConfig(
+      name: json['name'] as String,
+      startTime: TimeOfDay(
+        hour: json['startTime']['hour'] as int,
+        minute: json['startTime']['minute'] as int,
+      ),
+      classCount: json['classCount'] as int,
+      classDuration: json['classDuration'] != null
+          ? Duration(minutes: json['classDuration'] as int)
+          : null,
+      breakDuration: json['breakDuration'] != null
+          ? Duration(minutes: json['breakDuration'] as int)
+          : null,
+      perClassDurations: (json['perClassDurations'] as List?)
+          ?.map((e) => Duration(minutes: e as int))
+          .toList(),
+      perBreakDurations: (json['perBreakDurations'] as List?)
+          ?.map((e) => Duration(minutes: e as int))
+          .toList(),
+    );
+  }
 }
 
 /// 管理课程表的课节配置，支持全局与分时段自定义。
@@ -141,6 +178,32 @@ class CourseScheduleConfig {
         ),
       ],
       useSegmentBreakDurations: false,
+    );
+  }
+
+  /// 将对象转换为 JSON Map。
+  Map<String, dynamic> toJson() {
+    return {
+      'defaultClassDuration': defaultClassDuration.inMinutes,
+      'defaultBreakDuration': defaultBreakDuration.inMinutes,
+      'segments': segments.map((s) => s.toJson()).toList(),
+      'useSegmentBreakDurations': useSegmentBreakDurations,
+    };
+  }
+
+  /// 从 JSON Map 创建对象。
+  factory CourseScheduleConfig.fromJson(Map<String, dynamic> json) {
+    return CourseScheduleConfig(
+      defaultClassDuration: Duration(
+        minutes: json['defaultClassDuration'] as int,
+      ),
+      defaultBreakDuration: Duration(
+        minutes: json['defaultBreakDuration'] as int,
+      ),
+      segments: (json['segments'] as List)
+          .map((e) => ScheduleSegmentConfig.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      useSegmentBreakDurations: json['useSegmentBreakDurations'] as bool,
     );
   }
 
