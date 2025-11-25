@@ -371,12 +371,11 @@ class _TablePageState extends State<TablePage> {
   Widget _buildPagedTable(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final double timeColumnWidth =
-            CourseScheduleTable.resolveTimeColumnWidth(
-              context,
-              _sections,
-              minWidth: 48,
-            );
+        // 计算时间列宽度：
+        // 1. 保持与周末有课模式（7天）下的列宽一致
+        // 2. 布局结构为：16px空白 + 时间列 + 7个课程列
+        // 3. 因此总宽度 - 16px = 8 * 列宽
+        final double timeColumnWidth = (constraints.maxWidth - 16) / 8;
 
         return Row(
           children: <Widget>[
