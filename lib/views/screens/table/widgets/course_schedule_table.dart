@@ -259,6 +259,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
                                       context,
                                       dayWidth,
                                       geometry.rows,
+                                      timeColumnWidth,
                                     ),
                                   ),
                                   for (final _CourseBlock block in blocks)
@@ -458,6 +459,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     BuildContext context,
     double dayWidth,
     List<CourseTableRowSlot> rows,
+    double timeColumnWidth,
   ) {
     final Color borderColor = Theme.of(
       context,
@@ -483,12 +485,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
                 color: breakRowColor,
                 border: Border(bottom: BorderSide(color: borderColor)),
               ),
-              child: Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(slot.breakLabel ?? '', style: labelStyle),
-                ),
-              ),
+              child: includeTimeColumn
+                  ? null
+                  : Center(
+                      child: Transform.translate(
+                        offset: Offset(-timeColumnWidth / 2, 0),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(slot.breakLabel ?? '', style: labelStyle),
+                        ),
+                      ),
+                    ),
             )
           else
             SizedBox(
