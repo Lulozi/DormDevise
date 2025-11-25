@@ -741,8 +741,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
         .copyWith(
           fontWeight: FontWeight.w600,
           color: const Color(0xFF7B8499),
-          letterSpacing: 1.1,
-          fontSize: 12,
+          letterSpacing: 0.5,
+          fontSize: 10,
         );
     return Container(
       height: slot.height,
@@ -820,7 +820,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
 
   /// 计算分隔行高度，使视觉节奏更紧凑。
   double _resolveBreakRowHeight(double sectionHeight) {
-    return math.max(sectionHeight * 0.5, 40);
+    return 24.0;
   }
 }
 
