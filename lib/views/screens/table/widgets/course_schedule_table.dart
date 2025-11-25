@@ -323,7 +323,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
         return DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.zero,
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
@@ -332,10 +332,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: content,
-          ),
+          child: ClipRRect(borderRadius: BorderRadius.zero, child: content),
         );
       },
     );
@@ -702,10 +699,14 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
       fontWeight: FontWeight.w600,
       color: const Color(0xFF3D4555),
       letterSpacing: 0.3,
+      // 降低字体大小以适应较窄/较短的时间列单元
+      fontSize: 12,
     );
     final TextStyle timeStyle = textTheme.bodySmall!.copyWith(
       color: const Color(0xFF6C768A),
-      height: 1.15,
+      height: 1.05,
+      // 更小字体以避免竖直溢出
+      fontSize: 11,
     );
 
     return Container(
@@ -718,15 +719,32 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text('${section.index} 节', style: indexStyle),
-            const SizedBox(height: 6),
-            Text(_formatTime(section.start), style: timeStyle),
-            Text(_formatTime(section.end), style: timeStyle),
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                '${section.index} 节',
+                style: indexStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _formatTime(section.start),
+                style: timeStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                _formatTime(section.end),
+                style: timeStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -762,6 +780,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     List<SectionTime> sections,
     double sectionHeight,
   ) {
+    // 确保单节高度有最小限制，以免在高缩放或大量节次场景下发生溢出
+    final double effectiveSectionHeight = math.max(sectionHeight, 48.0);
     if (sections.isEmpty) {
       return const CourseTableGeometry(
         rows: <CourseTableRowSlot>[],
@@ -780,11 +800,11 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
       rows.add(
         CourseTableRowSlot.section(
           section: section,
-          height: sectionHeight,
+          height: effectiveSectionHeight,
           order: i,
         ),
       );
-      cursor += sectionHeight;
+      cursor += effectiveSectionHeight;
 
       final bool hasNext = i < sections.length - 1;
       if (hasNext && sections[i + 1].segmentName != section.segmentName) {
@@ -792,7 +812,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
           section.segmentName,
           sections[i + 1].segmentName,
         );
-        final double breakHeight = _resolveBreakRowHeight(sectionHeight);
+        final double breakHeight = _resolveBreakRowHeight(
+          effectiveSectionHeight,
+        );
         rows.add(
           CourseTableRowSlot.breakRow(label: breakLabel, height: breakHeight),
         );

@@ -127,17 +127,17 @@ class _TablePageState extends State<TablePage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const SizedBox(height: 12),
-              _buildToolbar(context),
-              const SizedBox(height: 16),
-              Expanded(child: _buildPagedTable(context)),
-            ],
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildToolbar(context),
+            ),
+            const SizedBox(height: 16),
+            Expanded(child: _buildPagedTable(context)),
+          ],
         ),
       ),
     );
@@ -375,33 +375,28 @@ class _TablePageState extends State<TablePage> {
             CourseScheduleTable.resolveTimeColumnWidth(
               context,
               _sections,
-              minWidth: 64,
+              minWidth: 48,
             );
 
         return Row(
           children: <Widget>[
+            const SizedBox(width: 16),
             SizedBox(
               width: timeColumnWidth,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  bottomLeft: Radius.circular(20),
-                ),
-                child: CourseScheduleTable(
-                  courses: const <Course>[],
-                  currentWeek: _currentWeek,
-                  sections: _sections,
-                  weekdays: const <String>[],
-                  weekdayIndexes: const <int>[],
-                  maxWeek: _maxWeek,
-                  onWeekChanged: _updateWeek,
-                  onWeekHeaderTap: _openWeekSelectSheet,
-                  onTimeColumnTap: () => _openSectionSheet(),
-                  includeTimeColumn: true,
-                  applySurface: false,
-                  timeColumnWidth: timeColumnWidth,
-                  scrollController: _timeColumnController,
-                ),
+              child: CourseScheduleTable(
+                courses: const <Course>[],
+                currentWeek: _currentWeek,
+                sections: _sections,
+                weekdays: const <String>[],
+                weekdayIndexes: const <int>[],
+                maxWeek: _maxWeek,
+                onWeekChanged: _updateWeek,
+                onWeekHeaderTap: _openWeekSelectSheet,
+                onTimeColumnTap: () => _openSectionSheet(),
+                includeTimeColumn: true,
+                applySurface: false,
+                timeColumnWidth: timeColumnWidth,
+                scrollController: _timeColumnController,
               ),
             ),
             Expanded(
@@ -437,6 +432,7 @@ class _TablePageState extends State<TablePage> {
                     leadingInset: 0,
                     scrollController: _scrollControllerForWeek(index),
                     showNonCurrentWeek: _showNonCurrentWeek,
+                    applySurface: false,
                   );
                 },
               ),
