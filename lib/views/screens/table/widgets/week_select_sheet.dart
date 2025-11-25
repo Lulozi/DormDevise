@@ -71,6 +71,7 @@ class WeekSelectSheet extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final int week = index + 1;
                   final bool isSelected = week == selectedWeek;
+                  final bool isCurrentWeek = week == currentWeek;
 
                   return InkWell(
                     onTap: () {
@@ -85,20 +86,25 @@ class WeekSelectSheet extends StatelessWidget {
                             : const Color(0xFFF5F5F5), // 其他状态为灰色
                         borderRadius: BorderRadius.circular(12),
                         border: isSelected
-                            ? Border.all(color: Colors.blueAccent, width: 1.5)
+                            ? Border.all(
+                                color: const Color(0xFF1E69FF).withOpacity(0.3),
+                                width: 1.5,
+                              )
                             : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
-                        '$week',
+                        isCurrentWeek ? '本周' : '$week',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: isSelected
+                          fontSize: isCurrentWeek ? 15 : 16,
+                          fontWeight: isSelected || isCurrentWeek
                               ? FontWeight.bold
                               : FontWeight.normal,
                           color: isSelected
-                              ? Colors.blueAccent
-                              : Colors.black87,
+                              ? const Color(0xFF1E69FF)
+                              : (isCurrentWeek
+                                    ? const Color(0xFF1E69FF)
+                                    : Colors.black87),
                         ),
                       ),
                     ),
@@ -107,38 +113,7 @@ class WeekSelectSheet extends StatelessWidget {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      onWeekSelected(currentWeek);
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE8F0FF),
-                      foregroundColor: Colors.blueAccent,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      '本周',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
         ],
       ),
     );
