@@ -43,6 +43,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   late List<_MutableSegment> _segments;
   late final List<GlobalKey> _segmentKeys;
   late final ScrollController _scrollController;
+  OverlayEntry? _currentToast;
 
   @override
   void initState() {
@@ -70,8 +71,84 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
 
   @override
   void dispose() {
+    _currentToast?.remove();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 显示自定义样式的提示信息
+  void _showToast(String message) {
+    if (!mounted) return;
+
+    _currentToast?.remove();
+    _currentToast = null;
+
+    final OverlayState? overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    final OverlayEntry entry = OverlayEntry(
+      builder: (BuildContext context) {
+        return Positioned(
+          top: MediaQuery.of(context).padding.top + 12,
+          left: 16,
+          right: 16,
+          child: Material(
+            color: Colors.transparent,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEBF2FF),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFF1E69FF).withOpacity(0.15),
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: const Color(0xFF1E69FF).withOpacity(0.1),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: Color(0xFF1E69FF),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      message,
+                      style: const TextStyle(
+                        color: Color(0xFF2D3A52),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    _currentToast = entry;
+    overlay.insert(entry);
+
+    Future.delayed(const Duration(seconds: 2), () {
+      if (_currentToast == entry) {
+        entry.remove();
+        _currentToast = null;
+      }
+    });
   }
 
   /// 构建底部弹窗整体布局。
@@ -278,16 +355,17 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                 _CircleIconButton(
                   icon: Icons.remove,
                   tooltip: '减少节次',
-                  onTap: segment.classCount > 1
+                  onTap: segment.classCount > 0
                       ? () => _updateClassCount(index, -1)
                       : null,
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    '${segment.classCount} 节',
+                    segment.classCount == 0 ? '无课' : '${segment.classCount} 节',
                     style: theme.textTheme.titleSmall!.copyWith(
                       fontWeight: FontWeight.w600,
+                      color: segment.classCount == 0 ? Colors.black45 : null,
                     ),
                   ),
                 ),
@@ -528,9 +606,52 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   void _updateClassCount(int segmentIndex, int delta) {
     final _MutableSegment segment = _segments[segmentIndex];
     final int newCount = segment.classCount + delta;
-    if (newCount < 1) {
+    if (newCount < 0) {
       return;
     }
+
+    if (delta > 0) {
+      TimeOfDay cursor = segment.startTime;
+      for (int i = 0; i < newCount; i++) {
+        final Duration d = i < segment.classDurations.length
+            ? segment.classDurations[i]
+            : _defaultClassDuration;
+        final TimeOfDay nextCursor = _addDuration(cursor, d);
+
+        // 检查是否跨天
+        if (_compareTimeOfDay(nextCursor, cursor) < 0) {
+          _showToast('不能超过当天时间');
+          return;
+        }
+        cursor = nextCursor;
+
+        if (i < newCount - 1) {
+          Duration b;
+          if (i < segment.breakDurations.length) {
+            b = segment.breakDurations[i];
+          } else {
+            b = _resolveBaseBreakDuration(segment);
+          }
+          final TimeOfDay nextCursorAfterBreak = _addDuration(cursor, b);
+
+          // 检查课间是否跨天
+          if (_compareTimeOfDay(nextCursorAfterBreak, cursor) < 0) {
+            _showToast('不能超过当天时间');
+            return;
+          }
+          cursor = nextCursorAfterBreak;
+        }
+      }
+
+      if (segmentIndex < _segments.length - 1) {
+        if (_compareTimeOfDay(cursor, _segments[segmentIndex + 1].startTime) >
+            0) {
+          _showToast('增加节次后将超过下个时段的开始时间');
+          return;
+        }
+      }
+    }
+
     setState(() {
       final int previousCount = segment.classCount;
       if (newCount > segment.classCount) {
@@ -560,10 +681,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     required Duration classDuration,
   }) async {
     final _MutableSegment segment = _segments[segmentIndex];
+    // 获取当前状态下的所有节次预览，用于验证
     final List<_SectionPreview> currentPreviews = _buildSectionPreviews(
       segment,
       0,
     );
+
     final _SectionTimeResult? result = await _showSectionTimePicker(
       segmentName: segment.name,
       sectionNumber: preview.number,
@@ -572,44 +695,106 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
       canEditStart: canEditStart,
       initialDurationOverride: classDuration,
     );
+
     if (result == null) {
       return;
     }
+
+    final TimeOfDay newStart = result.updatedStart ?? preview.start;
+    final Duration newDuration = result.classDuration;
+
+    // 1. 验证开始时间是否合法
+    if (sectionIndex == 0) {
+      // 如果是该时段的第一节课
+      if (segmentIndex > 0) {
+        // 必须晚于上一时段的结束时间
+        final _MutableSegment prevSegment = _segments[segmentIndex - 1];
+        final TimeOfDay prevSegmentEnd = _buildSectionPreviews(
+          prevSegment,
+          0,
+        ).last.end;
+
+        if (_compareTimeOfDay(newStart, prevSegmentEnd) < 0) {
+          _showToast('开始时间不能早于上一时段结束时间');
+          return;
+        }
+      }
+    } else {
+      // 如果是中间的节次，必须晚于上一节课的结束时间
+      final TimeOfDay prevSectionEnd = currentPreviews[sectionIndex - 1].end;
+      if (_compareTimeOfDay(newStart, prevSectionEnd) < 0) {
+        _showToast('开始时间不能早于上一节课结束时间');
+        return;
+      }
+    }
+
+    // 2. 模拟计算后续时间链，验证是否跨天或超过下一时段
+    TimeOfDay cursor = newStart;
+
+    for (int i = sectionIndex; i < segment.classCount; i++) {
+      // 当前节次时长（如果是正在编辑的节次，使用新时长）
+      final Duration d = (i == sectionIndex)
+          ? newDuration
+          : segment.classDurations[i];
+
+      // 计算结束时间
+      final TimeOfDay end = _addDuration(cursor, d);
+
+      // 检查单节课是否跨天
+      if (_compareTimeOfDay(end, cursor) < 0) {
+        _showToast('时间不能跨越午夜');
+        return;
+      }
+
+      cursor = end; // 游标移动到下课时间
+
+      // 如果不是最后一节，加上课间
+      if (i < segment.classCount - 1) {
+        Duration b;
+        // 课间时长保持不变，只随课程平移
+        b = _resolveBreakDuration(segment: segment, breakIndex: i);
+
+        final TimeOfDay nextStart = _addDuration(cursor, b);
+        // 检查课间是否跨天
+        if (_compareTimeOfDay(nextStart, cursor) < 0) {
+          _showToast('时间不能跨越午夜');
+          return;
+        }
+        cursor = nextStart; // 游标移动到下一节上课时间
+      }
+    }
+
+    // 3. 验证是否超过下一时段开始时间
+    if (segmentIndex < _segments.length - 1) {
+      final TimeOfDay nextSegmentStart = _segments[segmentIndex + 1].startTime;
+      // cursor 此时是当前时段最后一节课的结束时间
+      if (_compareTimeOfDay(cursor, nextSegmentStart) > 0) {
+        _showToast('调整后时间将超过下一时段开始时间');
+        return;
+      }
+    }
+
+    // 4. 应用更改
     setState(() {
-      segment.classDurations[sectionIndex] = result.classDuration;
-      final TimeOfDay? desiredStart = result.updatedStart;
-      if (!canEditStart || desiredStart == null) {
-        return;
-      }
+      segment.classDurations[sectionIndex] = newDuration;
+
       if (sectionIndex == 0) {
-        segment.startTime = desiredStart;
-        return;
-      }
-      final _SectionPreview previousPreview = currentPreviews[sectionIndex - 1];
-      final Duration currentBreak = _resolveBreakDuration(
-        segment: segment,
-        breakIndex: sectionIndex - 1,
-      );
-      final TimeOfDay minimumStart = _addDuration(
-        previousPreview.end,
-        currentBreak,
-      );
-      final TimeOfDay effectiveStart =
-          _compareTimeOfDay(desiredStart, minimumStart) < 0
-          ? minimumStart
-          : desiredStart;
+        segment.startTime = newStart;
+      } else {
+        // 更新当前节次与上一节次之间的课间
+        final TimeOfDay prevEnd = currentPreviews[sectionIndex - 1].end;
+        final int newBreakMin = _differenceInMinutes(prevEnd, newStart);
 
-      final int gapMinutes = _differenceInMinutes(
-        previousPreview.end,
-        effectiveStart,
-      );
-      final int clampedGap = gapMinutes.clamp(0, 300);
-      _ensureBreakSlots(segment);
-      segment.breakDurations[sectionIndex - 1] = Duration(minutes: clampedGap);
+        _ensureBreakSlots(segment);
+        segment.breakDurations[sectionIndex - 1] = Duration(
+          minutes: newBreakMin,
+        );
 
-      if (_breakMode != _BreakDurationMode.segmented &&
-          clampedGap != _defaultBreakDuration.inMinutes) {
-        _breakMode = _BreakDurationMode.segmented;
+        // 如果课间变化且当前不是分段模式，自动切换为分段模式
+        if (_breakMode != _BreakDurationMode.segmented &&
+            newBreakMin != _defaultBreakDuration.inMinutes) {
+          _breakMode = _BreakDurationMode.segmented;
+        }
       }
     });
   }
@@ -782,128 +967,48 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
         ? _addDuration(initialStart, Duration(minutes: currentDuration))
         : initialEnd;
 
-    List<int> buildEndHourOptions() {
-      final List<int> hours = <int>[];
-      for (int hour = currentStart.hour; hour < 24; hour++) {
-        if (hour == currentStart.hour && currentStart.minute >= 59) {
-          continue;
-        }
-        hours.add(hour);
-      }
-      if (hours.isEmpty) {
-        hours.add(currentStart.hour);
-      }
-      return hours;
-    }
-
-    List<int> buildEndMinuteOptions(int hour) {
-      final bool sameHour = hour == currentStart.hour;
-      if (sameHour && currentStart.minute >= 59) {
-        return <int>[];
-      }
-      final int minMinute = sameHour ? currentStart.minute + 1 : 0;
-      final int available = 60 - minMinute;
-      return List<int>.generate(available, (int index) => minMinute + index);
-    }
-
-    void normalizeEndSelection() {
-      final List<int> hourOptions = buildEndHourOptions();
-      if (!hourOptions.contains(currentEnd.hour)) {
-        currentEnd = TimeOfDay(
-          hour: hourOptions.first,
-          minute: currentStart.minute,
-        );
-      }
-      List<int> minuteOptionsForHour = buildEndMinuteOptions(currentEnd.hour);
-      if (minuteOptionsForHour.isEmpty) {
-        final int fallbackHour = hourOptions.first;
-        minuteOptionsForHour = buildEndMinuteOptions(fallbackHour);
-        currentEnd = TimeOfDay(
-          hour: fallbackHour,
-          minute: minuteOptionsForHour.isEmpty
-              ? currentStart.minute
-              : minuteOptionsForHour.first,
-        );
-      } else if (!minuteOptionsForHour.contains(currentEnd.minute)) {
-        currentEnd = TimeOfDay(
-          hour: currentEnd.hour,
-          minute: minuteOptionsForHour.first,
-        );
-      }
-      final int diff = _differenceInMinutes(currentStart, currentEnd);
-      if (diff < 1) {
-        final TimeOfDay fallback = _addDuration(
-          currentStart,
-          const Duration(minutes: 1),
-        );
-        if (_compareTimeOfDay(fallback, currentStart) <= 0) {
-          currentEnd = currentStart;
-        } else {
-          currentEnd = fallback;
-        }
-      }
-      currentDuration = (_differenceInMinutes(
-        currentStart,
-        currentEnd,
-      )).clamp(1, 1440);
-    }
-
-    normalizeEndSelection();
-    final List<int> initialEndHourOptions = buildEndHourOptions();
-    final List<int> initialEndMinuteOptions = buildEndMinuteOptions(
-      currentEnd.hour,
-    );
-
-    final List<int> hourOptions = List<int>.generate(24, (int index) => index);
-    final List<int> minuteOptions = List<int>.generate(
+    // 使用静态的 0-23 小时和 0-59 分钟列表，避免滚动时列表变化导致的不稳定
+    final List<int> staticHours = List<int>.generate(24, (int index) => index);
+    final List<int> staticMinutes = List<int>.generate(
       60,
       (int index) => index,
     );
+
     final FixedExtentScrollController startHourController =
         FixedExtentScrollController(initialItem: currentStart.hour);
     final FixedExtentScrollController startMinuteController =
         FixedExtentScrollController(initialItem: currentStart.minute);
-    final int initialEndHourIndex = initialEndHourOptions.indexOf(
-      currentEnd.hour,
-    );
-    final int initialEndMinuteIndex = initialEndMinuteOptions.indexOf(
-      currentEnd.minute,
-    );
-    final FixedExtentScrollController endHourController =
-        FixedExtentScrollController(
-          initialItem: initialEndHourIndex < 0 ? 0 : initialEndHourIndex,
-        );
-    final FixedExtentScrollController endMinuteController =
-        FixedExtentScrollController(
-          initialItem: initialEndMinuteIndex < 0 ? 0 : initialEndMinuteIndex,
-        );
 
-    void animateToItem(FixedExtentScrollController controller, int target) {
+    final FixedExtentScrollController endHourController =
+        FixedExtentScrollController(initialItem: currentEnd.hour);
+    final FixedExtentScrollController endMinuteController =
+        FixedExtentScrollController(initialItem: currentEnd.minute);
+
+    // 智能滚动到目标值（处理循环列表的最短路径）
+    void jumpToItem(
+      FixedExtentScrollController controller,
+      int targetValue,
+      int max,
+    ) {
       if (!controller.hasClients) {
         return;
       }
       final int current = controller.selectedItem;
-      if (current == target) {
+      final int currentMod = current % max;
+      if (currentMod == targetValue) {
         return;
       }
-      controller.animateToItem(
-        target,
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOutCubic,
-      );
+
+      int diff = targetValue - currentMod;
+      if (diff > max / 2) diff -= max;
+      if (diff < -max / 2) diff += max;
+
+      controller.jumpToItem(current + diff);
     }
 
     void syncEndControllers() {
-      final List<int> hours = buildEndHourOptions();
-      final int hourIndex = hours.indexOf(currentEnd.hour);
-      if (hourIndex >= 0) {
-        animateToItem(endHourController, hourIndex);
-      }
-      final List<int> minutes = buildEndMinuteOptions(currentEnd.hour);
-      final int minuteIndex = minutes.indexOf(currentEnd.minute);
-      if (minuteIndex >= 0) {
-        animateToItem(endMinuteController, minuteIndex);
-      }
+      jumpToItem(endHourController, currentEnd.hour, 24);
+      jumpToItem(endMinuteController, currentEnd.minute, 60);
     }
 
     final _SectionTimeResult?
@@ -916,6 +1021,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             hour: hour ?? currentStart.hour,
             minute: minute ?? currentStart.minute,
           );
+          // 保持时长不变，计算新的结束时间
           final TimeOfDay newEnd = _addDuration(
             updated,
             Duration(minutes: currentDuration),
@@ -923,7 +1029,6 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           setModalState(() {
             currentStart = updated;
             currentEnd = newEnd;
-            normalizeEndSelection();
           });
           syncEndControllers();
         }
@@ -933,8 +1038,21 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             hour: hour ?? currentEnd.hour,
             minute: minute ?? currentEnd.minute,
           );
+
+          // 如果时间没有变化（例如由 syncEndControllers 触发的回调），则忽略
+          if (candidate.hour == currentEnd.hour &&
+              candidate.minute == currentEnd.minute) {
+            return;
+          }
+
+          // 计算新的时长（支持跨天）
           final int diff = _differenceInMinutes(currentStart, candidate);
+
+          // 确保最少 1 分钟时长
           if (diff < 1) {
+            // 如果时间相同，不做处理或者设为 1 分钟？
+            // 这里简单处理：如果用户选了相同时间，暂不更新时长，或者强制 +1 分钟
+            // 为了体验流畅，如果 diff < 1 (即相同时间)，我们强制结束时间为开始时间 + 1 分钟
             final TimeOfDay minEnd = _addDuration(
               currentStart,
               const Duration(minutes: 1),
@@ -942,17 +1060,16 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             setModalState(() {
               currentEnd = minEnd;
               currentDuration = 1;
-              normalizeEndSelection();
             });
             syncEndControllers();
             return;
           }
+
           setModalState(() {
             currentEnd = candidate;
             currentDuration = diff;
-            normalizeEndSelection();
           });
-          syncEndControllers();
+          // 不需要 syncEndControllers，因为是用户手动滚动的
         }
 
         Widget buildTimeColumn({
@@ -961,14 +1078,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           required FixedExtentScrollController minuteController,
           required void Function(int index) onHourChanged,
           required void Function(int index) onMinuteChanged,
-          required List<int> hours,
-          required List<int> minutes,
-          bool enableLooping = true,
         }) {
-          final List<int> resolvedHours = hours.isEmpty ? <int>[0] : hours;
-          final List<int> resolvedMinutes = minutes.isEmpty
-              ? <int>[0]
-              : minutes;
           final Widget picker = Row(
             children: <Widget>[
               Expanded(
@@ -977,9 +1087,9 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                   itemExtent: 44,
                   magnification: 1.05,
                   useMagnifier: true,
-                  looping: enableLooping,
+                  looping: true,
                   onSelectedItemChanged: onHourChanged,
-                  children: resolvedHours
+                  children: staticHours
                       .map(
                         (int hour) => Center(
                           child: Text(
@@ -1001,9 +1111,9 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                   itemExtent: 44,
                   magnification: 1.05,
                   useMagnifier: true,
-                  looping: enableLooping,
+                  looping: true,
                   onSelectedItemChanged: onMinuteChanged,
-                  children: resolvedMinutes
+                  children: staticMinutes
                       .map(
                         (int minute) => Center(
                           child: Text(
@@ -1028,12 +1138,6 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             );
           }
           return picker;
-        }
-
-        final List<int> endHourOptions = buildEndHourOptions();
-        List<int> endMinuteOptions = buildEndMinuteOptions(currentEnd.hour);
-        if (endMinuteOptions.isEmpty) {
-          endMinuteOptions = <int>[currentEnd.minute];
         }
 
         return Column(
@@ -1064,16 +1168,14 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                             if (!canEditStart) {
                               return;
                             }
-                            updateStart(hour: hourOptions[index]);
+                            updateStart(hour: staticHours[index % 24]);
                           },
                           onMinuteChanged: (int index) {
                             if (!canEditStart) {
                               return;
                             }
-                            updateStart(minute: minuteOptions[index]);
+                            updateStart(minute: staticMinutes[index % 60]);
                           },
-                          hours: hourOptions,
-                          minutes: minuteOptions,
                         ),
                       ),
                     ],
@@ -1094,7 +1196,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Text(
-                        '下一节开始时间',
+                        '结束时间',
                         style: Theme.of(context).textTheme.bodySmall!.copyWith(
                           fontWeight: FontWeight.w600,
                           color: Colors.black54,
@@ -1108,13 +1210,11 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                           hourController: endHourController,
                           minuteController: endMinuteController,
                           onHourChanged: (int index) {
-                            updateEnd(hour: endHourOptions[index]);
+                            updateEnd(hour: staticHours[index % 24]);
                           },
                           onMinuteChanged: (int index) {
-                            updateEnd(minute: endMinuteOptions[index]);
+                            updateEnd(minute: staticMinutes[index % 60]);
                           },
-                          hours: endHourOptions,
-                          minutes: endMinuteOptions,
                         ),
                       ),
                     ],
@@ -1253,7 +1353,8 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   int _differenceInMinutes(TimeOfDay start, TimeOfDay end) {
     final int from = start.hour * 60 + start.minute;
     final int to = end.hour * 60 + end.minute;
-    return to - from;
+    final int diff = to - from;
+    return diff < 0 ? diff + 1440 : diff;
   }
 
   /// 判断两个时间是否完全相同。
