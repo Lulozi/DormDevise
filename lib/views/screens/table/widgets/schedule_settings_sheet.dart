@@ -472,7 +472,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
-          title: const Text('修改课程表名称', style: TextStyle(fontSize: 20)),
+          title: const Text('', style: TextStyle(fontSize: 10)),
           content: Padding(
             padding: const EdgeInsets.only(top: 8.0),
             child: TextField(
