@@ -223,9 +223,6 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
           for (int i = 0; i < weekdayIndexes.length; i++) weekdayIndexes[i]: i,
         };
         final List<_CourseBlock> blocks = _buildBlocks(columnMap);
-        final Color leftColumnBorderColor = Theme.of(
-          context,
-        ).dividerColor.withValues(alpha: 0.14);
 
         Widget content = Column(
           children: <Widget>[
@@ -284,13 +281,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
                             bottom: 0,
                             width: resolvedTimeWidth,
                             child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF4F6FB),
-                                border: Border(
-                                  right: BorderSide(
-                                    color: leftColumnBorderColor,
-                                  ),
-                                ),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF4F6FB),
                               ),
                               child: _buildTimeColumn(context, geometry.rows),
                             ),
@@ -472,34 +464,56 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
       context,
     ).dividerColor.withValues(alpha: 0.14);
     const Color altRowColor = Color(0xFFF9FAFD);
-    const Color breakRowColor = Color(0xFFF1F3F9);
+    const Color breakRowColor = Color(0xFFE8EBF3);
+    final TextStyle labelStyle = Theme.of(context).textTheme.labelMedium!
+        .copyWith(
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF7B8499),
+          letterSpacing: 0.5,
+          fontSize: 10,
+        );
 
     return Column(
       children: <Widget>[
         for (final CourseTableRowSlot slot in rows)
-          SizedBox(
-            height: slot.height,
-            child: Row(
-              children: <Widget>[
-                for (int day = 0; day < weekdayIndexes.length; day++)
-                  Container(
-                    width: dayWidth,
-                    decoration: BoxDecoration(
-                      color: slot.isBreak
-                          ? breakRowColor
-                          : (slot.sectionOrder != null &&
-                                    slot.sectionOrder!.isOdd
-                                ? altRowColor
-                                : Colors.white),
-                      border: Border(
-                        right: BorderSide(color: borderColor),
-                        bottom: BorderSide(color: borderColor),
+          if (slot.isBreak)
+            Container(
+              height: slot.height,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: breakRowColor,
+                border: Border(bottom: BorderSide(color: borderColor)),
+              ),
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(slot.breakLabel ?? '', style: labelStyle),
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              height: slot.height,
+              child: Row(
+                children: <Widget>[
+                  for (int day = 0; day < weekdayIndexes.length; day++)
+                    Container(
+                      width: dayWidth,
+                      decoration: BoxDecoration(
+                        color:
+                            slot.sectionOrder != null &&
+                                slot.sectionOrder!.isOdd
+                            ? altRowColor
+                            : Colors.white,
+                        border: Border(
+                          right: BorderSide(color: borderColor),
+                          bottom: BorderSide(color: borderColor),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
       ],
     );
   }
@@ -742,27 +756,11 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     final Color borderColor = Theme.of(
       context,
     ).dividerColor.withValues(alpha: 0.1);
-    final TextStyle labelStyle = Theme.of(context).textTheme.labelMedium!
-        .copyWith(
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF7B8499),
-          letterSpacing: 0.5,
-          fontSize: 10,
-        );
     return Container(
       height: slot.height,
       decoration: BoxDecoration(
         color: const Color(0xFFE8EBF3),
-        border: Border(
-          right: BorderSide(color: borderColor),
-          bottom: BorderSide(color: borderColor),
-        ),
-      ),
-      child: Center(
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(slot.breakLabel ?? '', style: labelStyle),
-        ),
+        border: Border(bottom: BorderSide(color: borderColor)),
       ),
     );
   }
