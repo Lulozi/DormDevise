@@ -407,13 +407,19 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     final bool isToday = date != null && _isSameDate(date, DateTime.now());
     final TextTheme textTheme = Theme.of(context).textTheme;
     final Color primary = Theme.of(context).colorScheme.primary;
+    final HSLColor hsl = HSLColor.fromColor(primary);
+    final Color activeColor = hsl
+        .withLightness((hsl.lightness + 0.2).clamp(0.0, 1.0))
+        .toColor();
+
     final TextStyle labelStyle = textTheme.bodyMedium!.copyWith(
       fontWeight: FontWeight.w600,
-      color: isToday ? primary : const Color(0xFF3D4555),
+      color: isToday ? activeColor : const Color(0xFF3D4555),
     );
     final TextStyle dateStyle = textTheme.bodySmall!.copyWith(
-      color: isToday ? primary : const Color(0xFF6C768A),
+      color: isToday ? activeColor : const Color(0xFF6C768A),
       letterSpacing: 0.4,
+      fontWeight: isToday ? FontWeight.w600 : null,
     );
 
     return Column(
@@ -421,7 +427,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
       children: <Widget>[
         Text(label, style: labelStyle),
         if (date != null) ...<Widget>[
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(_formatDate(date), style: dateStyle),
         ],
       ],
@@ -434,21 +440,31 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     final TextStyle textStyle = Theme.of(context).textTheme.titleSmall!
         .copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF3D4555));
 
-    return InkWell(
-      onTap: onWeekHeaderTap,
-      child: Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('$clampedWeek 周', style: textStyle),
-            const Icon(
-              Icons.arrow_drop_down,
-              size: 18,
-              color: Color(0xFF5D667A),
-            ),
-          ],
+    return Center(
+      child: InkWell(
+        onTap: onWeekHeaderTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAEBF0),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '$clampedWeek 周',
+                style: textStyle.copyWith(fontSize: 11, height: 1),
+              ),
+              const Icon(
+                Icons.arrow_drop_down,
+                size: 16,
+                color: Color(0xFF5D667A),
+              ),
+            ],
+          ),
         ),
       ),
     );
