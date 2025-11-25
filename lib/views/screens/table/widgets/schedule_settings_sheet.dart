@@ -47,7 +47,6 @@ class ScheduleSettingsPage extends StatefulWidget {
 class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   // 展开状态
   bool _isStartDateExpanded = false;
-  bool _isCurrentWeekExpanded = false;
   bool _isMaxWeekExpanded = false;
 
   // 用于实时更新的本地状态
@@ -133,7 +132,6 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                 onTap: () {
                   setState(() {
                     _isStartDateExpanded = !_isStartDateExpanded;
-                    _isCurrentWeekExpanded = false;
                     _isMaxWeekExpanded = false;
                   });
                 },
@@ -156,32 +154,6 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               ),
               _buildDivider(),
               _buildExpandablePickerTile(
-                title: '当前周数',
-                subtitle: '根据你选择的开学日期推算当前周数',
-                valueText: '第 $_currentWeek 周',
-                isExpanded: _isCurrentWeekExpanded,
-                onTap: () {
-                  setState(() {
-                    _isCurrentWeekExpanded = !_isCurrentWeekExpanded;
-                    _isStartDateExpanded = false;
-                    _isMaxWeekExpanded = false;
-                  });
-                },
-                picker: _buildNumberPicker(
-                  value: _currentWeek,
-                  min: 1,
-                  max: _maxWeek,
-                  onChanged: (int value) {
-                    setState(() {
-                      _currentWeek = value;
-                    });
-                    widget.onCurrentWeekChanged(value);
-                  },
-                  unit: '周',
-                ),
-              ),
-              _buildDivider(),
-              _buildExpandablePickerTile(
                 title: '学期总周数',
                 subtitle: '请选择学期共多少周',
                 valueText: '$_maxWeek 周',
@@ -190,7 +162,6 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   setState(() {
                     _isMaxWeekExpanded = !_isMaxWeekExpanded;
                     _isStartDateExpanded = false;
-                    _isCurrentWeekExpanded = false;
                   });
                 },
                 picker: _buildNumberPicker(
