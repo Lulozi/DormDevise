@@ -234,11 +234,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
             ),
             Expanded(
               child: ScrollConfiguration(
-                behavior: ScrollConfiguration.of(
-                  context,
-                ).copyWith(scrollbars: false),
+                behavior: _NoOverscrollBehavior(),
                 child: SingleChildScrollView(
                   controller: scrollController,
+                  physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: 16),
                   child: SizedBox(
                     height: tableHeight,
@@ -949,4 +948,16 @@ class CourseTableGeometry {
     required this.totalHeight,
     required this.sectionOffsets,
   });
+}
+
+/// 不使用过度滚动效果的滚动行为。
+class _NoOverscrollBehavior extends ScrollBehavior {
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
 }
