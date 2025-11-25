@@ -195,14 +195,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double resolvedTimeWidth = includeTimeColumn
-            ? math.max(
-                timeColumnWidth,
-                CourseScheduleTable.resolveTimeColumnWidth(
-                  context,
-                  sections,
-                  minWidth: timeColumnWidth,
-                ),
-              )
+            ? timeColumnWidth
             : 0;
         final double rawMaxWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
@@ -719,29 +712,23 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Text(
-                '${section.index} 节',
-                style: indexStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('${section.index} 节', style: indexStyle),
               ),
               const SizedBox(height: 4),
-              Text(
-                _formatTime(section.start),
-                style: timeStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(_formatTime(section.start), style: timeStyle),
               ),
-              Text(
-                _formatTime(section.end),
-                style: timeStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(_formatTime(section.end), style: timeStyle),
               ),
             ],
           ),
@@ -771,7 +758,12 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
           bottom: BorderSide(color: borderColor),
         ),
       ),
-      child: Center(child: Text(slot.breakLabel ?? '', style: labelStyle)),
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(slot.breakLabel ?? '', style: labelStyle),
+        ),
+      ),
     );
   }
 
