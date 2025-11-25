@@ -9,6 +9,7 @@ import 'widgets/course_schedule_table.dart';
 import 'widgets/schedule_settings_sheet.dart';
 import 'widgets/section_config_sheet.dart';
 import 'widgets/week_select_sheet.dart';
+import 'course_edit_page.dart';
 
 /// 展示并管理大学课程表的页面。
 class TablePage extends StatefulWidget {
@@ -305,6 +306,25 @@ class _TablePageState extends State<TablePage> {
     );
   }
 
+  /// 添加新课程。
+  Future<void> _addCourse({int? weekday, int? section}) async {
+    final Course? newCourse = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CourseEditPage(
+          initialWeekday: weekday,
+          initialSection: section,
+          maxWeek: _maxWeek,
+        ),
+      ),
+    );
+    if (newCourse != null) {
+      setState(() {
+        _courses.add(newCourse);
+      });
+      await CourseService.instance.saveCourses(_courses);
+    }
+  }
+
   /// 打开课程表设置页面。
   void _openScheduleSettings() {
     Navigator.of(context).push(
@@ -431,6 +451,8 @@ class _TablePageState extends State<TablePage> {
                     scrollController: _scrollControllerForWeek(index),
                     showNonCurrentWeek: _showNonCurrentWeek,
                     applySurface: false,
+                    onAddCourseTap: (weekday, section) =>
+                        _addCourse(weekday: weekday, section: section),
                   );
                 },
               ),

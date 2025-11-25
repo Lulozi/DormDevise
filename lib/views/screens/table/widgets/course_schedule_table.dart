@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../models/course.dart';
 import '../../../../models/course_schedule_config.dart';
+import 'course_detail_sheet.dart';
 
 /// 渲染课程表网格的组件，支持按照指定工作日展示课程区块。
 class CourseScheduleTable extends StatefulWidget {
@@ -61,6 +62,9 @@ class CourseScheduleTable extends StatefulWidget {
   /// 是否显示非本周课程。
   final bool showNonCurrentWeek;
 
+  /// 点击添加课程的回调。
+  final void Function(int weekday, int section)? onAddCourseTap;
+
   const CourseScheduleTable({
     super.key,
     required this.courses,
@@ -81,6 +85,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.scrollController,
     this.leadingInset = 0,
     this.showNonCurrentWeek = false,
+    this.onAddCourseTap,
   }) : assert(
          weekdays.length == weekdayIndexes.length,
          'weekdays 与 weekdayIndexes 长度必须一致',
@@ -140,6 +145,7 @@ class CourseScheduleTable extends StatefulWidget {
 class _CourseScheduleTableState extends State<CourseScheduleTable> {
   late final ScrollController _horizontalController;
   double _horizontalOffset = 0;
+  ({int weekday, int section})? _selectedSlot;
 
   List<Course> get courses => widget.courses;
   int get currentWeek => widget.currentWeek;
@@ -159,6 +165,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
   ScrollController? get scrollController => widget.scrollController;
   double get leadingInset => widget.leadingInset;
   bool get showNonCurrentWeek => widget.showNonCurrentWeek;
+  void Function(int weekday, int section)? get onAddCourseTap =>
+      widget.onAddCourseTap;
 
   @override
   void initState() {
@@ -262,6 +270,12 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
                                       timeColumnWidth,
                                     ),
                                   ),
+                                  if (_selectedSlot != null)
+                                    _buildSelectionOverlay(
+                                      context,
+                                      dayWidth,
+                                      sectionOffsets,
+                                    ),
                                   for (final _CourseBlock block in blocks)
                                     _buildCourseBlock(
                                       context,
@@ -519,17 +533,30 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
               child: Row(
                 children: <Widget>[
                   for (int day = 0; day < weekdayIndexes.length; day++)
-                    Container(
-                      width: dayWidth,
-                      decoration: BoxDecoration(
-                        color:
-                            slot.sectionOrder != null &&
-                                slot.sectionOrder!.isOdd
-                            ? altRowColor
-                            : Colors.white,
-                        border: Border(
-                          right: BorderSide(color: borderColor),
-                          bottom: BorderSide(color: borderColor),
+                    GestureDetector(
+                      onTap: () {
+                        if (slot.section != null) {
+                          setState(() {
+                            _selectedSlot = (
+                              weekday: weekdayIndexes[day],
+                              section: slot.section!.index,
+                            );
+                          });
+                        }
+                      },
+                      behavior: HitTestBehavior.translucent,
+                      child: Container(
+                        width: dayWidth,
+                        decoration: BoxDecoration(
+                          color:
+                              slot.sectionOrder != null &&
+                                  slot.sectionOrder!.isOdd
+                              ? altRowColor
+                              : Colors.transparent,
+                          border: Border(
+                            right: BorderSide(color: borderColor),
+                            bottom: BorderSide(color: borderColor),
+                          ),
                         ),
                       ),
                     ),
@@ -537,6 +564,50 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
               ),
             ),
       ],
+    );
+  }
+
+  Widget _buildSelectionOverlay(
+    BuildContext context,
+    double dayWidth,
+    Map<int, double> sectionOffsets,
+  ) {
+    if (_selectedSlot == null) return const SizedBox.shrink();
+
+    final int weekday = _selectedSlot!.weekday;
+    final int section = _selectedSlot!.section;
+
+    // Find column index
+    final int columnIndex = weekdayIndexes.indexOf(weekday);
+    if (columnIndex == -1) return const SizedBox.shrink();
+
+    final double top = sectionOffsets[section] ?? 0.0;
+
+    return Positioned(
+      left: columnIndex * dayWidth,
+      top: top,
+      width: dayWidth,
+      height: sectionHeight,
+      child: GestureDetector(
+        onTap: () {
+          if (onAddCourseTap != null) {
+            onAddCourseTap!(weekday, section);
+          }
+          setState(() {
+            _selectedSlot = null;
+          });
+        },
+        child: Container(
+          margin: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F3F5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Center(
+            child: Icon(Icons.add, color: Colors.black87, size: 24),
+          ),
+        ),
+      ),
     );
   }
 
@@ -583,73 +654,102 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
       top: startOffset,
       width: dayWidth,
       height: blockHeight,
-      child: Container(
-        margin: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: gradientColors.first.withValues(alpha: 0.25),
-              blurRadius: 14,
-              offset: const Offset(0, 8),
+      child: GestureDetector(
+        onTap: () => _showCourseDetails(context, block),
+        child: Container(
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            gradient: LinearGradient(
+              colors: gradientColors,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              if (isNonCurrent)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '[非本周]',
-                    style: detailStyle.copyWith(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              Text(
-                block.course.name,
-                style: titleStyle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                block.course.teacher,
-                style: detailStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                block.session.location,
-                style: detailStyle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const Spacer(),
-              Row(
-                children: <Widget>[
-                  Icon(Icons.menu_book_outlined, size: 16, color: detailColor),
-                  const Spacer(),
-                  Text(
-                    '${_formatTime(block.startTime)}-${_formatTime(block.endTime)}',
-                    style: detailStyle.copyWith(fontSize: 11),
-                  ),
-                ],
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: gradientColors.first.withValues(alpha: 0.25),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (isNonCurrent)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      '[非本周]',
+                      style: detailStyle.copyWith(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                Text(
+                  block.course.name,
+                  style: titleStyle.copyWith(fontSize: 12),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  block.session.location,
+                  style: detailStyle.copyWith(fontSize: 10),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
+    );
+  }
+
+  void _showCourseDetails(BuildContext context, _CourseBlock block) {
+    final List<CourseDetailItem> overlapping = <CourseDetailItem>[];
+
+    for (final Course course in courses) {
+      for (final CourseSession session in course.sessions) {
+        if (session.weekday == block.session.weekday) {
+          final int start1 = session.startSection;
+          final int end1 = session.startSection + session.sectionCount - 1;
+          final int start2 = block.session.startSection;
+          final int end2 =
+              block.session.startSection + block.session.sectionCount - 1;
+
+          if (start1 <= end2 && end1 >= start2) {
+            final SectionTime startSection = sections.firstWhere(
+              (SectionTime s) => s.index == start1,
+              orElse: () => sections.first,
+            );
+            final SectionTime endSection = sections.firstWhere(
+              (SectionTime s) => s.index == end1,
+              orElse: () => startSection,
+            );
+
+            overlapping.add(
+              CourseDetailItem(
+                course: course,
+                session: session,
+                startTime: startSection.start,
+                endTime: endSection.end,
+              ),
+            );
+          }
+        }
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) => CourseDetailSheet(items: overlapping),
     );
   }
 
@@ -698,6 +798,16 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
         );
       }
     }
+    // 将非本周课程排在前面（底层），本周课程排在后面（顶层）
+    blocks.sort((_CourseBlock a, _CourseBlock b) {
+      if (a.isNonCurrent && !b.isNonCurrent) {
+        return -1;
+      }
+      if (!a.isNonCurrent && b.isNonCurrent) {
+        return 1;
+      }
+      return 0;
+    });
     return blocks;
   }
 
