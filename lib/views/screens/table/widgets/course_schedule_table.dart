@@ -628,10 +628,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
 
     final Color textColor = isNonCurrent
         ? const Color(0xFF9E9E9E)
-        : Colors.white;
+        : const Color(0xFF333333);
     final Color detailColor = isNonCurrent
         ? const Color(0xFFBDBDBD)
-        : Colors.white.withValues(alpha: 0.9);
+        : const Color(0xFF666666);
 
     final TextTheme textTheme = Theme.of(context).textTheme;
     final TextStyle titleStyle = textTheme.titleSmall!.copyWith(
