@@ -453,6 +453,21 @@ class _TablePageState extends State<TablePage> {
                     applySurface: false,
                     onAddCourseTap: (weekday, section) =>
                         _addCourse(weekday: weekday, section: section),
+                    onCourseChanged: (oldCourse, newCourse) async {
+                      setState(() {
+                        final index = _courses.indexOf(oldCourse);
+                        if (index != -1) {
+                          _courses[index] = newCourse;
+                        }
+                      });
+                      await CourseService.instance.saveCourses(_courses);
+                    },
+                    onCourseDeleted: (course) async {
+                      setState(() {
+                        _courses.remove(course);
+                      });
+                      await CourseService.instance.saveCourses(_courses);
+                    },
                   );
                 },
               ),
