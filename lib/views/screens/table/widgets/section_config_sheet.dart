@@ -1457,64 +1457,88 @@ class _BreakModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color activeColor = const Color(0xFF1E69FF);
+    const Color activeColor = Color(0xFF1E69FF);
+    const double itemWidth = 56.0;
+    const double height = 32.0;
+    const double padding = 2.0;
+
     return Container(
+      height: height,
+      width: itemWidth * 2 + padding * 2,
       decoration: BoxDecoration(
         color: const Color(0xFFE9EDF6),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(height / 2),
       ),
-      padding: const EdgeInsets.all(2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.all(padding),
+      child: Stack(
         children: <Widget>[
-          _buildSegmentButton(
-            label: '分段',
-            selected: mode == _BreakDurationMode.segmented,
-            onTap: () => onChanged(_BreakDurationMode.segmented),
-            activeColor: activeColor,
+          AnimatedAlign(
+            alignment: mode == _BreakDurationMode.segmented
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            child: Container(
+              width: itemWidth,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular((height - padding * 2) / 2),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: 0.15),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
           ),
-          _buildSegmentButton(
-            label: '全局',
-            selected: mode == _BreakDurationMode.global,
-            onTap: () => onChanged(_BreakDurationMode.global),
-            activeColor: activeColor,
+          Row(
+            children: <Widget>[
+              _buildOption(
+                label: '分段',
+                isSelected: mode == _BreakDurationMode.segmented,
+                onTap: () => onChanged(_BreakDurationMode.segmented),
+                width: itemWidth,
+                activeColor: activeColor,
+              ),
+              _buildOption(
+                label: '全局',
+                isSelected: mode == _BreakDurationMode.global,
+                onTap: () => onChanged(_BreakDurationMode.global),
+                width: itemWidth,
+                activeColor: activeColor,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  /// 构建单个切换按钮。
-  Widget _buildSegmentButton({
+  Widget _buildOption({
     required String label,
-    required bool selected,
+    required bool isSelected,
     required VoidCallback onTap,
+    required double width,
     required Color activeColor,
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: selected
-              ? <BoxShadow>[
-                  BoxShadow(
-                    color: activeColor.withValues(alpha: 0.18),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? activeColor : Colors.black54,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: width,
+        height: double.infinity,
+        child: Center(
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isSelected ? activeColor : const Color(0xFF8E9AB0),
+            ),
+            child: Text(label),
           ),
         ),
       ),
