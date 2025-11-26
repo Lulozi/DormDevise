@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../models/course.dart';
+import '../course_edit_page.dart';
 
 /// 课程详情底部弹窗
 class CourseDetailSheet extends StatelessWidget {
@@ -11,6 +12,9 @@ class CourseDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
       decoration: const BoxDecoration(
         color: Color(0xFFF7F8FC),
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -38,21 +42,26 @@ class CourseDetailSheet extends StatelessWidget {
   Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: Row(
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          const Spacer(),
-          Text(
-            '课程详情',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          Align(
+            alignment: Alignment.center,
+            child: Text(
+              '课程详情',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
           ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.of(context).pop(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
           ),
         ],
       ),
@@ -97,21 +106,49 @@ class CourseDetailSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  '编辑',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF666666),
-                    fontWeight: FontWeight.w500,
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(context)
+                      .push(
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              CourseEditPage(course: item.course),
+                          fullscreenDialog: true,
+                        ),
+                      )
+                      .then((result) {
+                        if (result != null) {
+                          // 如果有修改或删除，返回结果给上层以刷新
+                          if (result == 'delete') {
+                            Navigator.of(
+                              context,
+                            ).pop({'action': 'delete', 'target': item.course});
+                          } else if (result is Course) {
+                            Navigator.of(context).pop({
+                              'action': 'update',
+                              'target': item.course,
+                              'newCourse': result,
+                            });
+                          }
+                        }
+                      });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    '编辑',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF666666),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
