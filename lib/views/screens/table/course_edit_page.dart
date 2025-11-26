@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../models/course.dart';
 import 'widgets/expandable_item.dart';
 
@@ -28,6 +29,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   late TextEditingController _classroomController;
   late Color _selectedColor;
   late List<CourseSession> _sessions;
+  List<Color> _customColors = [];
 
   // Global week settings
   int _startWeek = 1;
@@ -57,6 +59,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   @override
   void initState() {
     super.initState();
+    _loadCustomColors();
     _endWeek = widget.maxWeek;
     _nameController = TextEditingController(text: widget.course?.name ?? '');
     _teacherController = TextEditingController(
@@ -114,6 +117,40 @@ class _CourseEditPageState extends State<CourseEditPage> {
     _teacherController.dispose();
     _classroomController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadCustomColors() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String>? colors = prefs.getStringList('custom_course_colors');
+    if (colors != null) {
+      setState(() {
+        _customColors = colors.map((c) => Color(int.parse(c))).toList();
+      });
+    }
+  }
+
+  Future<void> _saveCustomColors() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String> colors = _customColors
+        .map((c) => c.value.toString())
+        .toList();
+    await prefs.setStringList('custom_course_colors', colors);
+  }
+
+  void _addCustomColor(Color color) {
+    if (!_customColors.contains(color) && !_presetColors.contains(color)) {
+      setState(() {
+        _customColors.add(color);
+      });
+      _saveCustomColors();
+    }
+  }
+
+  void _removeCustomColor(Color color) {
+    setState(() {
+      _customColors.remove(color);
+    });
+    _saveCustomColors();
   }
 
   void _save() {
@@ -200,6 +237,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
       builder: (context) => _ColorPickerSheet(
         selectedColor: _selectedColor,
         colors: _presetColors,
+        customColors: _customColors,
+        onAddCustomColor: _addCustomColor,
+        onDeleteCustomColor: _removeCustomColor,
       ),
     );
 
@@ -887,14 +927,37 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
   }
 }
 
-class _ColorPickerSheet extends StatelessWidget {
+class _ColorPickerSheet extends StatefulWidget {
   final Color selectedColor;
   final List<Color> colors;
+  final List<Color> customColors;
+  final ValueChanged<Color> onAddCustomColor;
+  final ValueChanged<Color> onDeleteCustomColor;
 
-  const _ColorPickerSheet({required this.selectedColor, required this.colors});
+  const _ColorPickerSheet({
+    required this.selectedColor,
+    required this.colors,
+    required this.customColors,
+    required this.onAddCustomColor,
+    required this.onDeleteCustomColor,
+  });
+
+  @override
+  State<_ColorPickerSheet> createState() => _ColorPickerSheetState();
+}
+
+class _ColorPickerSheetState extends State<_ColorPickerSheet> {
+  late List<Color> _localCustomColors;
+
+  @override
+  void initState() {
+    super.initState();
+    _localCustomColors = List.from(widget.customColors);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final allColors = [...widget.colors, ..._localCustomColors];
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -929,7 +992,7 @@ class _ColorPickerSheet extends StatelessWidget {
             child: GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: colors.length + 1,
+              itemCount: allColors.length + 1,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 6,
                 mainAxisSpacing: 16,
@@ -937,17 +1000,18 @@ class _ColorPickerSheet extends StatelessWidget {
                 childAspectRatio: 1,
               ),
               itemBuilder: (context, index) {
-                if (index == colors.length) {
+                if (index == allColors.length) {
                   return GestureDetector(
                     onTap: () async {
                       final Color? customColor = await showDialog<Color>(
                         context: context,
-                        builder: (context) => _CustomColorPickerDialog(
-                          initialColor: selectedColor,
-                        ),
+                        builder: (context) => const _CustomColorPickerDialog(),
                       );
                       if (customColor != null && context.mounted) {
-                        Navigator.pop(context, customColor);
+                        widget.onAddCustomColor(customColor);
+                        setState(() {
+                          _localCustomColors.add(customColor);
+                        });
                       }
                     },
                     child: Container(
@@ -959,15 +1023,48 @@ class _ColorPickerSheet extends StatelessWidget {
                     ),
                   );
                 }
-                final color = colors[index];
+
+                final color = allColors[index];
+                final isCustom = index >= widget.colors.length;
+
                 return GestureDetector(
                   onTap: () => Navigator.pop(context, color),
+                  onLongPress: isCustom
+                      ? () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('删除颜色'),
+                              content: const Text('确定要删除这个自定义颜色吗？'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('取消'),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    widget.onDeleteCustomColor(color);
+                                    setState(() {
+                                      _localCustomColors.remove(color);
+                                    });
+                                    Navigator.pop(ctx);
+                                  },
+                                  child: const Text('删除'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                      : null,
                   child: Container(
                     decoration: BoxDecoration(
                       color: color,
                       shape: BoxShape.circle,
+                      border: isCustom
+                          ? Border.all(color: Colors.grey.shade400, width: 2)
+                          : null,
                     ),
-                    child: selectedColor == color
+                    child: widget.selectedColor == color
                         ? const Icon(
                             Icons.check,
                             color: Colors.black54,
@@ -987,9 +1084,7 @@ class _ColorPickerSheet extends StatelessWidget {
 }
 
 class _CustomColorPickerDialog extends StatefulWidget {
-  final Color initialColor;
-
-  const _CustomColorPickerDialog({required this.initialColor});
+  const _CustomColorPickerDialog();
 
   @override
   State<_CustomColorPickerDialog> createState() =>
@@ -1004,9 +1099,15 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
   @override
   void initState() {
     super.initState();
-    _r = widget.initialColor.red.toDouble();
-    _g = widget.initialColor.green.toDouble();
-    _b = widget.initialColor.blue.toDouble();
+    final random = Random();
+    _r = random.nextInt(256).toDouble();
+    _g = random.nextInt(256).toDouble();
+    _b = random.nextInt(256).toDouble();
+  }
+
+  bool _isGray(Color color) {
+    final hsv = HSVColor.fromColor(color);
+    return hsv.saturation < 0.15;
   }
 
   @override
@@ -1018,7 +1119,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
       _b.toInt(),
     );
     return AlertDialog(
-      title: const Text('自定义颜色'),
+      title: const Text('添加自定义颜色'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1043,7 +1144,15 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
           child: const Text('取消'),
         ),
         TextButton(
-          onPressed: () => Navigator.pop(context, currentColor),
+          onPressed: () {
+            if (_isGray(currentColor)) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('不能添加灰色，请调整颜色')));
+              return;
+            }
+            Navigator.pop(context, currentColor);
+          },
           child: const Text('确定'),
         ),
       ],
