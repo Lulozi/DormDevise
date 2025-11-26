@@ -138,17 +138,21 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                 picker: Container(
                   height: 200,
                   color: Colors.white,
-                  child: CupertinoDatePicker(
-                    mode: CupertinoDatePickerMode.date,
-                    initialDateTime: _semesterStart,
-                    onDateTimeChanged: (DateTime date) {
-                      setState(() {
-                        _semesterStart = date;
-                      });
-                      widget.onSemesterStartChanged(date);
-                    },
-                    use24hFormat: true,
-                    dateOrder: DatePickerDateOrder.ymd,
+                  child: Localizations.override(
+                    context: context,
+                    locale: const Locale('zh', 'CN'),
+                    child: CupertinoDatePicker(
+                      mode: CupertinoDatePickerMode.date,
+                      initialDateTime: _semesterStart,
+                      onDateTimeChanged: (DateTime date) {
+                        setState(() {
+                          _semesterStart = date;
+                        });
+                        widget.onSemesterStartChanged(date);
+                      },
+                      use24hFormat: true,
+                      dateOrder: DatePickerDateOrder.ymd,
+                    ),
                   ),
                 ),
               ),
