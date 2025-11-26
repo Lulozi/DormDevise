@@ -65,6 +65,12 @@ class CourseScheduleTable extends StatefulWidget {
   /// 点击添加课程的回调。
   final void Function(int weekday, int section)? onAddCourseTap;
 
+  /// 课程被修改的回调 (旧课程, 新课程)
+  final void Function(Course oldCourse, Course newCourse)? onCourseChanged;
+
+  /// 课程被删除的回调 (被删除的课程)
+  final void Function(Course course)? onCourseDeleted;
+
   const CourseScheduleTable({
     super.key,
     required this.courses,
@@ -86,6 +92,8 @@ class CourseScheduleTable extends StatefulWidget {
     this.leadingInset = 0,
     this.showNonCurrentWeek = false,
     this.onAddCourseTap,
+    this.onCourseChanged,
+    this.onCourseDeleted,
   }) : assert(
          weekdays.length == weekdayIndexes.length,
          'weekdays 与 weekdayIndexes 长度必须一致',
@@ -710,7 +718,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     );
   }
 
-  void _showCourseDetails(BuildContext context, _CourseBlock block) {
+  Future<void> _showCourseDetails(
+    BuildContext context,
+    _CourseBlock block,
+  ) async {
     final List<CourseDetailItem> overlapping = <CourseDetailItem>[];
 
     for (final Course course in courses) {
@@ -745,12 +756,24 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
       }
     }
 
-    showModalBottomSheet(
+    final result = await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) => CourseDetailSheet(items: overlapping),
     );
+
+    if (result != null && result is Map) {
+      final action = result['action'];
+      final target = result['target'] as Course;
+
+      if (action == 'delete') {
+        widget.onCourseDeleted?.call(target);
+      } else if (action == 'update') {
+        final newCourse = result['newCourse'] as Course;
+        widget.onCourseChanged?.call(target, newCourse);
+      }
+    }
   }
 
   /// 根据当前周次构建需展示的课程区块。
