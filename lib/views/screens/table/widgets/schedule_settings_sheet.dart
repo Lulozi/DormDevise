@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../models/course_schedule_config.dart';
+import 'expandable_item.dart';
 
 class ScheduleSettingsPage extends StatefulWidget {
   final CourseScheduleConfig scheduleConfig;
@@ -89,7 +90,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F7), // iOS 分组背景色
+      backgroundColor: const Color(0xFFF2F2F7),
       appBar: AppBar(
         title: const Text(
           '课程表设置',
@@ -122,12 +123,12 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                 onTap: () => _showEditNameDialog(context),
               ),
               _buildDivider(),
-              _buildExpandablePickerTile(
+              ExpandableItem(
                 title: '学期开始时间',
-                valueText: DateFormat(
-                  'yyyy年M月d日 EEEE',
-                  'zh_CN',
-                ).format(_semesterStart),
+                value: Text(
+                  DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(_semesterStart),
+                  style: const TextStyle(fontSize: 14, color: Colors.black54),
+                ),
                 isExpanded: _isStartDateExpanded,
                 onTap: () {
                   setState(() {
@@ -135,32 +136,24 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                     _isMaxWeekExpanded = false;
                   });
                 },
-                picker: Container(
-                  height: 200,
-                  color: Colors.white,
-                  child: Localizations.override(
-                    context: context,
-                    locale: const Locale('zh', 'CN'),
-                    child: CupertinoDatePicker(
-                      mode: CupertinoDatePickerMode.date,
-                      initialDateTime: _semesterStart,
-                      onDateTimeChanged: (DateTime date) {
-                        setState(() {
-                          _semesterStart = date;
-                        });
-                        widget.onSemesterStartChanged(date);
-                      },
-                      use24hFormat: true,
-                      dateOrder: DatePickerDateOrder.ymd,
-                    ),
-                  ),
+                content: _buildCustomDatePicker(
+                  initialDate: _semesterStart,
+                  onChanged: (DateTime date) {
+                    setState(() {
+                      _semesterStart = date;
+                    });
+                    widget.onSemesterStartChanged(date);
+                  },
                 ),
+                showDivider: false,
               ),
               _buildDivider(),
-              _buildExpandablePickerTile(
+              ExpandableItem(
                 title: '学期总周数',
-                subtitle: '请选择学期共多少周',
-                valueText: '$_maxWeek 周',
+                value: Text(
+                  '$_maxWeek 周',
+                  style: const TextStyle(fontSize: 14, color: Colors.black54),
+                ),
                 isExpanded: _isMaxWeekExpanded,
                 onTap: () {
                   setState(() {
@@ -168,7 +161,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                     _isStartDateExpanded = false;
                   });
                 },
-                picker: _buildNumberPicker(
+                content: _buildNumberPicker(
                   value: _maxWeek,
                   min: 1,
                   max: 30,
@@ -184,6 +177,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   },
                   unit: '周',
                 ),
+                showDivider: false,
               ),
               _buildDivider(),
               _buildSwitchTile(
@@ -370,74 +364,6 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
-  Widget _buildExpandablePickerTile({
-    required String title,
-    String? subtitle,
-    required String valueText,
-    required bool isExpanded,
-    required VoidCallback onTap,
-    required Widget picker,
-  }) {
-    return Column(
-      children: [
-        InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Text(
-                  valueText,
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  isExpanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  size: 20,
-                  color: Colors.black26,
-                ),
-              ],
-            ),
-          ),
-        ),
-        AnimatedCrossFade(
-          firstChild: Container(),
-          secondChild: picker,
-          crossFadeState: isExpanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          duration: const Duration(milliseconds: 300),
-        ),
-      ],
-    );
-  }
-
   Widget _buildNumberPicker({
     required int value,
     required int min,
@@ -449,6 +375,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       height: 150,
       color: Colors.white,
       child: CupertinoPicker(
+        selectionOverlay: Container(),
         itemExtent: 32,
         scrollController: FixedExtentScrollController(initialItem: value - min),
         onSelectedItemChanged: (index) => onChanged(min + index),
@@ -523,5 +450,130 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         );
       },
     );
+  }
+
+  Widget _buildCustomDatePicker({
+    required DateTime initialDate,
+    required ValueChanged<DateTime> onChanged,
+  }) {
+    final int minYear = DateTime.now().year - 5;
+    final int maxYear = DateTime.now().year + 5;
+    final List<int> years = List.generate(
+      maxYear - minYear + 1,
+      (i) => minYear + i,
+    );
+    final List<int> months = List.generate(12, (i) => i + 1);
+
+    int daysInMonth = DateTime(initialDate.year, initialDate.month + 1, 0).day;
+    final List<int> days = List.generate(daysInMonth, (i) => i + 1);
+
+    return Container(
+      height: 200,
+      color: Colors.white,
+      child: Row(
+        children: [
+          Expanded(
+            child: CupertinoPicker(
+              selectionOverlay: Container(),
+              itemExtent: 32,
+              scrollController: FixedExtentScrollController(
+                initialItem: years.indexOf(initialDate.year) != -1
+                    ? years.indexOf(initialDate.year)
+                    : 0,
+              ),
+              onSelectedItemChanged: (index) {
+                final newYear = years[index];
+                final daysInNewMonth = DateTime(
+                  newYear,
+                  initialDate.month + 1,
+                  0,
+                ).day;
+                final newDay = initialDate.day > daysInNewMonth
+                    ? daysInNewMonth
+                    : initialDate.day;
+                onChanged(DateTime(newYear, initialDate.month, newDay));
+              },
+              children: years
+                  .map(
+                    (y) => Center(
+                      child: Text('$y年', style: const TextStyle(fontSize: 16)),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          Expanded(
+            child: CupertinoPicker(
+              selectionOverlay: Container(),
+              itemExtent: 32,
+              scrollController: FixedExtentScrollController(
+                initialItem: initialDate.month - 1,
+              ),
+              onSelectedItemChanged: (index) {
+                final newMonth = index + 1;
+                final daysInNewMonth = DateTime(
+                  initialDate.year,
+                  newMonth + 1,
+                  0,
+                ).day;
+                final newDay = initialDate.day > daysInNewMonth
+                    ? daysInNewMonth
+                    : initialDate.day;
+                onChanged(DateTime(initialDate.year, newMonth, newDay));
+              },
+              children: months
+                  .map(
+                    (m) => Center(
+                      child: Text(
+                        _getMonthString(m),
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          Expanded(
+            child: CupertinoPicker(
+              selectionOverlay: Container(),
+              itemExtent: 32,
+              scrollController: FixedExtentScrollController(
+                initialItem: initialDate.day - 1,
+              ),
+              onSelectedItemChanged: (index) {
+                onChanged(
+                  DateTime(initialDate.year, initialDate.month, index + 1),
+                );
+              },
+              children: days
+                  .map(
+                    (d) => Center(
+                      child: Text('$d日', style: const TextStyle(fontSize: 16)),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getMonthString(int month) {
+    const months = [
+      '一月',
+      '二月',
+      '三月',
+      '四月',
+      '五月',
+      '六月',
+      '七月',
+      '八月',
+      '九月',
+      '十月',
+      '十一月',
+      '十二月',
+    ];
+    return months[month - 1];
   }
 }
