@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'dart:math';
 
 import '../../../../models/course_schedule_config.dart';
 import '../../../../utils/animated_expand.dart';
@@ -1047,66 +1048,81 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           required void Function(int index) onHourChanged,
           required void Function(int index) onMinuteChanged,
         }) {
-          final Widget picker = Row(
-            children: <Widget>[
-              Expanded(
-                child: CupertinoPicker(
-                  selectionOverlay:
-                      const CupertinoPickerDefaultSelectionOverlay(
-                        background: Colors.transparent,
-                      ),
-                  scrollController: hourController,
-                  itemExtent: 44,
-                  magnification: 1.05,
-                  useMagnifier: true,
-                  looping: true,
-                  onSelectedItemChanged: onHourChanged,
-                  children: staticHours
-                      .map(
-                        (int hour) => Center(
-                          child: Text(
-                            '${hour.toString().padLeft(2, '0')}时',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
+          final Widget picker = LayoutBuilder(
+            builder: (context, constraints) {
+              final double gap = 1.5; // 再缩小间距为 1.5px
+              final double maxPickerWidth = 48.0; // 更小的最大列宽 48px
+              final double pickerWidth = min(
+                (constraints.maxWidth - gap) / 2,
+                maxPickerWidth,
+              );
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  SizedBox(
+                    width: pickerWidth,
+                    child: CupertinoPicker(
+                      selectionOverlay:
+                          const CupertinoPickerDefaultSelectionOverlay(
+                            background: Colors.transparent,
                           ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-              Expanded(
-                child: CupertinoPicker(
-                  selectionOverlay:
-                      const CupertinoPickerDefaultSelectionOverlay(
-                        background: Colors.transparent,
-                      ),
-                  scrollController: minuteController,
-                  itemExtent: 44,
-                  magnification: 1.05,
-                  useMagnifier: true,
-                  looping: true,
-                  onSelectedItemChanged: onMinuteChanged,
-                  children: staticMinutes
-                      .map(
-                        (int minute) => Center(
-                          child: Text(
-                            '${minute.toString().padLeft(2, '0')}分',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
+                      scrollController: hourController,
+                      itemExtent: 44,
+                      magnification: 1.05,
+                      useMagnifier: true,
+                      looping: true,
+                      onSelectedItemChanged: onHourChanged,
+                      children: staticHours
+                          .map(
+                            (int hour) => Center(
+                              child: Text(
+                                '${hour.toString().padLeft(2, '0')}时',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
                             ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox(
+                    width: pickerWidth,
+                    child: CupertinoPicker(
+                      selectionOverlay:
+                          const CupertinoPickerDefaultSelectionOverlay(
+                            background: Colors.transparent,
                           ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ],
+                      scrollController: minuteController,
+                      itemExtent: 44,
+                      magnification: 1.05,
+                      useMagnifier: true,
+                      looping: true,
+                      onSelectedItemChanged: onMinuteChanged,
+                      children: staticMinutes
+                          .map(
+                            (int minute) => Center(
+                              child: Text(
+                                '${minute.toString().padLeft(2, '0')}分',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ],
+              );
+            },
           );
+
           if (!enabled) {
             return IgnorePointer(
               ignoring: true,
@@ -1273,14 +1289,16 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
 
     for (final _MutableSegment segment in _segments) {
       _ensureBreakSlots(segment);
-      
-      final Duration? breakDuration = useSegmented ? segment.breakDuration : null;
-      
+
+      final Duration? breakDuration = useSegmented
+          ? segment.breakDuration
+          : null;
+
       // 在全局模式下，不保存分段的课间配置，以免下次加载时误判
       final List<Duration> perBreakDurations =
           (useSegmented && segment.classCount > 1)
-              ? List<Duration>.from(segment.breakDurations)
-              : <Duration>[];
+          ? List<Duration>.from(segment.breakDurations)
+          : <Duration>[];
 
       segments.add(
         ScheduleSegmentConfig(
@@ -1295,7 +1313,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
         ),
       );
     }
-    
+
     return CourseScheduleConfig(
       defaultClassDuration: _defaultClassDuration,
       defaultBreakDuration: _defaultBreakDuration,
