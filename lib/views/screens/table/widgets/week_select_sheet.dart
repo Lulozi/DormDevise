@@ -36,21 +36,25 @@ class WeekSelectSheet extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                const SizedBox(width: 24), // 占位符以保持平衡
-                const Text(
-                  '切换周课表',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                const Center(
+                  child: Text(
+                    '切换周课表',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.black54),
-                  onPressed: () => Navigator.pop(context),
+                Positioned(
+                  right: 0,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.black54),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ),
               ],
             ),
