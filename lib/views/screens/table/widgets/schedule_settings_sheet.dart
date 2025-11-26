@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:math';
 
 import '../../../../models/course_schedule_config.dart';
 import 'expandable_item.dart';
@@ -471,91 +472,114 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     return Container(
       height: 200,
       color: Colors.white,
-      child: Row(
-        children: [
-          Expanded(
-            child: CupertinoPicker(
-              selectionOverlay: Container(),
-              itemExtent: 32,
-              scrollController: FixedExtentScrollController(
-                initialItem: years.indexOf(initialDate.year) != -1
-                    ? years.indexOf(initialDate.year)
-                    : 0,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double gap = 4.0; // pickers之间的间隔，进一步缩小为 4px
+          final double maxPickerWidth = 96.0; // 限制 picker 最大宽度，压缩列宽
+          final double pickerWidth = min(
+            (constraints.maxWidth - gap * 2) / 3,
+            maxPickerWidth,
+          );
+
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: pickerWidth,
+                child: CupertinoPicker(
+                  selectionOverlay: Container(),
+                  itemExtent: 32,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: years.indexOf(initialDate.year) != -1
+                        ? years.indexOf(initialDate.year)
+                        : 0,
+                  ),
+                  onSelectedItemChanged: (index) {
+                    final newYear = years[index];
+                    final daysInNewMonth = DateTime(
+                      newYear,
+                      initialDate.month + 1,
+                      0,
+                    ).day;
+                    final newDay = initialDate.day > daysInNewMonth
+                        ? daysInNewMonth
+                        : initialDate.day;
+                    onChanged(DateTime(newYear, initialDate.month, newDay));
+                  },
+                  children: years
+                      .map(
+                        (y) => Center(
+                          child: Text(
+                            '$y年',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
-              onSelectedItemChanged: (index) {
-                final newYear = years[index];
-                final daysInNewMonth = DateTime(
-                  newYear,
-                  initialDate.month + 1,
-                  0,
-                ).day;
-                final newDay = initialDate.day > daysInNewMonth
-                    ? daysInNewMonth
-                    : initialDate.day;
-                onChanged(DateTime(newYear, initialDate.month, newDay));
-              },
-              children: years
-                  .map(
-                    (y) => Center(
-                      child: Text('$y年', style: const TextStyle(fontSize: 16)),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          Expanded(
-            child: CupertinoPicker(
-              selectionOverlay: Container(),
-              itemExtent: 32,
-              scrollController: FixedExtentScrollController(
-                initialItem: initialDate.month - 1,
+              SizedBox(width: gap),
+              SizedBox(
+                width: pickerWidth,
+                child: CupertinoPicker(
+                  selectionOverlay: Container(),
+                  itemExtent: 32,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: initialDate.month - 1,
+                  ),
+                  onSelectedItemChanged: (index) {
+                    final newMonth = index + 1;
+                    final daysInNewMonth = DateTime(
+                      initialDate.year,
+                      newMonth + 1,
+                      0,
+                    ).day;
+                    final newDay = initialDate.day > daysInNewMonth
+                        ? daysInNewMonth
+                        : initialDate.day;
+                    onChanged(DateTime(initialDate.year, newMonth, newDay));
+                  },
+                  children: months
+                      .map(
+                        (m) => Center(
+                          child: Text(
+                            _getMonthString(m),
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
-              onSelectedItemChanged: (index) {
-                final newMonth = index + 1;
-                final daysInNewMonth = DateTime(
-                  initialDate.year,
-                  newMonth + 1,
-                  0,
-                ).day;
-                final newDay = initialDate.day > daysInNewMonth
-                    ? daysInNewMonth
-                    : initialDate.day;
-                onChanged(DateTime(initialDate.year, newMonth, newDay));
-              },
-              children: months
-                  .map(
-                    (m) => Center(
-                      child: Text(
-                        _getMonthString(m),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          Expanded(
-            child: CupertinoPicker(
-              selectionOverlay: Container(),
-              itemExtent: 32,
-              scrollController: FixedExtentScrollController(
-                initialItem: initialDate.day - 1,
+              SizedBox(width: gap),
+              SizedBox(
+                width: pickerWidth,
+                child: CupertinoPicker(
+                  selectionOverlay: Container(),
+                  itemExtent: 32,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: initialDate.day - 1,
+                  ),
+                  onSelectedItemChanged: (index) {
+                    onChanged(
+                      DateTime(initialDate.year, initialDate.month, index + 1),
+                    );
+                  },
+                  children: days
+                      .map(
+                        (d) => Center(
+                          child: Text(
+                            '$d日',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
-              onSelectedItemChanged: (index) {
-                onChanged(
-                  DateTime(initialDate.year, initialDate.month, index + 1),
-                );
-              },
-              children: days
-                  .map(
-                    (d) => Center(
-                      child: Text('$d日', style: const TextStyle(fontSize: 16)),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
