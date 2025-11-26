@@ -899,7 +899,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                     child: Text(
                       '$minutes 分钟',
                       style: const TextStyle(
-                        fontSize: 22,
+                        fontSize: 44,
                         fontWeight: FontWeight.w600,
                         color: Colors.black87,
                       ),
@@ -1051,7 +1051,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           final Widget picker = LayoutBuilder(
             builder: (context, constraints) {
               final double gap = 1.5; // 再缩小间距为 1.5px
-              final double maxPickerWidth = 48.0; // 更小的最大列宽 48px
+              final double baseFont =
+                  Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
+              final double pickerFont = baseFont * 2.0; // 和全局上保持 2x
+              final double maxPickerWidth = max(48.0, pickerFont * 1.6);
               final double pickerWidth = min(
                 (constraints.maxWidth - gap) / 2,
                 maxPickerWidth,
@@ -1078,7 +1081,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                               child: Text(
                                 '${hour.toString().padLeft(2, '0')}时',
                                 style: const TextStyle(
-                                  fontSize: 20,
+                                  fontSize: 40,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black87,
                                 ),
@@ -1108,7 +1111,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                               child: Text(
                                 '${minute.toString().padLeft(2, '0')}分',
                                 style: const TextStyle(
-                                  fontSize: 20,
+                                  fontSize: 40,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black87,
                                 ),

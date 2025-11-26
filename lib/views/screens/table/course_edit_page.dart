@@ -534,107 +534,146 @@ class _CourseEditPageState extends State<CourseEditPage> {
     final endSection = session.startSection + session.sectionCount - 1;
 
     return Container(
-      height: 150,
+      height: 200,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       color: Colors.white,
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: CupertinoPicker(
-              selectionOverlay: Container(),
-              itemExtent: 32,
-              scrollController: FixedExtentScrollController(
-                initialItem: session.weekday - 1,
-              ),
-              onSelectedItemChanged: (newIndex) {
-                setState(() {
-                  _sessions[index] = CourseSession(
-                    weekday: newIndex + 1,
-                    startSection: session.startSection,
-                    sectionCount: session.sectionCount,
-                    location: session.location,
-                    startWeek: session.startWeek,
-                    endWeek: session.endWeek,
-                    weekType: session.weekType,
-                  );
-                });
-              },
-              children: List.generate(
-                7,
-                (i) => Center(child: Text('周${_weekdayToString(i + 1)}')),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: CupertinoPicker(
-              selectionOverlay: Container(),
-              itemExtent: 32,
-              scrollController: FixedExtentScrollController(
-                initialItem: session.startSection - 1,
-              ),
-              onSelectedItemChanged: (newIndex) {
-                final newStart = newIndex + 1;
-                setState(() {
-                  _sessions[index] = CourseSession(
-                    weekday: session.weekday,
-                    startSection: newStart,
-                    sectionCount: session.sectionCount,
-                    location: session.location,
-                    startWeek: session.startWeek,
-                    endWeek: session.endWeek,
-                    weekType: session.weekType,
-                  );
-                });
-              },
-              children: List.generate(
-                12,
-                (i) => Center(child: Text('${i + 1}')),
-              ),
-            ),
-          ),
-          const Text('到'),
-          Expanded(
-            flex: 2,
-            child: CupertinoPicker(
-              selectionOverlay: Container(),
-              itemExtent: 32,
-              scrollController: FixedExtentScrollController(
-                initialItem: endSection - 1,
-              ),
-              onSelectedItemChanged: (newIndex) {
-                final newEnd = newIndex + 1;
-                int newStart = session.startSection;
-                int newCount;
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double baseFont =
+              Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
+          final double pickerFont = baseFont * 2.0;
+          final double gap = 1.0; // 再缩小间距为 1px
+          final double symbolWidth = 28.0; // '到' 和 '节' 文字宽度估算
+          // 根据字体动态计算 picker 宽度范围，确保 2x 字体也能显示
+          final double minPickerWidth = max(40.0, pickerFont * 1.3);
+          final double maxPickerWidth = max(56.0, pickerFont * 2.4);
+          final double available =
+              constraints.maxWidth - symbolWidth * 2 - gap * 2;
+          final double pickerWidth = (available / 3).clamp(
+            minPickerWidth,
+            maxPickerWidth,
+          );
 
-                if (newEnd < newStart) {
-                  newStart = newEnd;
-                  newCount = 1;
-                } else {
-                  newCount = newEnd - newStart + 1;
-                }
-
-                setState(() {
-                  _sessions[index] = CourseSession(
-                    weekday: session.weekday,
-                    startSection: newStart,
-                    sectionCount: newCount,
-                    location: session.location,
-                    startWeek: session.startWeek,
-                    endWeek: session.endWeek,
-                    weekType: session.weekType,
-                  );
-                });
-              },
-              children: List.generate(
-                12,
-                (i) => Center(child: Text('${i + 1}')),
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: pickerWidth,
+                child: CupertinoPicker(
+                  selectionOverlay: Container(),
+                  itemExtent: 44,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: session.weekday - 1,
+                  ),
+                  onSelectedItemChanged: (newIndex) {
+                    setState(() {
+                      _sessions[index] = CourseSession(
+                        weekday: newIndex + 1,
+                        startSection: session.startSection,
+                        sectionCount: session.sectionCount,
+                        location: session.location,
+                        startWeek: session.startWeek,
+                        endWeek: session.endWeek,
+                        weekType: session.weekType,
+                      );
+                    });
+                  },
+                  children: List.generate(
+                    7,
+                    (i) => Center(
+                      child: Text(
+                        '周${_weekdayToString(i + 1)}',
+                        style: TextStyle(fontSize: pickerFont),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-          const Text('节'),
-        ],
+              SizedBox(width: gap),
+              SizedBox(
+                width: pickerWidth,
+                child: CupertinoPicker(
+                  selectionOverlay: Container(),
+                  itemExtent: 44,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: session.startSection - 1,
+                  ),
+                  onSelectedItemChanged: (newIndex) {
+                    final newStart = newIndex + 1;
+                    setState(() {
+                      _sessions[index] = CourseSession(
+                        weekday: session.weekday,
+                        startSection: newStart,
+                        sectionCount: session.sectionCount,
+                        location: session.location,
+                        startWeek: session.startWeek,
+                        endWeek: session.endWeek,
+                        weekType: session.weekType,
+                      );
+                    });
+                  },
+                  children: List.generate(
+                    12,
+                    (i) => Center(
+                      child: Text(
+                        '${i + 1}',
+                        style: TextStyle(fontSize: pickerFont),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text('到'),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: pickerWidth,
+                child: CupertinoPicker(
+                  selectionOverlay: Container(),
+                  itemExtent: 44,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: endSection - 1,
+                  ),
+                  onSelectedItemChanged: (newIndex) {
+                    final newEnd = newIndex + 1;
+                    int newStart = session.startSection;
+                    int newCount;
+
+                    if (newEnd < newStart) {
+                      newStart = newEnd;
+                      newCount = 1;
+                    } else {
+                      newCount = newEnd - newStart + 1;
+                    }
+
+                    setState(() {
+                      _sessions[index] = CourseSession(
+                        weekday: session.weekday,
+                        startSection: newStart,
+                        sectionCount: newCount,
+                        location: session.location,
+                        startWeek: session.startWeek,
+                        endWeek: session.endWeek,
+                        weekType: session.weekType,
+                      );
+                    });
+                  },
+                  children: List.generate(
+                    12,
+                    (i) => Center(
+                      child: Text(
+                        '${i + 1}',
+                        style: TextStyle(fontSize: pickerFont),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text('节'),
+            ],
+          );
+        },
       ),
     );
   }
