@@ -1130,6 +1130,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
       _b.toInt(),
     );
     return AlertDialog(
+      backgroundColor: Colors.white,
       title: const Text('添加自定义颜色'),
       content: Column(
         mainAxisSize: MainAxisSize.min,

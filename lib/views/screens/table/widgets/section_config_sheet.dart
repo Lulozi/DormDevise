@@ -914,6 +914,9 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
         return SizedBox(
           height: 220,
           child: CupertinoPicker(
+            selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
+              background: Colors.transparent,
+            ),
             scrollController: controller,
             itemExtent: 44,
             magnification: 1.08,
@@ -1083,6 +1086,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             children: <Widget>[
               Expanded(
                 child: CupertinoPicker(
+                  selectionOverlay:
+                      const CupertinoPickerDefaultSelectionOverlay(
+                        background: Colors.transparent,
+                      ),
                   scrollController: hourController,
                   itemExtent: 44,
                   magnification: 1.05,
@@ -1107,6 +1114,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
               ),
               Expanded(
                 child: CupertinoPicker(
+                  selectionOverlay:
+                      const CupertinoPickerDefaultSelectionOverlay(
+                        background: Colors.transparent,
+                      ),
                   scrollController: minuteController,
                   itemExtent: 44,
                   magnification: 1.05,

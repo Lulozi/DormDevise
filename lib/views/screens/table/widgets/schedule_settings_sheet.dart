@@ -400,7 +400,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFFEEEFF5),
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
