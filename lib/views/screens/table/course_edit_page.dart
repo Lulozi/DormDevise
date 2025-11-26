@@ -1101,9 +1101,19 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
   void initState() {
     super.initState();
     final random = Random();
-    _r = random.nextInt(256).toDouble();
-    _g = random.nextInt(256).toDouble();
-    _b = random.nextInt(256).toDouble();
+    // 生成较浅且非灰色的随机颜色
+    // 饱和度 (Saturation): 0.25 - 0.5 (避免灰色 < 0.15，同时保持柔和)
+    // 亮度 (Value): 0.9 - 1.0 (保持高亮度)
+    final hsv = HSVColor.fromAHSV(
+      1.0,
+      random.nextDouble() * 360,
+      0.25 + random.nextDouble() * 0.25,
+      0.9 + random.nextDouble() * 0.1,
+    );
+    final color = hsv.toColor();
+    _r = color.red.toDouble();
+    _g = color.green.toDouble();
+    _b = color.blue.toDouble();
   }
 
   bool _isGray(Color color) {
