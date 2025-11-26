@@ -297,11 +297,6 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                     }
                     setState(() {
                       _breakMode = value;
-                      if (_breakMode == _BreakDurationMode.global) {
-                        for (final _MutableSegment segment in _segments) {
-                          _resetSegmentBreaksToDefault(segment);
-                        }
-                      }
                     });
                   },
                 ),
@@ -548,36 +543,6 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
         ),
       );
     }
-  }
-
-  /// 判断当前时段是否存在逐段课间自定义配置。
-  bool _hasSegmentBreakOverrides(_MutableSegment segment) {
-    if (segment.classCount <= 1) {
-      return false;
-    }
-    final Duration base = segment.breakDuration ?? _defaultBreakDuration;
-    for (final Duration duration in segment.breakDurations) {
-      if (duration != base) {
-        return true;
-      }
-    }
-    if (_breakMode == _BreakDurationMode.segmented &&
-        segment.breakDuration != null &&
-        segment.breakDuration != _defaultBreakDuration) {
-      return true;
-    }
-    return false;
-  }
-
-  /// 将指定时段的课间配置重置为全局默认值。
-  void _resetSegmentBreaksToDefault(_MutableSegment segment) {
-    segment.breakDuration = null;
-    final int breakCount = segment.classCount > 1 ? segment.classCount - 1 : 0;
-    segment.breakDurations = List<Duration>.filled(
-      breakCount,
-      _defaultBreakDuration,
-      growable: true,
-    );
   }
 
   /// 生成课间休息设置的摘要文本，便于在列表中展示。
@@ -1304,14 +1269,19 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   /// 组装最终的课表配置对象。
   CourseScheduleConfig _buildResultConfig() {
     final List<ScheduleSegmentConfig> segments = <ScheduleSegmentConfig>[];
+    final bool useSegmented = _breakMode == _BreakDurationMode.segmented;
+
     for (final _MutableSegment segment in _segments) {
       _ensureBreakSlots(segment);
-      final Duration? breakDuration = _breakMode == _BreakDurationMode.segmented
-          ? segment.breakDuration
-          : null;
-      final List<Duration> perBreakDurations = segment.classCount <= 1
-          ? <Duration>[]
-          : List<Duration>.from(segment.breakDurations);
+      
+      final Duration? breakDuration = useSegmented ? segment.breakDuration : null;
+      
+      // 在全局模式下，不保存分段的课间配置，以免下次加载时误判
+      final List<Duration> perBreakDurations =
+          (useSegmented && segment.classCount > 1)
+              ? List<Duration>.from(segment.breakDurations)
+              : <Duration>[];
+
       segments.add(
         ScheduleSegmentConfig(
           name: segment.name,
@@ -1325,13 +1295,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
         ),
       );
     }
-    final bool hasOverrideBreak = _segments.any(_hasSegmentBreakOverrides);
+    
     return CourseScheduleConfig(
       defaultClassDuration: _defaultClassDuration,
       defaultBreakDuration: _defaultBreakDuration,
       segments: segments,
-      useSegmentBreakDurations:
-          _breakMode == _BreakDurationMode.segmented || hasOverrideBreak,
+      useSegmentBreakDurations: useSegmented,
     );
   }
 
