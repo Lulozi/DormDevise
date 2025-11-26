@@ -274,8 +274,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     Widget? trailing,
     VoidCallback? onTap,
   }) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
