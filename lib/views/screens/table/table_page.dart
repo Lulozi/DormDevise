@@ -44,6 +44,14 @@ class _TablePageState extends State<TablePage> {
   int _maxWeek = 20;
   DateTime _currentSemesterStart = _defaultSemesterStart;
 
+  // 返回学期第一周的起始日期（本周的星期一）
+  DateTime get _firstWeekStart {
+    // DateTime.weekday: Monday = 1, Sunday = 7
+    return _currentSemesterStart.subtract(
+      Duration(days: _currentSemesterStart.weekday - 1),
+    );
+  }
+
   // 设置状态
   String _tableName = '我的课表';
   bool _showWeekend = false;
@@ -88,9 +96,7 @@ class _TablePageState extends State<TablePage> {
       _showNonCurrentWeek = showNonCurrentWeek;
 
       // 计算当前周
-      final int diffDays = DateTime.now()
-          .difference(_currentSemesterStart)
-          .inDays;
+      final int diffDays = DateTime.now().difference(_firstWeekStart).inDays;
       _currentWeek = (diffDays / 7).floor() + 1;
       if (_currentWeek < 1) _currentWeek = 1;
       if (_currentWeek > _maxWeek) _currentWeek = _maxWeek;
@@ -202,22 +208,20 @@ class _TablePageState extends State<TablePage> {
 
   /// 打开日期选择器并跳转到对应周次。
   Future<void> _pickDate(BuildContext context) async {
-    final DateTime initialDate = _currentSemesterStart.add(
+    final DateTime initialDate = _firstWeekStart.add(
       Duration(days: (_currentWeek - 1) * 7),
     );
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: _currentSemesterStart,
-      lastDate: _currentSemesterStart.add(
-        Duration(days: (_maxWeek - 1) * 7 + 6),
-      ),
+      firstDate: _firstWeekStart,
+      lastDate: _firstWeekStart.add(Duration(days: (_maxWeek - 1) * 7 + 6)),
       helpText: '选择要跳转的日期',
     );
     if (picked == null) {
       return;
     }
-    final int days = picked.difference(_currentSemesterStart).inDays;
+    final int days = picked.difference(_firstWeekStart).inDays;
     final int computedWeek = (days ~/ 7) + 1;
     if (computedWeek >= 1 && computedWeek <= _maxWeek) {
       _updateWeek(computedWeek);
@@ -262,9 +266,7 @@ class _TablePageState extends State<TablePage> {
 
   /// 计算给定周次对应的完整日期列表。
   List<DateTime> _resolveWeekDates(int week) {
-    final DateTime start = _currentSemesterStart.add(
-      Duration(days: (week - 1) * 7),
-    );
+    final DateTime start = _firstWeekStart.add(Duration(days: (week - 1) * 7));
     return List<DateTime>.generate(_weekdayLabels.length, (int index) {
       return start.add(Duration(days: index));
     });
@@ -296,7 +298,7 @@ class _TablePageState extends State<TablePage> {
       builder: (BuildContext context) {
         return WeekSelectSheet(
           currentWeek:
-              DateTime.now().difference(_currentSemesterStart).inDays ~/ 7 +
+              DateTime.now().difference(_firstWeekStart).inDays ~/ 7 +
               1, // 近似计算当前周
           selectedWeek: _currentWeek,
           maxWeek: _maxWeek,
@@ -349,6 +351,23 @@ class _TablePageState extends State<TablePage> {
               await CourseService.instance.saveSemesterStart(date);
               setState(() {
                 _currentSemesterStart = date;
+                // 更新当前周，基于新的第一周起始日期
+                final int diffDays = DateTime.now()
+                    .difference(_firstWeekStart)
+                    .inDays;
+                int newCurrent = (diffDays / 7).floor() + 1;
+                if (newCurrent < 1) newCurrent = 1;
+                if (newCurrent > _maxWeek) newCurrent = _maxWeek;
+                _currentWeek = newCurrent;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_pageController.hasClients) {
+                  _pageController.animateToPage(
+                    _currentWeek - 1,
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                  );
+                }
               });
             },
             onCurrentWeekChanged: (int week) {
