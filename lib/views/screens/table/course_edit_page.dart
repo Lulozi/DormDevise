@@ -6,7 +6,7 @@ import '../../../../models/course.dart';
 import 'widgets/expandable_item.dart';
 
 class CourseEditPage extends StatefulWidget {
-  final Course? course; // If null, we are adding a new course
+  final Course? course; // 如果为 null，则表示正在添加新课程
   final int? initialWeekday;
   final int? initialSection;
   final int maxWeek;
@@ -31,7 +31,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   late List<CourseSession> _sessions;
   List<Color> _customColors = [];
 
-  // Global week settings
+  // 全局周次设置
   int _startWeek = 1;
   late int _endWeek;
   CourseWeekType _weekType = CourseWeekType.all;
@@ -39,22 +39,22 @@ class _CourseEditPageState extends State<CourseEditPage> {
   int? _expandedSessionIndex;
 
   final List<Color> _presetColors = [
-    const Color(0xFFFFCDD2), // Red 100
-    const Color(0xFFF8BBD0), // Pink 100
-    const Color(0xFFE1BEE7), // Purple 100
-    const Color(0xFFD1C4E9), // Deep Purple 100
-    const Color(0xFFC5CAE9), // Indigo 100
-    const Color(0xFFBBDEFB), // Blue 100
-    const Color(0xFFB3E5FC), // Light Blue 100
-    const Color(0xFFB2EBF2), // Cyan 100
-    const Color(0xFFB2DFDB), // Teal 100
-    const Color(0xFFC8E6C9), // Green 100
-    const Color(0xFFDCEDC8), // Light Green 100
-    const Color(0xFFF0F4C3), // Lime 100
-    const Color(0xFFFFF9C4), // Yellow 100
-    const Color(0xFFFFECB3), // Amber 100
-    const Color(0xFFFFE0B2), // Orange 100
-    const Color(0xFFFFCCBC), // Deep Orange 100
+    const Color(0xFFFFCDD2), // 红色 100
+    const Color(0xFFF8BBD0), // 粉色 100
+    const Color(0xFFE1BEE7), // 紫色 100
+    const Color(0xFFD1C4E9), // 深紫色 100
+    const Color(0xFFC5CAE9), // 靛蓝 100
+    const Color(0xFFBBDEFB), // 蓝色 100
+    const Color(0xFFB3E5FC), // 浅蓝 100
+    const Color(0xFFB2EBF2), // 青色 100
+    const Color(0xFFB2DFDB), // 蓝绿 100
+    const Color(0xFFC8E6C9), // 绿色 100
+    const Color(0xFFDCEDC8), // 浅绿 100
+    const Color(0xFFF0F4C3), // 酸橙 100
+    const Color(0xFFFFF9C4), // 黄色 100
+    const Color(0xFFFFECB3), // 琥珀 100
+    const Color(0xFFFFE0B2), // 橙色 100
+    const Color(0xFFFFCCBC), // 深橙 100
   ];
 
   @override
@@ -67,7 +67,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
       text: widget.course?.teacher ?? '',
     );
 
-    // Initialize classroom from the first session if available, or empty
+    // 如果有第一个课节，则从第一个课节初始化教室，否则为空
     String initialLocation = '';
     if (widget.course != null && widget.course!.sessions.isNotEmpty) {
       initialLocation = widget.course!.sessions.first.location;
@@ -96,7 +96,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
           ),
         );
       } else if (_sessions.isEmpty) {
-        // Add a default session if none exists
+        // 如果不存在课节，则添加默认课节
         _sessions.add(
           CourseSession(
             weekday: 1,
@@ -156,23 +156,23 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   void _save() {
     if (_nameController.text.isEmpty) {
-      // Show error or just return
+      // 显示错误或直接返回
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('请输入课程名称')));
       return;
     }
 
-    // Apply global settings to all sessions
+    // 将全局设置应用到所有课节
     final updatedSessions = _sessions.map((s) {
       return CourseSession(
         weekday: s.weekday,
         startSection: s.startSection,
         sectionCount: s.sectionCount,
-        location: _classroomController.text, // Apply global location
-        startWeek: _startWeek, // Apply global start week
-        endWeek: _endWeek, // Apply global end week
-        weekType: _weekType, // Apply global week type
+        location: _classroomController.text, // 应用全局教室
+        startWeek: _startWeek, // 应用全局开始周
+        endWeek: _endWeek, // 应用全局结束周
+        weekType: _weekType, // 应用全局周类型
       );
     }).toList();
 
@@ -704,7 +704,7 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
     _currentType = widget.initialType;
     _selectedWeeks = {};
 
-    // Initialize selection based on range and type
+    // 根据范围和类型初始化选择
     for (int i = widget.initialStart; i <= widget.initialEnd; i++) {
       if (widget.initialType == CourseWeekType.all) {
         _selectedWeeks.add(i);
@@ -906,7 +906,7 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
     final start = sortedWeeks.first;
     final end = sortedWeeks.last;
 
-    // Determine type based on selection
+    // 根据选择确定类型
     CourseWeekType type = CourseWeekType.all;
     bool isAllOdd = true;
     bool isAllEven = true;

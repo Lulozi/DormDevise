@@ -577,7 +577,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     final int weekday = _selectedSlot!.weekday;
     final int section = _selectedSlot!.section;
 
-    // Find column index
+    // 查找列索引
     final int columnIndex = weekdayIndexes.indexOf(weekday);
     if (columnIndex == -1) return const SizedBox.shrink();
 

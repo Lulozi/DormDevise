@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../models/course.dart';
 
+/// 课程详情底部弹窗
 class CourseDetailSheet extends StatelessWidget {
+  /// 课程详情项列表
   final List<CourseDetailItem> items;
 
   const CourseDetailSheet({super.key, required this.items});
@@ -168,10 +170,18 @@ class CourseDetailSheet extends StatelessWidget {
   }
 }
 
+/// 课程详情项数据模型
 class CourseDetailItem {
+  /// 课程信息
   final Course course;
+
+  /// 课节信息
   final CourseSession session;
+
+  /// 开始时间
   final TimeOfDay startTime;
+
+  /// 结束时间
   final TimeOfDay endTime;
 
   CourseDetailItem({
