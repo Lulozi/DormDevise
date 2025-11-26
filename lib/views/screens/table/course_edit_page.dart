@@ -29,7 +29,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   // Global week settings
   int _startWeek = 1;
-  int _endWeek = 18;
+  late int _endWeek;
 
   final List<Color> _presetColors = [
     const Color(0xFFE57373),
@@ -53,6 +53,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   @override
   void initState() {
     super.initState();
+    _endWeek = widget.maxWeek;
     _nameController = TextEditingController(text: widget.course?.name ?? '');
     _teacherController = TextEditingController(
       text: widget.course?.teacher ?? '',
@@ -79,20 +80,20 @@ class _CourseEditPageState extends State<CourseEditPage> {
             sectionCount: 2,
             location: '',
             startWeek: 1,
-            endWeek: 18,
+            endWeek: widget.maxWeek,
             weekType: CourseWeekType.all,
           ),
         );
       } else if (_sessions.isEmpty) {
         // Add a default session if none exists
         _sessions.add(
-          const CourseSession(
+          CourseSession(
             weekday: 1,
             startSection: 1,
             sectionCount: 2,
             location: '',
             startWeek: 1,
-            endWeek: 18,
+            endWeek: widget.maxWeek,
             weekType: CourseWeekType.all,
           ),
         );
