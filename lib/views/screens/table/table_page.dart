@@ -189,15 +189,15 @@ class _TablePageState extends State<TablePage> {
 
   /// 格式化学期日期范围便于展示。
   String _formatSemesterRange() {
-    final int startYear = _currentSemesterStart.year;
-    final DateTime endDate = _currentSemesterStart.add(
-      Duration(days: (_maxWeek - 1) * 7),
-    );
-    final int endYear = endDate.year;
-    if (startYear == endYear) {
-      return '$startYear 学年';
+    final int year = _currentSemesterStart.year;
+    final int month = _currentSemesterStart.month;
+    // 一般高校秋季学期从8-9月开始，属于当前年份至下一年份的学年
+    // 春季学期从2-3月开始，属于上一年份至当前年份的学年
+    if (month >= 8) {
+      return '$year-${year + 1} 学年';
+    } else {
+      return '${year - 1}-$year 学年';
     }
-    return '$startYear-$endYear 学年';
   }
 
   /// 打开日期选择器并跳转到对应周次。
