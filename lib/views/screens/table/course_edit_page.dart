@@ -329,7 +329,74 @@ class _CourseEditPageState extends State<CourseEditPage> {
           ),
           const SizedBox(height: 12),
           _buildColorItem(),
-          const SizedBox(height: 40),
+          const SizedBox(height: 100),
+        ],
+      ),
+      bottomNavigationBar: widget.course != null
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: _buildDeleteButton(),
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildDeleteButton() {
+    return GestureDetector(
+      onTap: _deleteCourse,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 48),
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.delete_outline, color: Color(0xFF333333), size: 26),
+            SizedBox(height: 2),
+            Text(
+              '删除课程',
+              style: TextStyle(
+                color: Color(0xFF333333),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _deleteCourse() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除课程'),
+        content: const Text('确定要删除这门课程吗？此操作无法撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // 关闭对话框
+              Navigator.pop(context, 'delete'); // 返回删除信号
+            },
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
