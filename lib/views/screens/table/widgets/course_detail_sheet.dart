@@ -75,7 +75,7 @@ class CourseDetailSheet extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Color.fromRGBO(0, 0, 0, 0.02),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -108,7 +108,8 @@ class CourseDetailSheet extends StatelessWidget {
               ),
               GestureDetector(
                 onTap: () {
-                  Navigator.of(context)
+                  final navigator = Navigator.of(context);
+                  navigator
                       .push(
                         MaterialPageRoute(
                           builder: (context) =>
@@ -120,11 +121,12 @@ class CourseDetailSheet extends StatelessWidget {
                         if (result != null) {
                           // 如果有修改或删除，返回结果给上层以刷新
                           if (result == 'delete') {
-                            Navigator.of(
-                              context,
-                            ).pop({'action': 'delete', 'target': item.course});
+                            navigator.pop({
+                              'action': 'delete',
+                              'target': item.course,
+                            });
                           } else if (result is Course) {
-                            Navigator.of(context).pop({
+                            navigator.pop({
                               'action': 'update',
                               'target': item.course,
                               'newCourse': result,
