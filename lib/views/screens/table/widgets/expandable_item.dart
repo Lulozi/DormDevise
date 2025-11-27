@@ -2,22 +2,22 @@ import 'package:flutter/material.dart';
 
 /// 一个可展开的列表项组件
 class ExpandableItem extends StatelessWidget {
-  /// 标题
+  /// 标题 (title)
   final String title;
 
-  /// 右侧显示的值（可选）
+  /// 右侧显示的值 (value)（可选）
   final Widget? value;
 
-  /// 是否展开
+  /// 是否展开 (isExpanded)
   final bool isExpanded;
 
-  /// 点击回调
+  /// 点击回调 (onTap)
   final VoidCallback onTap;
 
-  /// 展开后显示的内容
+  /// 展开后显示的内容 (content)
   final Widget content;
 
-  /// 是否显示底部分割线
+  /// 是否显示底部分割线 (showDivider)
   final bool showDivider;
 
   const ExpandableItem({

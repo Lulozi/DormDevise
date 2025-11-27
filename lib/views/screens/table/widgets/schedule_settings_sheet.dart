@@ -7,6 +7,7 @@ import 'package:dormdevise/utils/index.dart';
 import '../../../../models/course_schedule_config.dart';
 import 'expandable_item.dart';
 
+/// 课程表设置页面，用于配置学期开始时间、周数、周末显示等全局设置。
 class ScheduleSettingsPage extends StatefulWidget {
   final CourseScheduleConfig scheduleConfig;
   final DateTime semesterStart;
@@ -248,6 +249,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 构建设置项分组容器
   Widget _buildGroup({required List<Widget> children}) {
     return Container(
       decoration: BoxDecoration(
@@ -261,6 +263,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 构建分组内的分割线
   Widget _buildDivider() {
     return const Divider(
       height: 1,
@@ -270,6 +273,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 构建通用的设置项列表行
   Widget _buildTile({
     required String title,
     String? subtitle,
@@ -318,6 +322,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 构建列表行尾部的文本和箭头
   Widget _buildTrailingText(String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -329,6 +334,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 构建带有开关的设置项
   Widget _buildSwitchTile({
     required String title,
     String? subtitle,
@@ -367,6 +373,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 构建数字选择器（用于选择周数）
   Widget _buildNumberPicker({
     required int value,
     required int min,
@@ -394,6 +401,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 显示修改课程表名称的对话框
   void _showEditNameDialog(BuildContext context) {
     final TextEditingController controller = TextEditingController(
       text: widget.tableName,
@@ -455,6 +463,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 构建自定义的日期选择器（年/月/日）
   Widget _buildCustomDatePicker({
     required DateTime initialDate,
     required ValueChanged<DateTime> onChanged,
@@ -496,13 +505,13 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           }
 
           // 计算左边距，使 Month 列的中心对齐屏幕中心
-          // ScreenCenter = LeftPadding + YearWidth + Gap + MonthWidth / 2
+          // 屏幕中心 = 左边距 + 年宽 + 间距 + 月宽 / 2
           double leftPadding =
               (constraints.maxWidth / 2) - yearWidth - gap - (monthWidth / 2);
           if (leftPadding < 0) leftPadding = 0;
 
           final double innerGap = gap / 2;
-          // 左右边距（外边距）设置为 outerGap
+          // 构建行布局
           return Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
@@ -639,6 +648,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
+  /// 获取月份的中文显示字符串
   String _getMonthString(int month) {
     const months = [
       '1月',

@@ -17,13 +17,13 @@ enum _BreakDurationMode {
 
 /// 课程时间设置弹窗，集中调整所有节次配置。
 class SectionConfigSheet extends StatefulWidget {
-  /// 当前生效的课表配置。
+  /// 当前生效的课表配置 (scheduleConfig)。
   final CourseScheduleConfig scheduleConfig;
 
-  /// 保存结果时的回调函数。
+  /// 保存结果时的回调函数 (onSubmit)。
   final ValueChanged<CourseScheduleConfig> onSubmit;
 
-  /// 初始化时需要滚动到的节次序号。
+  /// 初始化时需要滚动到的节次序号 (initialSectionIndex)。
   final int? initialSectionIndex;
 
   const SectionConfigSheet({

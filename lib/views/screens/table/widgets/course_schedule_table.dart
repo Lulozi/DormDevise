@@ -8,67 +8,67 @@ import 'course_detail_sheet.dart';
 
 /// 渲染课程表网格的组件，支持按照指定工作日展示课程区块。
 class CourseScheduleTable extends StatefulWidget {
-  /// 展示的课程列表。
+  /// 展示的课程列表 (courses)。
   final List<Course> courses;
 
-  /// 当前选择的周次。
+  /// 当前选择的周次 (currentWeek)。
   final int currentWeek;
 
-  /// 课节时间信息列表。
+  /// 课节时间信息列表 (sections)。
   final List<SectionTime> sections;
 
-  /// 展示顺序对应的星期文本。
+  /// 展示顺序对应的星期文本 (weekdays)。
   final List<String> weekdays;
 
-  /// 展示的具体星期索引，周一为 1。
+  /// 展示的具体星期索引 (weekdayIndexes)，周一为 1。
   final List<int> weekdayIndexes;
 
-  /// 对应周次的日期列表，用于在表头展示日期。
+  /// 对应周次的日期列表 (weekDates)，用于在表头展示日期。
   final List<DateTime>? weekDates;
 
-  /// 左侧时间列的宽度。
+  /// 左侧时间列的宽度 (timeColumnWidth)。
   final double timeColumnWidth;
 
-  /// 单节课的高度。
+  /// 单节课的高度 (sectionHeight)。
   final double sectionHeight;
 
-  /// 支持的最大周次数量。
+  /// 支持的最大周次数量 (maxWeek)。
   final int maxWeek;
 
-  /// 周次变更时触发的回调。
+  /// 周次变更时触发的回调 (onWeekChanged)。
   final ValueChanged<int>? onWeekChanged;
 
-  /// 点击节次列时触发的回调。
+  /// 点击节次列时触发的回调 (onSectionTap)。
   final ValueChanged<SectionTime>? onSectionTap;
 
-  /// 点击周次表头时触发的回调。
+  /// 点击周次表头时触发的回调 (onWeekHeaderTap)。
   final VoidCallback? onWeekHeaderTap;
 
-  /// 点击时间列任意位置时触发的回调（除了周次表头）。
+  /// 点击时间列任意位置时触发的回调 (onTimeColumnTap)（除了周次表头）。
   final VoidCallback? onTimeColumnTap;
 
-  /// 是否渲染左侧时间列。
+  /// 是否渲染左侧时间列 (includeTimeColumn)。
   final bool includeTimeColumn;
 
-  /// 是否包裹默认的白色卡片外观。
+  /// 是否包裹默认的白色卡片外观 (applySurface)。
   final bool applySurface;
 
-  /// 控制垂直滚动的控制器，便于与外部同步。
+  /// 控制垂直滚动的控制器 (scrollController)，便于与外部同步。
   final ScrollController? scrollController;
 
-  /// 预留的左侧空白宽度，便于外部叠加独立列。
+  /// 预留的左侧空白宽度 (leadingInset)，便于外部叠加独立列。
   final double leadingInset;
 
-  /// 是否显示非本周课程。
+  /// 是否显示非本周课程 (showNonCurrentWeek)。
   final bool showNonCurrentWeek;
 
-  /// 点击添加课程的回调。
+  /// 点击添加课程的回调 (onAddCourseTap)。
   final void Function(int weekday, int section)? onAddCourseTap;
 
-  /// 课程被修改的回调 (旧课程, 新课程)
+  /// 课程被修改的回调 (onCourseChanged) (旧课程, 新课程)
   final void Function(Course oldCourse, Course newCourse)? onCourseChanged;
 
-  /// 课程被删除的回调 (被删除的课程)
+  /// 课程被删除的回调 (onCourseDeleted) (被删除的课程)
   final void Function(Course course)? onCourseDeleted;
 
   const CourseScheduleTable({
@@ -1012,22 +1012,22 @@ bool _isSameDate(DateTime a, DateTime b) {
 
 /// 内部的课程区块数据模型。
 class _CourseBlock {
-  /// 区块对应的课程。
+  /// 区块对应的课程 (course)。
   final Course course;
 
-  /// 区块对应的节次安排。
+  /// 区块对应的节次安排 (session)。
   final CourseSession session;
 
-  /// 区块所在列索引。
+  /// 区块所在列索引 (columnIndex)。
   final int columnIndex;
 
-  /// 区块起始时间。
+  /// 区块起始时间 (startTime)。
   final TimeOfDay startTime;
 
-  /// 区块结束时间。
+  /// 区块结束时间 (endTime)。
   final TimeOfDay endTime;
 
-  /// 是否为非本周课程。
+  /// 是否为非本周课程 (isNonCurrent)。
   final bool isNonCurrent;
 
   const _CourseBlock({
@@ -1042,16 +1042,16 @@ class _CourseBlock {
 
 /// 课表的行槽信息，用于区分节次行与分隔行。
 class CourseTableRowSlot {
-  /// 对应的节次信息，若为分隔行则为空。
+  /// 对应的节次信息 (section)，若为分隔行则为空。
   final SectionTime? section;
 
-  /// 分隔行展示的文案。
+  /// 分隔行展示的文案 (breakLabel)。
   final String? breakLabel;
 
-  /// 当前行高度。
+  /// 当前行高度 (height)。
   final double height;
 
-  /// 节次在序列中的顺序，分隔行则为空。
+  /// 节次在序列中的顺序 (sectionOrder)，分隔行则为空。
   final int? sectionOrder;
 
   const CourseTableRowSlot._({
@@ -1090,13 +1090,13 @@ class CourseTableRowSlot {
 
 /// 网格几何数据，包含行槽、总高度与节次偏移。
 class CourseTableGeometry {
-  /// 所有行槽信息。
+  /// 所有行槽信息 (rows)。
   final List<CourseTableRowSlot> rows;
 
-  /// 网格总高度。
+  /// 网格总高度 (totalHeight)。
   final double totalHeight;
 
-  /// 每个节次对应的纵向偏移。
+  /// 每个节次对应的纵向偏移 (sectionOffsets)。
   final Map<int, double> sectionOffsets;
 
   const CourseTableGeometry({

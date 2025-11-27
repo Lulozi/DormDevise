@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 ///
 /// 允许用户在网格视图中选择要查看的周次，并提供快速跳转到「本周」的功能。
 class WeekSelectSheet extends StatelessWidget {
-  /// 当前实际周次（用于「本周」按钮）。
+  /// 当前实际周次 (currentWeek)（用于「本周」按钮）。
   final int currentWeek;
 
-  /// 当前选中的周次（高亮显示）。
+  /// 当前选中的周次 (selectedWeek)（高亮显示）。
   final int selectedWeek;
 
-  /// 最大周次数量。
+  /// 最大周次数量 (maxWeek)。
   final int maxWeek;
 
-  /// 周次选择回调。
+  /// 周次选择回调 (onWeekSelected)。
   final ValueChanged<int> onWeekSelected;
 
   const WeekSelectSheet({

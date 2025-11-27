@@ -4,7 +4,7 @@ import '../course_edit_page.dart';
 
 /// 课程详情底部弹窗
 class CourseDetailSheet extends StatelessWidget {
-  /// 课程详情项列表
+  /// 课程详情项列表 (items)
   final List<CourseDetailItem> items;
 
   const CourseDetailSheet({super.key, required this.items});
@@ -39,6 +39,7 @@ class CourseDetailSheet extends StatelessWidget {
     );
   }
 
+  /// 构建顶部标题栏
   Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -68,6 +69,7 @@ class CourseDetailSheet extends StatelessWidget {
     );
   }
 
+  /// 构建单个课程卡片
   Widget _buildCourseCard(BuildContext context, CourseDetailItem item) {
     return Container(
       decoration: BoxDecoration(
@@ -175,6 +177,7 @@ class CourseDetailSheet extends StatelessWidget {
     );
   }
 
+  /// 构建详情行（标签 + 值）
   Widget _buildDetailRow(String label, String value) {
     return RichText(
       text: TextSpan(
@@ -194,6 +197,7 @@ class CourseDetailSheet extends StatelessWidget {
     );
   }
 
+  /// 将星期数字转换为中文文本
   String _weekdayToString(int weekday) {
     const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     if (weekday >= 1 && weekday <= 7) {
@@ -202,6 +206,7 @@ class CourseDetailSheet extends StatelessWidget {
     return '';
   }
 
+  /// 格式化时间为 HH:mm
   String _formatTime(TimeOfDay time) {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
@@ -211,16 +216,16 @@ class CourseDetailSheet extends StatelessWidget {
 
 /// 课程详情项数据模型
 class CourseDetailItem {
-  /// 课程信息
+  /// 课程信息 (course)
   final Course course;
 
-  /// 课节信息
+  /// 课节信息 (session)
   final CourseSession session;
 
-  /// 开始时间
+  /// 开始时间 (startTime)
   final TimeOfDay startTime;
 
-  /// 结束时间
+  /// 结束时间 (endTime)
   final TimeOfDay endTime;
 
   CourseDetailItem({
