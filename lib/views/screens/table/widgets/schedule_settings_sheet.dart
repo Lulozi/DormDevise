@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
+import 'package:dormdevise/utils/index.dart';
 
 import '../../../../models/course_schedule_config.dart';
 import 'expandable_item.dart';
@@ -475,11 +476,12 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // 以月份居中，左右间隔固定，且保证文字完整显示
-          final double gap = 12.0; // 列间间距
-          final double outerGap = gap * 5.0; // 左右边距放大，为了把年/日列推向中间
-          final double minYearWidth = 72.0; // 年份最小宽度，避免换行
-          final double minMonthWidth = 96.0; // 月份最小宽度，保证文字完整
-          final double minDayWidth = 56.0; // 日期最小宽度
+          final double gap = kPickerDefaultGap; // 列间间距
+          final double outerGap =
+              kPickerDefaultGap * kPickerOuterGapScale; // 左右边距放大，为了把年/日列推向中间
+          final double minYearWidth = kMinYearWidth; // 年份最小宽度，避免换行
+          final double minMonthWidth = kMinMonthWidth; // 月份最小宽度，保证文字完整
+          final double minDayWidth = kMinDayWidth; // 日期最小宽度
           // 剩余宽度计算：总宽度 - (两侧 outerGap) - (两列间 gap)
           final double available =
               constraints.maxWidth - outerGap * 2 - gap * 2;
@@ -541,7 +543,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   padding: EdgeInsets.symmetric(horizontal: innerGap),
                   child: CupertinoPicker(
                     selectionOverlay: Container(),
-                    itemExtent: 44,
+                    itemExtent: kPickerItemExtent,
                     scrollController: FixedExtentScrollController(
                       initialItem: (() {
                         final idx = years.indexWhere(
@@ -569,7 +571,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                               fit: BoxFit.scaleDown,
                               child: Text(
                                 '$y年',
-                                style: const TextStyle(fontSize: 24),
+                                style: const TextStyle(
+                                  fontSize: kPickerFontSizeDefault,
+                                ),
                               ),
                             ),
                           ),
@@ -585,7 +589,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   padding: EdgeInsets.symmetric(horizontal: innerGap),
                   child: CupertinoPicker(
                     selectionOverlay: Container(),
-                    itemExtent: 44,
+                    itemExtent: kPickerItemExtent,
                     scrollController: FixedExtentScrollController(
                       initialItem: initialDate.month - 1,
                     ),
@@ -608,7 +612,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                               fit: BoxFit.scaleDown,
                               child: Text(
                                 _getMonthString(m),
-                                style: const TextStyle(fontSize: 24),
+                                style: const TextStyle(
+                                  fontSize: kPickerFontSizeDefault,
+                                ),
                               ),
                             ),
                           ),
@@ -624,7 +630,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   padding: EdgeInsets.symmetric(horizontal: innerGap),
                   child: CupertinoPicker(
                     selectionOverlay: Container(),
-                    itemExtent: 44,
+                    itemExtent: kPickerItemExtent,
                     scrollController: FixedExtentScrollController(
                       initialItem: initialDate.day - 1,
                     ),
@@ -644,7 +650,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                               fit: BoxFit.scaleDown,
                               child: Text(
                                 '$d日',
-                                style: const TextStyle(fontSize: 24),
+                                style: const TextStyle(
+                                  fontSize: kPickerFontSizeDefault,
+                                ),
                               ),
                             ),
                           ),
