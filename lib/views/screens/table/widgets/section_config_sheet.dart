@@ -1015,7 +1015,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             return;
           }
 
-          // 计算新的时长（支持跨天）
+          // 计算新的时长
           final int diff = _differenceInMinutes(currentStart, candidate);
 
           // 确保最少 1 分钟时长
@@ -1383,8 +1383,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   int _differenceInMinutes(TimeOfDay start, TimeOfDay end) {
     final int from = start.hour * 60 + start.minute;
     final int to = end.hour * 60 + end.minute;
-    final int diff = to - from;
-    return diff < 0 ? diff + 1440 : diff;
+    return to - from;
   }
 
   /// 判断两个时间是否完全相同。
