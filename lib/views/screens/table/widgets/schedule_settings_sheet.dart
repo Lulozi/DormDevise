@@ -476,66 +476,37 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // 以月份居中，左右间隔固定，且保证文字完整显示
-          final double gap = kPickerDefaultGap; // 列间间距
-          final double outerGap =
-              kPickerDefaultGap * kPickerOuterGapScale; // 左右边距放大，为了把年/日列推向中间
-          final double minYearWidth = kMinYearWidth; // 年份最小宽度，避免换行
-          final double minMonthWidth = kMinMonthWidth; // 月份最小宽度，保证文字完整
-          final double minDayWidth = kMinDayWidth; // 日期最小宽度
-          // 剩余宽度计算：总宽度 - (两侧 outerGap) - (两列间 gap)
-          final double available =
-              constraints.maxWidth - outerGap * 2 - gap * 2;
+          final double gap = 0.0; // 列间间距
 
-          // 以月份居中为优先，且当宽度不足时按比例缩放最小宽度
+          final double minYearWidth = kMinYearWidth; // 年份最小宽度
+          final double minMonthWidth = kMinMonthWidth; // 月份最小宽度
+          final double minDayWidth = kMinDayWidth; // 日期最小宽度
+
           final double totalMin = minYearWidth + minMonthWidth + minDayWidth;
           double yearWidth = minYearWidth;
           double monthWidth = minMonthWidth;
           double dayWidth = minDayWidth;
 
-          if (available <= 0) {
-            yearWidth = minYearWidth;
-            monthWidth = minMonthWidth;
-            dayWidth = minDayWidth;
-          } else if (available < totalMin) {
-            final double scale = available / totalMin;
+          // 如果屏幕过窄，按比例缩放
+          if (constraints.maxWidth < totalMin) {
+            final double scale = constraints.maxWidth / totalMin;
             yearWidth = max(24.0, minYearWidth * scale);
             monthWidth = max(24.0, minMonthWidth * scale);
             dayWidth = max(24.0, minDayWidth * scale);
-          } else {
-            // 充分的宽度：优先保证 month 宽度，然后平分剩余给年/日，尽量保持左右对称
-            monthWidth = (available * 0.4).clamp(
-              minMonthWidth,
-              available - minYearWidth - minDayWidth,
-            );
-            double remaining = available - monthWidth;
-            double sideWidth = remaining / 2;
-            // 如果任一侧的最小值要求更大，则用更大的最小值，保证两侧保持相等（对称）
-            final double requiredSideMin = max(minYearWidth, minDayWidth);
-            if (sideWidth < requiredSideMin) {
-              // 检查是否还有空间放置 month，否则按比例缩放到最小值
-              if (available - requiredSideMin * 2 >= minMonthWidth) {
-                yearWidth = requiredSideMin;
-                dayWidth = requiredSideMin;
-                monthWidth = available - yearWidth - dayWidth;
-              } else {
-                // fallback: 缩放到最小宽度比例
-                final double scale = available / totalMin;
-                yearWidth = max(24.0, minYearWidth * scale);
-                monthWidth = max(24.0, minMonthWidth * scale);
-                dayWidth = max(24.0, minDayWidth * scale);
-              }
-            } else {
-              yearWidth = sideWidth;
-              dayWidth = sideWidth;
-            }
           }
+
+          // 计算左边距，使 Month 列的中心对齐屏幕中心
+          // ScreenCenter = LeftPadding + YearWidth + Gap + MonthWidth / 2
+          double leftPadding =
+              (constraints.maxWidth / 2) - yearWidth - gap - (monthWidth / 2);
+          if (leftPadding < 0) leftPadding = 0;
 
           final double innerGap = gap / 2;
           // 左右边距（外边距）设置为 outerGap
           return Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              SizedBox(width: outerGap),
+              SizedBox(width: leftPadding),
               // 给每列内部也加左右 padding，使文字不贴边
               SizedBox(
                 width: yearWidth,
@@ -661,7 +632,6 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   ),
                 ),
               ),
-              SizedBox(width: outerGap),
             ],
           );
         },

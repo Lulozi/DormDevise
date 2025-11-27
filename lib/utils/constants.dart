@@ -8,11 +8,11 @@ const double kPickerFontSizeDefault =
 const double kTimePickerFontSize = 40.0; // time pickers (hours/minutes)
 
 const double kPickerDefaultGap = 12.0;
-const double kPickerOuterGapScale = 5.0; // outerGap = gap * scale
+const double kPickerOuterGapScale = 3.0; // outerGap = gap * scale
 
-const double kMinYearWidth = 72.0;
-const double kMinMonthWidth = 96.0;
-const double kMinDayWidth = 56.0;
+const double kMinYearWidth = 80.0;
+const double kMinMonthWidth = 64.0;
+const double kMinDayWidth = 64.0;
 
 // Constrains for time pickers width
 const double kTimePickerMinWidth = 48.0;

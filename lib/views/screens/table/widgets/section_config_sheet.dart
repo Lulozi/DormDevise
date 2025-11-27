@@ -894,12 +894,15 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             children: options
                 .map(
                   (int minutes) => Center(
-                    child: Text(
-                      '$minutes 分钟',
-                      style: const TextStyle(
-                        fontSize: 44,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '$minutes 分钟',
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                   ),
@@ -1048,7 +1051,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
         }) {
           final Widget picker = LayoutBuilder(
             builder: (context, constraints) {
-              final double gap = 1.5; // 再缩小间距为 1.5px
+              final double gap = 6.0; // 时分之间保留适度间距
               final double baseFont =
                   Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
               final double pickerFont =
@@ -1081,12 +1084,15 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       children: staticHours
                           .map(
                             (int hour) => Center(
-                              child: Text(
-                                '${hour.toString().padLeft(2, '0')}时',
-                                style: const TextStyle(
-                                  fontSize: kTimePickerFontSize,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${hour.toString().padLeft(2, '0')}时',
+                                  style: const TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1111,12 +1117,15 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       children: staticMinutes
                           .map(
                             (int minute) => Center(
-                              child: Text(
-                                '${minute.toString().padLeft(2, '0')}分',
-                                style: const TextStyle(
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${minute.toString().padLeft(2, '0')}分',
+                                  style: const TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1179,15 +1188,32 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    '—',
-                    style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black54,
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Opacity(
+                      opacity: 0.0,
+                      child: Text(
+                        '占位',
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 180,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        '—',
+                        style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 Expanded(
                   child: Column(
