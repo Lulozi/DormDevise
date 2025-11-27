@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+// Allow extension import to be present (used only for extension methods) to satisfy
+// our usage of `toARGB32()` in JSON serialization.
+// ignore: unused_import
+import 'package:dormdevise/utils/index.dart';
 
 /// 课程在周次上的单双周限制。
 enum CourseWeekType {
@@ -118,7 +122,7 @@ class Course {
     return {
       'name': name,
       'teacher': teacher,
-      'color': color.value, // ignore: deprecated_member_use
+      'color': color.toARGB32(),
       'sessions': sessions.map((s) => s.toJson()).toList(),
     };
   }
@@ -128,7 +132,7 @@ class Course {
     return Course(
       name: json['name'] as String,
       teacher: json['teacher'] as String,
-      color: Color(json['color'] as int),
+      color: colorFromARGB32(json['color'] as int),
       sessions: (json['sessions'] as List)
           .map((e) => CourseSession.fromJson(e as Map<String, dynamic>))
           .toList(),
