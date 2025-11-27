@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dormdevise/utils/index.dart';
 import '../../../../models/course.dart';
 import 'widgets/expandable_item.dart';
 
@@ -39,22 +40,22 @@ class _CourseEditPageState extends State<CourseEditPage> {
   int? _expandedSessionIndex;
 
   final List<Color> _presetColors = [
-    const Color(0xFFFFCDD2), // 红色 100
-    const Color(0xFFF8BBD0), // 粉色 100
-    const Color(0xFFE1BEE7), // 紫色 100
-    const Color(0xFFD1C4E9), // 深紫色 100
-    const Color(0xFFC5CAE9), // 靛蓝 100
-    const Color(0xFFBBDEFB), // 蓝色 100
-    const Color(0xFFB3E5FC), // 浅蓝 100
-    const Color(0xFFB2EBF2), // 青色 100
-    const Color(0xFFB2DFDB), // 蓝绿 100
-    const Color(0xFFC8E6C9), // 绿色 100
-    const Color(0xFFDCEDC8), // 浅绿 100
-    const Color(0xFFF0F4C3), // 酸橙 100
-    const Color(0xFFFFF9C4), // 黄色 100
-    const Color(0xFFFFECB3), // 琥珀 100
-    const Color(0xFFFFE0B2), // 橙色 100
-    const Color(0xFFFFCCBC), // 深橙 100
+    const Color(0xFFFFCDD2),
+    const Color(0xFFF8BBD0),
+    const Color(0xFFE1BEE7),
+    const Color(0xFFD1C4E9),
+    const Color(0xFFC5CAE9),
+    const Color(0xFFBBDEFB),
+    const Color(0xFFB3E5FC),
+    const Color(0xFFB2EBF2),
+    const Color(0xFFB2DFDB),
+    const Color(0xFFC8E6C9),
+    const Color(0xFFDCEDC8),
+    const Color(0xFFF0F4C3),
+    const Color(0xFFFFF9C4),
+    const Color(0xFFFFECB3),
+    const Color(0xFFFFE0B2),
+    const Color(0xFFFFCCBC),
   ];
 
   @override
@@ -125,16 +126,18 @@ class _CourseEditPageState extends State<CourseEditPage> {
     final List<String>? colors = prefs.getStringList('custom_course_colors');
     if (colors != null) {
       setState(() {
-        _customColors = colors.map((c) => Color(int.parse(c))).toList();
+        _customColors = colors
+            .map((c) => colorFromARGB32(int.parse(c)))
+            .toList();
       });
     }
   }
 
   Future<void> _saveCustomColors() async {
     final prefs = await SharedPreferences.getInstance();
-    final List<String> colors = _customColors
-        .map((c) => c.value.toString())
-        .toList();
+    final List<String> colors = _customColors.map((c) {
+      return c.toARGB32().toString();
+    }).toList();
     await prefs.setStringList('custom_course_colors', colors);
   }
 
@@ -354,7 +357,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Color.fromRGBO(0, 0, 0, 0.08),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
@@ -541,12 +544,18 @@ class _CourseEditPageState extends State<CourseEditPage> {
         builder: (context, constraints) {
           final double baseFont =
               Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
-          final double pickerFont = baseFont * 2.0;
+          final double pickerFont = baseFont * kPickerFontScale;
           final double gap = 1.0; // 再缩小间距为 1px
           final double symbolWidth = 28.0; // '到' 和 '节' 文字宽度估算
           // 根据字体动态计算 picker 宽度范围，确保 2x 字体也能显示
-          final double minPickerWidth = max(40.0, pickerFont * 1.3);
-          final double maxPickerWidth = max(56.0, pickerFont * 2.4);
+          final double minPickerWidth = max(
+            40.0,
+            pickerFont * kPickerWidthScaleSmall,
+          );
+          final double maxPickerWidth = max(
+            56.0,
+            pickerFont * kPickerWidthScaleLarge,
+          );
           final double available =
               constraints.maxWidth - symbolWidth * 2 - gap * 2;
           final double pickerWidth = (available / 3).clamp(
@@ -561,7 +570,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                 width: pickerWidth,
                 child: CupertinoPicker(
                   selectionOverlay: Container(),
-                  itemExtent: 44,
+                  itemExtent: kPickerItemExtent,
                   scrollController: FixedExtentScrollController(
                     initialItem: session.weekday - 1,
                   ),
@@ -594,7 +603,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                 width: pickerWidth,
                 child: CupertinoPicker(
                   selectionOverlay: Container(),
-                  itemExtent: 44,
+                  itemExtent: kPickerItemExtent,
                   scrollController: FixedExtentScrollController(
                     initialItem: session.startSection - 1,
                   ),
@@ -630,7 +639,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                 width: pickerWidth,
                 child: CupertinoPicker(
                   selectionOverlay: Container(),
-                  itemExtent: 44,
+                  itemExtent: kPickerItemExtent,
                   scrollController: FixedExtentScrollController(
                     initialItem: endSection - 1,
                   ),
@@ -1217,9 +1226,9 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
       0.9 + random.nextDouble() * 0.1,
     );
     final color = hsv.toColor();
-    _r = color.red.toDouble();
-    _g = color.green.toDouble();
-    _b = color.blue.toDouble();
+    _r = (color.r * 255.0);
+    _g = (color.g * 255.0);
+    _b = (color.b * 255.0);
   }
 
   bool _isGray(Color color) {
