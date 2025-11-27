@@ -4,6 +4,7 @@ import 'dart:math';
 
 import '../../../../models/course_schedule_config.dart';
 import '../../../../utils/animated_expand.dart';
+import 'package:dormdevise/utils/index.dart';
 
 /// 表示课间休息时长的使用模式。
 enum _BreakDurationMode {
@@ -84,8 +85,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     _currentToast?.remove();
     _currentToast = null;
 
-    final OverlayState? overlay = Overlay.of(context);
-    if (overlay == null) return;
+    final OverlayState overlay = Overlay.of(context);
 
     final OverlayEntry entry = OverlayEntry(
       builder: (BuildContext context) {
@@ -104,12 +104,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFEBF2FF),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: const Color(0xFF1E69FF).withOpacity(0.15),
-                  ),
+                  border: Border.all(color: Color.fromRGBO(30, 105, 255, 0.15)),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
-                      color: const Color(0xFF1E69FF).withOpacity(0.1),
+                      color: Color.fromRGBO(30, 105, 255, 0.1),
                       blurRadius: 16,
                       offset: const Offset(0, 6),
                     ),
@@ -884,7 +882,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
               background: Colors.transparent,
             ),
             scrollController: controller,
-            itemExtent: 44,
+            itemExtent: kPickerItemExtent,
             magnification: 1.08,
             useMagnifier: true,
             looping: true,
@@ -1053,8 +1051,13 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
               final double gap = 1.5; // 再缩小间距为 1.5px
               final double baseFont =
                   Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
-              final double pickerFont = baseFont * 2.0; // 和全局上保持 2x
-              final double maxPickerWidth = max(48.0, pickerFont * 1.6);
+              final double pickerFont =
+                  baseFont *
+                  kPickerFontScale; // 使用常量 kPickerFontScale，以便统一调整（原为 2x）
+              final double maxPickerWidth = max(
+                48.0,
+                pickerFont * kPickerWidthScaleMedium,
+              );
               final double pickerWidth = min(
                 (constraints.maxWidth - gap) / 2,
                 maxPickerWidth,
@@ -1070,7 +1073,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                             background: Colors.transparent,
                           ),
                       scrollController: hourController,
-                      itemExtent: 44,
+                      itemExtent: kPickerItemExtent,
                       magnification: 1.05,
                       useMagnifier: true,
                       looping: true,
@@ -1081,7 +1084,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                               child: Text(
                                 '${hour.toString().padLeft(2, '0')}时',
                                 style: const TextStyle(
-                                  fontSize: 40,
+                                  fontSize: kTimePickerFontSize,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black87,
                                 ),
@@ -1100,7 +1103,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                             background: Colors.transparent,
                           ),
                       scrollController: minuteController,
-                      itemExtent: 44,
+                      itemExtent: kPickerItemExtent,
                       magnification: 1.05,
                       useMagnifier: true,
                       looping: true,
