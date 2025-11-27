@@ -91,7 +91,7 @@ class WeekSelectSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         border: isSelected
                             ? Border.all(
-                                color: const Color(0xFF1E69FF).withOpacity(0.3),
+                                color: Color.fromRGBO(30, 105, 255, 0.3),
                                 width: 1.5,
                               )
                             : null,
