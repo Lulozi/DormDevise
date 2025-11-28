@@ -169,24 +169,66 @@ class _CourseEditPageState extends State<CourseEditPage> {
   }
 
   Future<void> _showColorExhaustedDialog() async {
-    final bool? addNew = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('预设颜色已用完'),
-        content: const Text('所有预设颜色均已被使用，您希望如何处理？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('复用已有'),
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final String? action = prefs.getString('course_color_exhausted_action');
+
+    bool? addNew;
+
+    if (action == 'new') {
+      addNew = true;
+    } else if (action == 'reuse') {
+      addNew = false;
+    } else {
+      // Show selection dialog
+      addNew = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('课程颜色分配'),
+          content: const Text('所有颜色均已被使用，您希望如何处理？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('智能复用'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('自动新增'),
+            ),
+          ],
+        ),
+      );
+
+      if (addNew != null && mounted) {
+        // Ask if user wants to remember the choice
+        final bool? remember = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('记住选择'),
+            content: const Text('是否记住此选择，下次不再询问？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('每次提醒'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('不再提醒'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('自动新增'),
-          ),
-        ],
-      ),
-    );
+        );
+
+        if (remember == true) {
+          await prefs.setString(
+            'course_color_exhausted_action',
+            addNew ? 'new' : 'reuse',
+          );
+        }
+      }
+    }
 
     if (addNew == true) {
       final Color newColor = _generateRandomColor();
