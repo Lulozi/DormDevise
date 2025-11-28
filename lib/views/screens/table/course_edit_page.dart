@@ -211,30 +211,102 @@ class _CourseEditPageState extends State<CourseEditPage> {
   void _smartSplitAndMerge(int index) {
     if (!mounted || index >= _sessions.length) return;
 
-    final updatedSession = _sessions[index];
+    var updatedSession = _sessions[index];
+    bool wasReverseOrder = false;
+
+    // 0. 归一化处理：如果结束时间小于开始时间，自动交换
+    final currentEnd =
+        updatedSession.startSection + updatedSession.sectionCount - 1;
+    if (currentEnd < updatedSession.startSection) {
+      wasReverseOrder = true;
+      final newStart = currentEnd;
+      final newEnd = updatedSession.startSection;
+      final newCount = newEnd - newStart + 1;
+
+      updatedSession = CourseSession(
+        weekday: updatedSession.weekday,
+        startSection: newStart,
+        sectionCount: newCount,
+        location: updatedSession.location,
+        startWeek: updatedSession.startWeek,
+        endWeek: updatedSession.endWeek,
+        weekType: updatedSession.weekType,
+      );
+    }
 
     setState(() {
       _pickerResetVersion++; // 强制刷新 Picker 状态，确保滚动位置同步
 
-      // 1. 移除当前正在编辑的会话
-      _sessions.removeAt(index);
+      // 1. 收集不需要移除的会话
+      final List<CourseSession> keptSessions = [];
 
-      // 2. 移除所有与新会话时间冲突（重叠）的其他会话
-      _sessions.removeWhere((s) {
-        if (s.weekday != updatedSession.weekday) return false;
-        final sEnd = s.startSection + s.sectionCount - 1;
-        final uEnd =
-            updatedSession.startSection + updatedSession.sectionCount - 1;
-        return s.startSection <= uEnd && sEnd >= updatedSession.startSection;
-      });
+      // 判断是否跨段（Inter-segment）
+      // 如果调整后的时间跨越了作息表定义的时段边界（例如从上午跨到下午），则视为“大调整”，清除当天其他所有课程
+      // 如果调整仍在同一时段内（例如 1-4 调整为 1-2），则仅清除重叠课程，保留其他时段
+      // 特殊情况：如果是反向选择（B < A），则强制视为大调整，清除当天其他课程
+      bool isInterSegment = false;
+      if (wasReverseOrder) {
+        isInterSegment = true;
+      } else if (_scheduleConfig != null) {
+        bool contained = false;
+        int segStart = 1;
+        for (var segment in _scheduleConfig!.segments) {
+          int segEnd = segStart + segment.classCount - 1;
+          final uEnd =
+              updatedSession.startSection + updatedSession.sectionCount - 1;
 
-      // 3. 计算拆分结果
+          // 检查是否完全包含在当前段内
+          if (updatedSession.startSection >= segStart && uEnd <= segEnd) {
+            contained = true;
+            break;
+          }
+          segStart += segment.classCount;
+        }
+        // 如果没有被任何一个段完全包含，则是跨段
+        if (!contained) {
+          isInterSegment = true;
+        }
+      }
+
+      for (int i = 0; i < _sessions.length; i++) {
+        if (i == index) continue; // 跳过当前正在编辑的会话
+
+        final s = _sessions[i];
+
+        // 不同天的会话始终保留
+        if (s.weekday != updatedSession.weekday) {
+          keptSessions.add(s);
+          continue;
+        }
+
+        // 同一天的会话处理
+        if (isInterSegment) {
+          // 跨段调整：清除当天所有其他课程
+          continue;
+        } else {
+          // 段内调整：仅清除重叠的
+          final sEnd = s.startSection + s.sectionCount - 1;
+          final uEnd =
+              updatedSession.startSection + updatedSession.sectionCount - 1;
+
+          bool isOverlapping = false;
+          if (s.startSection <= uEnd && sEnd >= updatedSession.startSection) {
+            isOverlapping = true;
+          }
+
+          if (!isOverlapping) {
+            keptSessions.add(s);
+          }
+        }
+      }
+
+      // 2. 计算拆分结果
       List<CourseSession> splits = _calculateSplits(updatedSession);
 
-      // 4. 添加拆分后的部分
-      _sessions.addAll(splits);
+      // 3. 重建列表
+      _sessions = [...keptSessions, ...splits];
 
-      // 5. 重新排序：按周几、开始节次排序，确保列表顺序正确
+      // 4. 重新排序：按周几、开始节次排序，确保列表顺序正确
       _sessions.sort((a, b) {
         if (a.weekday != b.weekday) {
           return a.weekday.compareTo(b.weekday);
@@ -242,7 +314,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         return a.startSection.compareTo(b.startSection);
       });
 
-      // 6. 保持展开状态
+      // 5. 保持展开状态
       // 找到包含原开始节次的那个会话的新索引，保持用户焦点
       final newIndex = _sessions.indexWhere(
         (s) =>
@@ -934,9 +1006,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
               SizedBox(
                 width: pickerWidth,
                 child: CupertinoPicker(
-                  key: ValueKey(
-                    'start_picker_${session.startSection}_$_pickerResetVersion',
-                  ),
+                  key: ValueKey('start_picker_${index}_$_pickerResetVersion'),
                   selectionOverlay: Container(),
                   itemExtent: kPickerItemExtent,
                   scrollController: FixedExtentScrollController(
@@ -944,17 +1014,11 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   ),
                   onSelectedItemChanged: (newIndex) {
                     final newStart = newIndex + 1;
-                    final oldEnd =
+                    // 计算当前的结束时间
+                    final currentEnd =
                         session.startSection + session.sectionCount - 1;
-                    int newCount;
-
-                    // 逻辑优化：调整开始时间时，保持结束时间不变（Resize模式）
-                    // 除非开始时间超过了结束时间，此时将结束时间重置为开始时间
-                    if (newStart > oldEnd) {
-                      newCount = 1;
-                    } else {
-                      newCount = oldEnd - newStart + 1;
-                    }
+                    // 允许结束时间小于开始时间（负数 sectionCount），在停止滚动后由 _smartSplitAndMerge 处理
+                    final newCount = currentEnd - newStart + 1;
 
                     final newSession = CourseSession(
                       weekday: session.weekday,
@@ -984,16 +1048,15 @@ class _CourseEditPageState extends State<CourseEditPage> {
               SizedBox(
                 width: pickerWidth,
                 child: CupertinoPicker(
-                  key: ValueKey(
-                    'end_picker_${session.startSection}_$_pickerResetVersion',
-                  ),
+                  key: ValueKey('end_picker_${index}_$_pickerResetVersion'),
                   selectionOverlay: Container(),
                   itemExtent: kPickerItemExtent,
                   scrollController: FixedExtentScrollController(
-                    initialItem: endSection - session.startSection,
+                    initialItem: endSection - 1,
                   ),
                   onSelectedItemChanged: (newIndex) {
-                    final newEnd = session.startSection + newIndex;
+                    final newEnd = newIndex + 1;
+                    // 允许结束时间小于开始时间，在停止滚动后由 _smartSplitAndMerge 处理
                     final newCount = newEnd - session.startSection + 1;
 
                     final newSession = CourseSession(
@@ -1008,10 +1071,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
                     _updateSession(index, newSession);
                   },
                   children: List.generate(
-                    _totalSections - session.startSection + 1,
+                    _totalSections,
                     (i) => Center(
                       child: Text(
-                        '${session.startSection + i}',
+                        '${i + 1}',
                         style: TextStyle(fontSize: pickerFont),
                       ),
                     ),
