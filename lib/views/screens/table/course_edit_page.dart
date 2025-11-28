@@ -312,9 +312,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   void _save() {
     if (_nameController.text.isEmpty) {
       // 显示错误或直接返回
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请输入课程名称')));
+      AppToast.show(context, '请输入课程名称', variant: AppToastVariant.warning);
       return;
     }
 
@@ -1455,9 +1453,11 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
         TextButton(
           onPressed: () {
             if (_isGray(currentColor)) {
-              ScaffoldMessenger.of(
+              AppToast.show(
                 context,
-              ).showSnackBar(const SnackBar(content: Text('不能添加灰色，请调整颜色')));
+                '不能添加灰色，请调整颜色',
+                variant: AppToastVariant.warning,
+              );
               return;
             }
             Navigator.pop(context, currentColor);
