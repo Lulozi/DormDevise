@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/utils/index.dart';
+import 'package:dormdevise/utils/app_toast.dart';
 import '../../../../models/course.dart';
 import 'widgets/expandable_item.dart';
 
@@ -395,6 +396,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         selectedColor: _selectedColor,
         colors: _presetColors,
         customColors: _customColors,
+        existingCourses: widget.existingCourses,
         onAddCustomColor: _addCustomColor,
         onDeleteCustomColor: _removeCustomColor,
       ),
@@ -1201,6 +1203,7 @@ class _ColorPickerSheet extends StatefulWidget {
   final Color selectedColor;
   final List<Color> colors;
   final List<Color> customColors;
+  final List<Course> existingCourses;
   final ValueChanged<Color> onAddCustomColor;
   final ValueChanged<Color> onDeleteCustomColor;
 
@@ -1208,6 +1211,7 @@ class _ColorPickerSheet extends StatefulWidget {
     required this.selectedColor,
     required this.colors,
     required this.customColors,
+    required this.existingCourses,
     required this.onAddCustomColor,
     required this.onDeleteCustomColor,
   });
@@ -1218,6 +1222,7 @@ class _ColorPickerSheet extends StatefulWidget {
 
 class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   late List<Color> _localCustomColors;
+  final LayerLink _layerLink = LayerLink();
 
   @override
   void initState() {
@@ -1237,24 +1242,27 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              const Align(
-                alignment: Alignment.center,
-                child: Text(
-                  '课程背景色',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          CompositedTransformTarget(
+            link: _layerLink,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Align(
+                  alignment: Alignment.center,
+                  child: Text(
+                    '课程背景色',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Padding(
@@ -1301,6 +1309,26 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                   onTap: () => Navigator.pop(context, color),
                   onLongPress: isCustom
                       ? () {
+                          final usedBy = widget.existingCourses
+                              .where(
+                                (c) => c.color.toARGB32() == color.toARGB32(),
+                              )
+                              .toList();
+
+                          if (usedBy.isNotEmpty) {
+                            final courseName = usedBy.first.name;
+                            AppToast.show(
+                              context,
+                              '当前颜色正被“$courseName”使用',
+                              variant: AppToastVariant.info,
+                              anchorLink: _layerLink,
+                              anchorOffset: const Offset(0, -24),
+                              targetAnchor: Alignment.topCenter,
+                              followerAnchor: Alignment.bottomCenter,
+                            );
+                            return;
+                          }
+
                           showDialog(
                             context: context,
                             builder: (ctx) => AlertDialog(

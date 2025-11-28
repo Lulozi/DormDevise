@@ -12,6 +12,10 @@ class AppToast {
     BuildContext context,
     String message, {
     AppToastVariant variant = AppToastVariant.info,
+    LayerLink? anchorLink,
+    Offset? anchorOffset,
+    Alignment targetAnchor = Alignment.topCenter,
+    Alignment followerAnchor = Alignment.bottomCenter,
   }) {
     final overlay = Overlay.of(context, rootOverlay: true);
 
@@ -22,47 +26,41 @@ class AppToast {
     final colors = theme.colorScheme;
 
     late final Color accentColor;
+    late final Color backgroundColor;
+    late final Color borderColor;
     late final IconData icon;
     late final Duration displayDuration;
 
     switch (variant) {
       case AppToastVariant.success:
         accentColor = colors.tertiary;
+        backgroundColor = colors.tertiaryContainer;
+        borderColor = colors.tertiary.withAlpha(51); // 0.2 * 255 ≈ 51
         icon = Icons.check_circle_outline;
         displayDuration = const Duration(milliseconds: 2600);
         break;
       case AppToastVariant.warning:
         accentColor = colors.secondary;
+        backgroundColor = colors.secondaryContainer;
+        borderColor = colors.secondary.withAlpha(51);
         icon = Icons.info_outline;
         displayDuration = const Duration(milliseconds: 3200);
         break;
       case AppToastVariant.error:
         accentColor = colors.error;
+        backgroundColor = colors.errorContainer;
+        borderColor = colors.error.withAlpha(51);
         icon = Icons.error_outline;
         displayDuration = const Duration(milliseconds: 3600);
         break;
       case AppToastVariant.info:
         accentColor = colors.primary;
+        backgroundColor = colors.primaryContainer;
+        borderColor = colors.primary.withAlpha(51);
         icon = Icons.info_outline;
         displayDuration = const Duration(milliseconds: 2800);
         break;
     }
-
-    /// 线性插值计算过渡颜色。
-    Color blend(Color a, Color b, double t) {
-      return Color.lerp(a, b, t) ?? a;
-    }
-
-    final backgroundColor = blend(
-      colors.surfaceContainerHighest,
-      accentColor,
-      0.12,
-    );
-    final borderColor = blend(
-      accentColor,
-      colors.surfaceContainerHighest,
-      0.35,
-    );
     final textStyle = theme.textTheme.bodyMedium?.copyWith(
       color: accentColor,
       fontWeight: FontWeight.w500,
@@ -70,6 +68,62 @@ class AppToast {
 
     final entry = OverlayEntry(
       builder: (entryContext) {
+        final toastWidget = TweenAnimationBuilder<double>(
+          tween: Tween(begin: 16, end: 0),
+          duration: const Duration(milliseconds: 220),
+          builder: (context, value, child) {
+            return Transform.translate(offset: Offset(0, value), child: child);
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: borderColor, width: 1.4),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: accentColor, size: 20),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        message,
+                        style: textStyle,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        if (anchorLink != null) {
+          return Positioned(
+            width: MediaQuery.of(context).size.width,
+            child: CompositedTransformFollower(
+              link: anchorLink,
+              targetAnchor: targetAnchor,
+              followerAnchor: followerAnchor,
+              offset: anchorOffset ?? Offset.zero,
+              child: IgnorePointer(
+                ignoring: true,
+                child: Align(alignment: Alignment.center, child: toastWidget),
+              ),
+            ),
+          );
+        }
+
         final mediaQuery = MediaQuery.of(entryContext);
         final bottomPadding = mediaQuery.viewPadding.bottom;
         final navTheme = NavigationBarTheme.of(entryContext);
@@ -86,48 +140,7 @@ class AppToast {
               alignment: Alignment.bottomCenter,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 16, end: 0),
-                  duration: const Duration(milliseconds: 220),
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, value),
-                      child: child,
-                    );
-                  },
-                  child: Material(
-                    color: Colors.transparent,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: backgroundColor,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: borderColor, width: 1.4),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Icon(icon, color: accentColor, size: 20),
-                            const SizedBox(width: 12),
-                            Flexible(
-                              child: Text(
-                                message,
-                                style: textStyle,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                child: toastWidget,
               ),
             ),
           ),
