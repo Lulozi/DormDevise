@@ -11,6 +11,7 @@ class CourseEditPage extends StatefulWidget {
   final int? initialWeekday;
   final int? initialSection;
   final int maxWeek;
+  final List<Course> existingCourses;
 
   const CourseEditPage({
     super.key,
@@ -18,6 +19,7 @@ class CourseEditPage extends StatefulWidget {
     this.initialWeekday,
     this.initialSection,
     this.maxWeek = 20,
+    this.existingCourses = const [],
   });
 
   @override
@@ -64,6 +66,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     _loadCustomColors();
     _endWeek = widget.maxWeek;
     _nameController = TextEditingController(text: widget.course?.name ?? '');
+    _nameController.addListener(_onNameChanged);
     _teacherController = TextEditingController(
       text: widget.course?.teacher ?? '',
     );
@@ -78,9 +81,25 @@ class _CourseEditPageState extends State<CourseEditPage> {
     }
     _classroomController = TextEditingController(text: initialLocation);
 
-    _selectedColor =
-        widget.course?.color ??
-        _presetColors[Random().nextInt(_presetColors.length)];
+    if (widget.course != null) {
+      _selectedColor = widget.course!.color;
+    } else {
+      // 优先选择未使用的颜色
+      final Set<int> usedColorValues =
+          widget.existingCourses.map((c) => c.color.toARGB32()).toSet();
+      final List<Color> availableColors =
+          _presetColors
+              .where((c) => !usedColorValues.contains(c.toARGB32()))
+              .toList();
+
+      if (availableColors.isNotEmpty) {
+        _selectedColor =
+            availableColors[Random().nextInt(availableColors.length)];
+      } else {
+        _selectedColor = _presetColors[Random().nextInt(_presetColors.length)];
+      }
+    }
+
     _sessions = widget.course?.sessions.toList() ?? [];
 
     if (widget.course == null) {
@@ -110,6 +129,24 @@ class _CourseEditPageState extends State<CourseEditPage> {
           ),
         );
       }
+    }
+  }
+
+  void _onNameChanged() {
+    final String name = _nameController.text.trim();
+    if (name.isEmpty) return;
+
+    try {
+      final Course match = widget.existingCourses.firstWhere(
+        (c) => c.name == name,
+      );
+      if (_selectedColor != match.color) {
+        setState(() {
+          _selectedColor = match.color;
+        });
+      }
+    } catch (e) {
+      // ignore
     }
   }
 

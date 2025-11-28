@@ -760,7 +760,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (BuildContext context) => CourseDetailSheet(items: overlapping),
+      builder: (BuildContext context) =>
+          CourseDetailSheet(items: overlapping, allCourses: courses),
     );
 
     if (result != null && result is Map) {

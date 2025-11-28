@@ -6,8 +6,13 @@ import '../course_edit_page.dart';
 class CourseDetailSheet extends StatelessWidget {
   /// 课程详情项列表 (items)
   final List<CourseDetailItem> items;
+  final List<Course> allCourses;
 
-  const CourseDetailSheet({super.key, required this.items});
+  const CourseDetailSheet({
+    super.key,
+    required this.items,
+    required this.allCourses,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -114,8 +119,10 @@ class CourseDetailSheet extends StatelessWidget {
                   navigator
                       .push(
                         MaterialPageRoute(
-                          builder: (context) =>
-                              CourseEditPage(course: item.course),
+                          builder: (context) => CourseEditPage(
+                            course: item.course,
+                            existingCourses: allCourses,
+                          ),
                           fullscreenDialog: true,
                         ),
                       )

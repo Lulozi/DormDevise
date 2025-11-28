@@ -316,6 +316,7 @@ class _TablePageState extends State<TablePage> {
           initialWeekday: weekday,
           initialSection: section,
           maxWeek: _maxWeek,
+          existingCourses: _courses,
         ),
       ),
     );
