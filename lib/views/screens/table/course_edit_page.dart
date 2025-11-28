@@ -31,6 +31,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   late TextEditingController _teacherController;
   late TextEditingController _classroomController;
   late Color _selectedColor;
+  late Color _initialSmartColor;
   late List<CourseSession> _sessions;
   List<Color> _customColors = [];
 
@@ -82,22 +83,28 @@ class _CourseEditPageState extends State<CourseEditPage> {
     _classroomController = TextEditingController(text: initialLocation);
 
     if (widget.course != null) {
-      _selectedColor = widget.course!.color;
+      _initialSmartColor = widget.course!.color;
+      _selectedColor = _initialSmartColor;
     } else {
       // 优先选择未使用的颜色
-      final Set<int> usedColorValues =
-          widget.existingCourses.map((c) => c.color.toARGB32()).toSet();
-      final List<Color> availableColors =
-          _presetColors
-              .where((c) => !usedColorValues.contains(c.toARGB32()))
-              .toList();
+      final Set<int> usedColorValues = widget.existingCourses
+          .map((c) => c.color.toARGB32())
+          .toSet();
+      final List<Color> availableColors = _presetColors
+          .where((c) => !usedColorValues.contains(c.toARGB32()))
+          .toList();
 
       if (availableColors.isNotEmpty) {
-        _selectedColor =
+        _initialSmartColor =
             availableColors[Random().nextInt(availableColors.length)];
       } else {
-        _selectedColor = _presetColors[Random().nextInt(_presetColors.length)];
+        _initialSmartColor =
+            _presetColors[Random().nextInt(_presetColors.length)];
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showColorExhaustedDialog();
+        });
       }
+      _selectedColor = _initialSmartColor;
     }
 
     _sessions = widget.course?.sessions.toList() ?? [];
@@ -134,20 +141,72 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   void _onNameChanged() {
     final String name = _nameController.text.trim();
-    if (name.isEmpty) return;
 
-    try {
-      final Course match = widget.existingCourses.firstWhere(
-        (c) => c.name == name,
-      );
-      if (_selectedColor != match.color) {
+    Course? match;
+    if (name.isNotEmpty) {
+      try {
+        match = widget.existingCourses.firstWhere((c) => c.name == name);
+      } catch (e) {
+        match = null;
+      }
+    }
+
+    if (match != null) {
+      final matchedColor = match.color;
+      if (_selectedColor != matchedColor) {
         setState(() {
-          _selectedColor = match.color;
+          _selectedColor = matchedColor;
         });
       }
-    } catch (e) {
-      // ignore
+    } else {
+      // No match (or empty), restore to initial/manual color
+      if (_selectedColor != _initialSmartColor) {
+        setState(() {
+          _selectedColor = _initialSmartColor;
+        });
+      }
     }
+  }
+
+  Future<void> _showColorExhaustedDialog() async {
+    final bool? addNew = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('预设颜色已用完'),
+        content: const Text('所有预设颜色均已被使用，您希望如何处理？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('复用已有'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('自动新增'),
+          ),
+        ],
+      ),
+    );
+
+    if (addNew == true) {
+      final Color newColor = _generateRandomColor();
+      _addCustomColor(newColor);
+      setState(() {
+        _initialSmartColor = newColor;
+        _selectedColor = newColor;
+      });
+    }
+  }
+
+  Color _generateRandomColor() {
+    final random = Random();
+    final hsv = HSVColor.fromAHSV(
+      1.0,
+      random.nextDouble() * 360,
+      0.25 + random.nextDouble() * 0.25,
+      0.9 + random.nextDouble() * 0.1,
+    );
+    return hsv.toColor();
   }
 
   @override
@@ -287,6 +346,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     if (result != null) {
       setState(() {
         _selectedColor = result;
+        _initialSmartColor = result;
       });
     }
   }
