@@ -1466,9 +1466,24 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
     _b = (color.b * 255.0);
   }
 
-  bool _isGray(Color color) {
+  String? _getInvalidColorReason(Color color) {
     final hsv = HSVColor.fromColor(color);
-    return hsv.saturation < 0.15;
+
+    // 判定黑色：亮度过低
+    if (hsv.value < 0.2) {
+      return '不能添加黑色';
+    }
+
+    // 判定低饱和度 (灰或白)
+    if (hsv.saturation < 0.05) {
+      // 亮度高则是白色
+      if (hsv.value > 0.85) {
+        return '不能添加白色';
+      }
+      return '不能添加灰色';
+    }
+
+    return null;
   }
 
   @override
@@ -1507,10 +1522,11 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
         ),
         TextButton(
           onPressed: () {
-            if (_isGray(currentColor)) {
+            final reason = _getInvalidColorReason(currentColor);
+            if (reason != null) {
               AppToast.show(
                 context,
-                '不能添加灰色，请调整颜色',
+                '$reason，请调整颜色',
                 variant: AppToastVariant.warning,
               );
               return;
