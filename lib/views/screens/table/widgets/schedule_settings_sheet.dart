@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'package:dormdevise/utils/index.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../models/course_schedule_config.dart';
 import 'expandable_item.dart';
@@ -52,6 +53,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   // 展开状态
   bool _isStartDateExpanded = false;
   bool _isMaxWeekExpanded = false;
+  bool _isColorAllocationExpanded = false;
 
   // 用于实时更新的本地状态
   late DateTime _semesterStart;
@@ -59,6 +61,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   late int _maxWeek;
   late bool _showWeekend;
   late bool _showNonCurrentWeek;
+  String? _colorAllocationAction;
 
   @override
   void initState() {
@@ -68,6 +71,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     _maxWeek = widget.maxWeek;
     _showWeekend = widget.showWeekend;
     _showNonCurrentWeek = widget.showNonCurrentWeek;
+    _loadColorAllocationAction();
   }
 
   @override
@@ -87,6 +91,31 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     }
     if (oldWidget.showNonCurrentWeek != widget.showNonCurrentWeek) {
       _showNonCurrentWeek = widget.showNonCurrentWeek;
+    }
+  }
+
+  Future<void> _loadColorAllocationAction() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _colorAllocationAction = prefs.getString(
+          'course_color_exhausted_action',
+        );
+      });
+    }
+  }
+
+  Future<void> _saveColorAllocationAction(String? action) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (action == null) {
+      await prefs.remove('course_color_exhausted_action');
+    } else {
+      await prefs.setString('course_color_exhausted_action', action);
+    }
+    if (mounted) {
+      setState(() {
+        _colorAllocationAction = action;
+      });
     }
   }
 
@@ -214,6 +243,8 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   widget.onShowNonCurrentWeekChanged(value);
                 },
               ),
+              _buildDivider(),
+              _buildColorAllocationItem(),
             ],
           ),
           const SizedBox(height: 20),
@@ -245,6 +276,92 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           ),
           const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+
+  Widget _buildColorAllocationItem() {
+    String valueText = '每次询问';
+    if (_colorAllocationAction == 'reuse') valueText = '复用现有';
+    if (_colorAllocationAction == 'new') valueText = '自动新增';
+
+    return ExpandableItem(
+      title: '课程颜色分配策略',
+      value: Text(
+        valueText,
+        style: const TextStyle(fontSize: 14, color: Colors.black54),
+      ),
+      isExpanded: _isColorAllocationExpanded,
+      onTap: () {
+        setState(() {
+          _isColorAllocationExpanded = !_isColorAllocationExpanded;
+          if (_isColorAllocationExpanded) {
+            _isStartDateExpanded = false;
+            _isMaxWeekExpanded = false;
+          }
+        });
+      },
+      content: _buildColorAllocationSelector(),
+      showDivider: false,
+    );
+  }
+
+  Widget _buildColorAllocationSelector() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            _buildSelectorOption('复用现有', 'reuse'),
+            _buildSelectorOption('每次询问', null),
+            _buildSelectorOption('自动新增', 'new'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectorOption(String label, String? value) {
+    final bool isSelected = _colorAllocationAction == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _saveColorAllocationAction(value),
+        child: Container(
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 1,
+                      offset: const Offset(0, 1),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+              color: Colors.black,
+            ),
+          ),
+        ),
       ),
     );
   }
