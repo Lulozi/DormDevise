@@ -110,7 +110,7 @@ class AppToast {
 
         if (anchorLink != null) {
           return Positioned(
-            width: MediaQuery.of(context).size.width,
+            width: MediaQuery.of(entryContext).size.width,
             child: CompositedTransformFollower(
               link: anchorLink,
               targetAnchor: targetAnchor,

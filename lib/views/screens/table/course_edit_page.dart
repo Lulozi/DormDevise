@@ -1229,6 +1229,12 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   }
 
   @override
+  void dispose() {
+    AppToast.dismiss();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final allColors = [...widget.colors, ..._localCustomColors];
     return Container(
