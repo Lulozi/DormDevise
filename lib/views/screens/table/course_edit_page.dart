@@ -245,13 +245,58 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   Color _generateRandomColor() {
     final random = Random();
-    final hsv = HSVColor.fromAHSV(
-      1.0,
-      random.nextDouble() * 360,
-      0.25 + random.nextDouble() * 0.25,
-      0.9 + random.nextDouble() * 0.1,
-    );
-    return hsv.toColor();
+    // 尝试生成一个与现有颜色差异较大的颜色
+    int attempts = 0;
+    Color bestColor = Colors.white;
+    double maxMinDistance = -1.0;
+
+    // 获取所有已存在的颜色（预设 + 自定义）
+    final allColors = [..._presetColors, ..._customColors];
+
+    while (attempts < 20) {
+      // 调整参数以获得“淡一些但有辨识度”的颜色
+      // 饱和度 (Saturation): 0.3 - 0.5 (保持色彩但不过于艳丽，也不至于太灰)
+      // 亮度 (Value): 0.85 - 0.95 (保持明亮但不过曝，不刺眼)
+      final hsv = HSVColor.fromAHSV(
+        1.0,
+        random.nextDouble() * 360,
+        0.3 + random.nextDouble() * 0.2,
+        0.85 + random.nextDouble() * 0.1,
+      );
+      final candidate = hsv.toColor();
+
+      if (allColors.isEmpty) return candidate;
+
+      // 计算与现有颜色的最小距离
+      double minDistance = double.infinity;
+      for (final existing in allColors) {
+        final distance = _calculateColorDistance(candidate, existing);
+        if (distance < minDistance) {
+          minDistance = distance;
+        }
+      }
+
+      if (minDistance > maxMinDistance) {
+        maxMinDistance = minDistance;
+        bestColor = candidate;
+      }
+
+      // 如果距离足够大，直接返回 (RGB空间下 45 左右经验值)
+      if (minDistance > 45) {
+        return candidate;
+      }
+
+      attempts++;
+    }
+
+    return bestColor;
+  }
+
+  double _calculateColorDistance(Color c1, Color c2) {
+    final rDiff = (c1.r - c2.r) * 255;
+    final gDiff = (c1.g - c2.g) * 255;
+    final bDiff = (c1.b - c2.b) * 255;
+    return sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff);
   }
 
   @override
@@ -1406,14 +1451,14 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
   void initState() {
     super.initState();
     final random = Random();
-    // 生成较浅且非灰色的随机颜色
-    // 饱和度 (Saturation): 0.25 - 0.5 (避免灰色 < 0.15，同时保持柔和)
-    // 亮度 (Value): 0.9 - 1.0 (保持高亮度)
+    // 保持与自动生成一致的风格
+    // 饱和度 (Saturation): 0.3 - 0.5
+    // 亮度 (Value): 0.85 - 0.95
     final hsv = HSVColor.fromAHSV(
       1.0,
       random.nextDouble() * 360,
-      0.25 + random.nextDouble() * 0.25,
-      0.9 + random.nextDouble() * 0.1,
+      0.3 + random.nextDouble() * 0.2,
+      0.85 + random.nextDouble() * 0.1,
     );
     final color = hsv.toColor();
     _r = (color.r * 255.0);
