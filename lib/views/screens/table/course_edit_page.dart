@@ -34,6 +34,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
   late Color _initialSmartColor;
   late List<CourseSession> _sessions;
   List<Color> _customColors = [];
+  Color? _autoAddedColor;
+  bool _isSaved = false;
 
   // 全局周次设置
   int _startWeek = 1;
@@ -233,6 +235,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     if (addNew == true) {
       final Color newColor = _generateRandomColor();
       _addCustomColor(newColor);
+      _autoAddedColor = newColor;
       setState(() {
         _initialSmartColor = newColor;
         _selectedColor = newColor;
@@ -253,6 +256,12 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   @override
   void dispose() {
+    if (!_isSaved && _autoAddedColor != null) {
+      // 直接从列表中移除，避免调用 setState
+      _customColors.remove(_autoAddedColor);
+      // 保存更改
+      _saveCustomColors();
+    }
     _nameController.dispose();
     _teacherController.dispose();
     _classroomController.dispose();
@@ -289,9 +298,13 @@ class _CourseEditPageState extends State<CourseEditPage> {
   }
 
   void _removeCustomColor(Color color) {
-    setState(() {
+    if (mounted) {
+      setState(() {
+        _customColors.remove(color);
+      });
+    } else {
       _customColors.remove(color);
-    });
+    }
     _saveCustomColors();
   }
 
@@ -303,6 +316,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
       ).showSnackBar(const SnackBar(content: Text('请输入课程名称')));
       return;
     }
+
+    _isSaved = true;
 
     // 将全局设置应用到所有课节
     final updatedSessions = _sessions.map((s) {
