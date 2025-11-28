@@ -282,7 +282,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
 
   Widget _buildColorAllocationItem() {
     String valueText = '每次询问';
-    if (_colorAllocationAction == 'reuse') valueText = '复用现有';
+    if (_colorAllocationAction == 'reuse') valueText = '智能复用';
     if (_colorAllocationAction == 'new') valueText = '自动新增';
 
     return ExpandableItem(
@@ -314,14 +314,58 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         height: 36,
         decoration: BoxDecoration(
           color: const Color(0xFFF2F2F7),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
-          children: [
-            _buildSelectorOption('复用现有', 'reuse'),
-            _buildSelectorOption('每次询问', null),
-            _buildSelectorOption('自动新增', 'new'),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final double totalWidth = constraints.maxWidth;
+            final double indicatorWidth = (totalWidth - 4) / 3;
+
+            Alignment alignment = Alignment.center;
+            if (_colorAllocationAction == 'reuse') {
+              alignment = Alignment.centerLeft;
+            } else if (_colorAllocationAction == 'new') {
+              alignment = Alignment.centerRight;
+            }
+
+            return Stack(
+              children: [
+                AnimatedAlign(
+                  alignment: alignment,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.fastOutSlowIn,
+                  child: Container(
+                    width: indicatorWidth,
+                    height: 32,
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 1,
+                          offset: const Offset(0, 1),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    _buildSelectorOption('智能复用', 'reuse'),
+                    _buildSelectorOption('每次询问', null),
+                    _buildSelectorOption('自动新增', 'new'),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -332,34 +376,17 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     return Expanded(
       child: GestureDetector(
         onTap: () => _saveColorAllocationAction(value),
+        behavior: HitTestBehavior.translucent,
         child: Container(
-          margin: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 1,
-                      offset: const Offset(0, 1),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
-          ),
           alignment: Alignment.center,
-          child: Text(
-            label,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
             style: TextStyle(
               fontSize: 14,
-              fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               color: Colors.black,
             ),
+            child: Text(label),
           ),
         ),
       ),
@@ -373,6 +400,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
+      clipBehavior: Clip.hardEdge,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,
