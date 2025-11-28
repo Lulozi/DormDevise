@@ -35,8 +35,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   late Color _initialSmartColor;
   late List<CourseSession> _sessions;
   List<Color> _customColors = [];
-  Color? _autoAddedColor;
-  bool _isSaved = false;
+  Color? _temporaryAutoColor;
 
   // 全局周次设置
   int _startWeek = 1;
@@ -235,8 +234,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
     if (addNew == true) {
       final Color newColor = _generateRandomColor();
-      _addCustomColor(newColor);
-      _autoAddedColor = newColor;
+      _temporaryAutoColor = newColor;
+      _addCustomColor(newColor, save: false);
       setState(() {
         _initialSmartColor = newColor;
         _selectedColor = newColor;
@@ -257,12 +256,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   @override
   void dispose() {
-    if (!_isSaved && _autoAddedColor != null) {
-      // 直接从列表中移除，避免调用 setState
-      _customColors.remove(_autoAddedColor);
-      // 保存更改
-      _saveCustomColors();
-    }
+    AppToast.dismiss();
     _nameController.dispose();
     _teacherController.dispose();
     _classroomController.dispose();
@@ -283,18 +277,23 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   Future<void> _saveCustomColors() async {
     final prefs = await SharedPreferences.getInstance();
-    final List<String> colors = _customColors.map((c) {
-      return c.toARGB32().toString();
-    }).toList();
+    final List<String> colors = _customColors
+        .where((c) => c != _temporaryAutoColor)
+        .map((c) {
+          return c.toARGB32().toString();
+        })
+        .toList();
     await prefs.setStringList('custom_course_colors', colors);
   }
 
-  void _addCustomColor(Color color) {
+  void _addCustomColor(Color color, {bool save = true}) {
     if (!_customColors.contains(color) && !_presetColors.contains(color)) {
       setState(() {
         _customColors.add(color);
       });
-      _saveCustomColors();
+      if (save) {
+        _saveCustomColors();
+      }
     }
   }
 
@@ -309,14 +308,19 @@ class _CourseEditPageState extends State<CourseEditPage> {
     _saveCustomColors();
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (_nameController.text.isEmpty) {
       // 显示错误或直接返回
       AppToast.show(context, '请输入课程名称', variant: AppToastVariant.warning);
       return;
     }
 
-    _isSaved = true;
+    // 确认临时颜色为永久
+    _temporaryAutoColor = null;
+    // 保存自定义颜色
+    await _saveCustomColors();
+
+    if (!mounted) return;
 
     // 将全局设置应用到所有课节
     final updatedSessions = _sessions.map((s) {
