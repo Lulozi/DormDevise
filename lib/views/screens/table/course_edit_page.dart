@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/utils/index.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import '../../../../models/course.dart';
+import '../../../../models/course_schedule_config.dart';
+import '../../../../services/course_service.dart';
 import 'widgets/expandable_item.dart';
 
 class CourseEditPage extends StatefulWidget {
@@ -36,6 +39,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
   late List<CourseSession> _sessions;
   List<Color> _customColors = [];
   Color? _temporaryAutoColor;
+  CourseScheduleConfig? _scheduleConfig;
+  final Map<int, Timer> _debounceTimers = {};
+  int _pickerResetVersion = 0;
 
   // 全局周次设置
   int _startWeek = 1;
@@ -43,6 +49,14 @@ class _CourseEditPageState extends State<CourseEditPage> {
   CourseWeekType _weekType = CourseWeekType.all;
 
   int? _expandedSessionIndex;
+
+  int get _totalSections {
+    if (_scheduleConfig == null) return 12;
+    return _scheduleConfig!.segments.fold(
+      0,
+      (sum, seg) => sum + seg.classCount,
+    );
+  }
 
   final List<Color> _presetColors = [
     const Color(0xFFFFCDD2),
@@ -66,6 +80,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   @override
   void initState() {
     super.initState();
+    _loadConfig();
     _loadCustomColors();
     _endWeek = widget.maxWeek;
     _nameController = TextEditingController(text: widget.course?.name ?? '');
@@ -168,6 +183,117 @@ class _CourseEditPageState extends State<CourseEditPage> {
         });
       }
     }
+  }
+
+  Future<void> _loadConfig() async {
+    final config = await CourseService.instance.loadConfig();
+    if (mounted) {
+      setState(() {
+        _scheduleConfig = config;
+      });
+    }
+  }
+
+  void _updateSession(int index, CourseSession newSession) {
+    // 1. 立即更新当前会话，保证 UI 响应
+    setState(() {
+      _sessions[index] = newSession;
+    });
+
+    // 2. 防抖处理：延迟执行智能拆分与合并逻辑
+    _debounceTimers[index]?.cancel();
+    _debounceTimers[index] = Timer(const Duration(milliseconds: 800), () {
+      _smartSplitAndMerge(index);
+      _debounceTimers.remove(index);
+    });
+  }
+
+  void _smartSplitAndMerge(int index) {
+    if (!mounted || index >= _sessions.length) return;
+
+    final updatedSession = _sessions[index];
+
+    setState(() {
+      _pickerResetVersion++; // 强制刷新 Picker 状态，确保滚动位置同步
+
+      // 1. 移除当前正在编辑的会话
+      _sessions.removeAt(index);
+
+      // 2. 移除所有与新会话时间冲突（重叠）的其他会话
+      _sessions.removeWhere((s) {
+        if (s.weekday != updatedSession.weekday) return false;
+        final sEnd = s.startSection + s.sectionCount - 1;
+        final uEnd =
+            updatedSession.startSection + updatedSession.sectionCount - 1;
+        return s.startSection <= uEnd && sEnd >= updatedSession.startSection;
+      });
+
+      // 3. 计算拆分结果
+      List<CourseSession> splits = _calculateSplits(updatedSession);
+
+      // 4. 添加拆分后的部分
+      _sessions.addAll(splits);
+
+      // 5. 重新排序：按周几、开始节次排序，确保列表顺序正确
+      _sessions.sort((a, b) {
+        if (a.weekday != b.weekday) {
+          return a.weekday.compareTo(b.weekday);
+        }
+        return a.startSection.compareTo(b.startSection);
+      });
+
+      // 6. 保持展开状态
+      // 找到包含原开始节次的那个会话的新索引，保持用户焦点
+      final newIndex = _sessions.indexWhere(
+        (s) =>
+            s.weekday == updatedSession.weekday &&
+            s.startSection == updatedSession.startSection,
+      );
+
+      if (newIndex != -1) {
+        _expandedSessionIndex = newIndex;
+      } else {
+        _expandedSessionIndex = null;
+      }
+    });
+  }
+
+  List<CourseSession> _calculateSplits(CourseSession session) {
+    if (_scheduleConfig == null) return [session];
+
+    List<CourseSession> splits = [];
+    int currentStart = session.startSection;
+    int remainingCount = session.sectionCount;
+    int sessionEnd = currentStart + remainingCount - 1;
+
+    int segStart = 1;
+    for (var segment in _scheduleConfig!.segments) {
+      int segEnd = segStart + segment.classCount - 1;
+
+      if (currentStart <= segEnd && sessionEnd >= segStart) {
+        int overlapStart = max(currentStart, segStart);
+        int overlapEnd = min(sessionEnd, segEnd);
+        int overlapCount = overlapEnd - overlapStart + 1;
+
+        if (overlapCount > 0) {
+          splits.add(
+            CourseSession(
+              weekday: session.weekday,
+              startSection: overlapStart,
+              sectionCount: overlapCount,
+              location: session.location,
+              startWeek: session.startWeek,
+              endWeek: session.endWeek,
+              weekType: session.weekType,
+            ),
+          );
+        }
+      }
+      segStart += segment.classCount;
+    }
+
+    if (splits.isEmpty) splits.add(session);
+    return splits;
   }
 
   Future<void> _showColorExhaustedDialog() async {
@@ -301,6 +427,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   @override
   void dispose() {
+    for (var timer in _debounceTimers.values) {
+      timer.cancel();
+    }
     AppToast.dismiss();
     _nameController.dispose();
     _teacherController.dispose();
@@ -805,6 +934,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
               SizedBox(
                 width: pickerWidth,
                 child: CupertinoPicker(
+                  key: ValueKey(
+                    'start_picker_${session.startSection}_$_pickerResetVersion',
+                  ),
                   selectionOverlay: Container(),
                   itemExtent: kPickerItemExtent,
                   scrollController: FixedExtentScrollController(
@@ -812,20 +944,31 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   ),
                   onSelectedItemChanged: (newIndex) {
                     final newStart = newIndex + 1;
-                    setState(() {
-                      _sessions[index] = CourseSession(
-                        weekday: session.weekday,
-                        startSection: newStart,
-                        sectionCount: session.sectionCount,
-                        location: session.location,
-                        startWeek: session.startWeek,
-                        endWeek: session.endWeek,
-                        weekType: session.weekType,
-                      );
-                    });
+                    final oldEnd =
+                        session.startSection + session.sectionCount - 1;
+                    int newCount;
+
+                    // 逻辑优化：调整开始时间时，保持结束时间不变（Resize模式）
+                    // 除非开始时间超过了结束时间，此时将结束时间重置为开始时间
+                    if (newStart > oldEnd) {
+                      newCount = 1;
+                    } else {
+                      newCount = oldEnd - newStart + 1;
+                    }
+
+                    final newSession = CourseSession(
+                      weekday: session.weekday,
+                      startSection: newStart,
+                      sectionCount: newCount,
+                      location: session.location,
+                      startWeek: session.startWeek,
+                      endWeek: session.endWeek,
+                      weekType: session.weekType,
+                    );
+                    _updateSession(index, newSession);
                   },
                   children: List.generate(
-                    12,
+                    _totalSections,
                     (i) => Center(
                       child: Text(
                         '${i + 1}',
@@ -841,40 +984,34 @@ class _CourseEditPageState extends State<CourseEditPage> {
               SizedBox(
                 width: pickerWidth,
                 child: CupertinoPicker(
+                  key: ValueKey(
+                    'end_picker_${session.startSection}_$_pickerResetVersion',
+                  ),
                   selectionOverlay: Container(),
                   itemExtent: kPickerItemExtent,
                   scrollController: FixedExtentScrollController(
-                    initialItem: endSection - 1,
+                    initialItem: endSection - session.startSection,
                   ),
                   onSelectedItemChanged: (newIndex) {
-                    final newEnd = newIndex + 1;
-                    int newStart = session.startSection;
-                    int newCount;
+                    final newEnd = session.startSection + newIndex;
+                    final newCount = newEnd - session.startSection + 1;
 
-                    if (newEnd < newStart) {
-                      newStart = newEnd;
-                      newCount = 1;
-                    } else {
-                      newCount = newEnd - newStart + 1;
-                    }
-
-                    setState(() {
-                      _sessions[index] = CourseSession(
-                        weekday: session.weekday,
-                        startSection: newStart,
-                        sectionCount: newCount,
-                        location: session.location,
-                        startWeek: session.startWeek,
-                        endWeek: session.endWeek,
-                        weekType: session.weekType,
-                      );
-                    });
+                    final newSession = CourseSession(
+                      weekday: session.weekday,
+                      startSection: session.startSection,
+                      sectionCount: newCount,
+                      location: session.location,
+                      startWeek: session.startWeek,
+                      endWeek: session.endWeek,
+                      weekType: session.weekType,
+                    );
+                    _updateSession(index, newSession);
                   },
                   children: List.generate(
-                    12,
+                    _totalSections - session.startSection + 1,
                     (i) => Center(
                       child: Text(
-                        '${i + 1}',
+                        '${session.startSection + i}',
                         style: TextStyle(fontSize: pickerFont),
                       ),
                     ),
