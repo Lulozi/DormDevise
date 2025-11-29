@@ -1215,6 +1215,7 @@ class _WeekRangePicker extends StatefulWidget {
 class _WeekRangePickerState extends State<_WeekRangePicker> {
   late Set<int> _selectedWeeks;
   CourseWeekType? _currentType;
+  final LayerLink _layerLink = LayerLink();
 
   @override
   void initState() {
@@ -1343,24 +1344,27 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
   Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          const Align(
-            alignment: Alignment.center,
-            child: Text(
-              '上课周数',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      child: CompositedTransformTarget(
+        link: _layerLink,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            const Align(
+              alignment: Alignment.center,
+              child: Text(
+                '上课周数',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.black87),
-              onPressed: () => Navigator.pop(context),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.black87),
+                onPressed: () => Navigator.pop(context),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1422,7 +1426,15 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
 
   void _confirm() {
     if (_selectedWeeks.isEmpty) {
-      Navigator.pop(context);
+      AppToast.show(
+        context,
+        '上课周数不能为空',
+        variant: AppToastVariant.warning,
+        anchorLink: _layerLink,
+        anchorOffset: const Offset(0, -24),
+        targetAnchor: Alignment.topCenter,
+        followerAnchor: Alignment.bottomCenter,
+      );
       return;
     }
 
