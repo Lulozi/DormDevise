@@ -1214,7 +1214,7 @@ class _WeekRangePicker extends StatefulWidget {
 
 class _WeekRangePickerState extends State<_WeekRangePicker> {
   late Set<int> _selectedWeeks;
-  late CourseWeekType _currentType;
+  CourseWeekType? _currentType;
 
   @override
   void initState() {
@@ -1236,15 +1236,20 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
 
   void _updateSelectionByType(CourseWeekType type) {
     setState(() {
-      _currentType = type;
-      _selectedWeeks.clear();
-      for (int i = 1; i <= widget.maxWeek; i++) {
-        if (type == CourseWeekType.all) {
-          _selectedWeeks.add(i);
-        } else if (type == CourseWeekType.single) {
-          if (i % 2 != 0) _selectedWeeks.add(i);
-        } else if (type == CourseWeekType.double) {
-          if (i % 2 == 0) _selectedWeeks.add(i);
+      if (_currentType == type) {
+        _currentType = null;
+        _selectedWeeks.clear();
+      } else {
+        _currentType = type;
+        _selectedWeeks.clear();
+        for (int i = 1; i <= widget.maxWeek; i++) {
+          if (type == CourseWeekType.all) {
+            _selectedWeeks.add(i);
+          } else if (type == CourseWeekType.single) {
+            if (i % 2 != 0) _selectedWeeks.add(i);
+          } else if (type == CourseWeekType.double) {
+            if (i % 2 == 0) _selectedWeeks.add(i);
+          }
         }
       }
     });
@@ -1252,6 +1257,7 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
 
   void _toggleWeek(int week) {
     setState(() {
+      _currentType = null; // 手动修改时清除预设类型状态
       if (_selectedWeeks.contains(week)) {
         _selectedWeeks.remove(week);
       } else {
