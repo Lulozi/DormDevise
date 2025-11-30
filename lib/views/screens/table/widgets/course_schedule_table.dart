@@ -150,10 +150,14 @@ class CourseScheduleTable extends StatefulWidget {
   State<CourseScheduleTable> createState() => _CourseScheduleTableState();
 }
 
-class _CourseScheduleTableState extends State<CourseScheduleTable> {
+class _CourseScheduleTableState extends State<CourseScheduleTable>
+    with SingleTickerProviderStateMixin {
   late final ScrollController _horizontalController;
+  late final AnimationController _selectionAnimationController;
+  late final Animation<double> _selectionAnimation;
   double _horizontalOffset = 0;
   ({int weekday, int section})? _selectedSlot;
+  ({int weekday, int section})? _previousSlot;
 
   List<Course> get courses => widget.courses;
   int get currentWeek => widget.currentWeek;
@@ -181,6 +185,14 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     super.initState();
     _horizontalController = ScrollController();
     _horizontalController.addListener(_handleHorizontalScroll);
+    _selectionAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _selectionAnimation = CurvedAnimation(
+      parent: _selectionAnimationController,
+      curve: Curves.easeOut,
+    );
   }
 
   void _handleHorizontalScroll() {
@@ -203,6 +215,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
   void dispose() {
     _horizontalController.removeListener(_handleHorizontalScroll);
     _horizontalController.dispose();
+    _selectionAnimationController.dispose();
     super.dispose();
   }
 
@@ -544,12 +557,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
                     GestureDetector(
                       onTap: () {
                         if (slot.section != null) {
-                          setState(() {
-                            _selectedSlot = (
-                              weekday: weekdayIndexes[day],
-                              section: slot.section!.index,
-                            );
-                          });
+                          final newSlot = (
+                            weekday: weekdayIndexes[day],
+                            section: slot.section!.index,
+                          );
+                          if (_selectedSlot != newSlot) {
+                            setState(() {
+                              _previousSlot = _selectedSlot;
+                              _selectedSlot = newSlot;
+                            });
+                            _selectionAnimationController.forward(from: 0);
+                          }
                         }
                       },
                       behavior: HitTestBehavior.translucent,
@@ -580,42 +598,91 @@ class _CourseScheduleTableState extends State<CourseScheduleTable> {
     double dayWidth,
     Map<int, double> sectionOffsets,
   ) {
-    if (_selectedSlot == null) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _selectionAnimation,
+      builder: (context, child) {
+        final List<Widget> overlays = [];
 
-    final int weekday = _selectedSlot!.weekday;
-    final int section = _selectedSlot!.section;
-
-    // 查找列索引
-    final int columnIndex = weekdayIndexes.indexOf(weekday);
-    if (columnIndex == -1) return const SizedBox.shrink();
-
-    final double top = sectionOffsets[section] ?? 0.0;
-
-    return Positioned(
-      left: columnIndex * dayWidth,
-      top: top,
-      width: dayWidth,
-      height: sectionHeight,
-      child: GestureDetector(
-        onTap: () {
-          if (onAddCourseTap != null) {
-            onAddCourseTap!(weekday, section);
+        // 渐隐的前一个选择
+        if (_previousSlot != null && _selectionAnimation.value < 1.0) {
+          final int prevColumnIndex = weekdayIndexes.indexOf(
+            _previousSlot!.weekday,
+          );
+          if (prevColumnIndex != -1) {
+            final double prevTop =
+                sectionOffsets[_previousSlot!.section] ?? 0.0;
+            overlays.add(
+              Positioned(
+                left: prevColumnIndex * dayWidth,
+                top: prevTop,
+                width: dayWidth,
+                height: sectionHeight,
+                child: Opacity(
+                  opacity: 1.0 - _selectionAnimation.value,
+                  child: Container(
+                    margin: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF2F3F5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.add, color: Colors.black87, size: 24),
+                    ),
+                  ),
+                ),
+              ),
+            );
           }
-          setState(() {
-            _selectedSlot = null;
-          });
-        },
-        child: Container(
-          margin: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF2F3F5),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Center(
-            child: Icon(Icons.add, color: Colors.black87, size: 24),
-          ),
-        ),
-      ),
+        }
+
+        // 渐显的当前选择
+        if (_selectedSlot != null) {
+          final int columnIndex = weekdayIndexes.indexOf(
+            _selectedSlot!.weekday,
+          );
+          if (columnIndex != -1) {
+            final double top = sectionOffsets[_selectedSlot!.section] ?? 0.0;
+            overlays.add(
+              Positioned(
+                left: columnIndex * dayWidth,
+                top: top,
+                width: dayWidth,
+                height: sectionHeight,
+                child: GestureDetector(
+                  onTap: () {
+                    if (onAddCourseTap != null) {
+                      onAddCourseTap!(
+                        _selectedSlot!.weekday,
+                        _selectedSlot!.section,
+                      );
+                    }
+                    setState(() {
+                      _previousSlot = _selectedSlot;
+                      _selectedSlot = null;
+                    });
+                    _selectionAnimationController.forward(from: 0);
+                  },
+                  child: Opacity(
+                    opacity: _selectionAnimation.value,
+                    child: Container(
+                      margin: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F3F5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.add, color: Colors.black87, size: 24),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+        }
+
+        return Stack(children: overlays);
+      },
     );
   }
 
