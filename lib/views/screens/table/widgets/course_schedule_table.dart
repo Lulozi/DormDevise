@@ -999,7 +999,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -1014,19 +1014,47 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   ),
                 ),
               ),
-            Text(
-              block.course.name,
-              style: titleStyle.copyWith(fontSize: 12),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
+            // 1. 自适应课程名（标题）
+            Expanded(
+              child: Text(
+                block.course.name,
+                style: titleStyle.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.fade,
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              block.session.location,
-              style: detailStyle.copyWith(fontSize: 10),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            // 2. 教室信息（独立一行，限制最大高度比例）
+            if (block.session.location.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: blockHeight * 0.3, // 最多占用 30% 高度
+                ),
+                child: Text(
+                  '@${block.session.location}',
+                  style: detailStyle.copyWith(fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 10, // 允许显示多行，由高度限制
+                ),
+              ),
+            ],
+            // 3. 教师/备注信息（独立一行，限制最大高度比例）
+            if (block.course.teacher.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: blockHeight * 0.2, // 最多占用 20% 高度
+                ),
+                child: Text(
+                  block.course.teacher,
+                  style: detailStyle.copyWith(fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 10,
+                ),
+              ),
+            ],
           ],
         ),
       ),
