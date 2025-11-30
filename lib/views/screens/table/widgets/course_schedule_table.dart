@@ -172,6 +172,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   _CourseBlock? _selectedBlock; // 当前选中的课程块（编辑模式）
   _CourseBlock? _draggingBlock;
   Offset _dragOffset = Offset.zero;
+  Offset _initialDragOffset = Offset.zero; // 拖拽开始时的卡片位置
   double _resizeStartGlobalY = 0.0; // 调整大小的起始Y坐标
   int? _dragTargetWeekday;
   int? _dragTargetSection;
@@ -1189,6 +1190,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
             setState(() {
               _draggingBlock = block;
               _isResizing = false;
+              _initialDragOffset = details.localPosition;
               _dragOffset = Offset(block.columnIndex * dayWidth, startOffset);
               _dragTargetWeekday = block.session.weekday;
               _dragTargetSection = block.session.startSection;
@@ -1200,15 +1202,18 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           onLongPressMoveUpdate: (details) {
             if (_draggingBlock == null) return;
             setState(() {
+              final double newLeft =
+                  block.columnIndex * dayWidth +
+                  details.localPosition.dx -
+                  _initialDragOffset.dx;
+              final double newTop =
+                  startOffset +
+                  details.localPosition.dy -
+                  _initialDragOffset.dy;
+
               _dragOffset = Offset(
-                (block.columnIndex * dayWidth + details.localPosition.dx).clamp(
-                  0,
-                  viewportWidth - dayWidth,
-                ),
-                (startOffset + details.localPosition.dy).clamp(
-                  0,
-                  tableHeight - blockHeight,
-                ),
+                newLeft.clamp(0, viewportWidth - dayWidth),
+                newTop.clamp(0, tableHeight - blockHeight),
               );
 
               // 计算目标位置
