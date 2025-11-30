@@ -243,7 +243,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   void didUpdateWidget(CourseScheduleTable oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.editModeResetToken != oldWidget.editModeResetToken) {
-      if (_selectedBlock != null || _draggingBlock != null) {
+      if (_selectedBlock != null ||
+          _draggingBlock != null ||
+          _selectedSlot != null) {
         setState(() {
           _selectedBlock = null;
           _draggingBlock = null;
@@ -253,6 +255,11 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           _dragTargetSection = null;
           _dragTargetSectionCount = null;
           _hasConflict = false;
+          if (_selectedSlot != null) {
+            _previousSlot = _selectedSlot;
+            _selectedSlot = null;
+            _selectionAnimationController.forward(from: 0);
+          }
         });
         _updateEditMode();
       }
@@ -364,7 +371,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                               ),
                                             ),
                                           ),
-                                        if (_selectedSlot != null)
+                                        if (_selectedSlot != null ||
+                                            _previousSlot != null)
                                           _buildSelectionOverlay(
                                             context,
                                             dayWidth,
@@ -420,7 +428,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                             ),
                                           ),
                                         ),
-                                      if (_selectedSlot != null)
+                                      if (_selectedSlot != null ||
+                                          _previousSlot != null)
                                         _buildSelectionOverlay(
                                           context,
                                           dayWidth,
@@ -594,15 +603,33 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       fontWeight: isToday ? FontWeight.w600 : null,
     );
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        Text(label, style: labelStyle),
-        if (date != null) ...<Widget>[
-          const SizedBox(height: 4),
-          Text(_formatDate(date), style: dateStyle),
+    return GestureDetector(
+      onTap: () {
+        if (_selectedBlock != null) {
+          setState(() {
+            _selectedBlock = null;
+          });
+          _updateEditMode();
+        }
+        if (_selectedSlot != null) {
+          setState(() {
+            _previousSlot = _selectedSlot;
+            _selectedSlot = null;
+          });
+          _selectionAnimationController.forward(from: 0);
+        }
+      },
+      behavior: HitTestBehavior.translucent,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Text(label, style: labelStyle),
+          if (date != null) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(_formatDate(date), style: dateStyle),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -623,8 +650,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           }
           if (_selectedSlot != null) {
             setState(() {
+              _previousSlot = _selectedSlot;
               _selectedSlot = null;
             });
+            _selectionAnimationController.forward(from: 0);
           }
           onWeekHeaderTap?.call();
         },
@@ -722,8 +751,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                           );
                           if (_selectedSlot == newSlot) {
                             setState(() {
+                              _previousSlot = _selectedSlot;
                               _selectedSlot = null;
                             });
+                            _selectionAnimationController.forward(from: 0);
                             return;
                           }
                           if (_selectedSlot != newSlot) {
@@ -1004,6 +1035,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     // 如果是选中状态，显示带手柄的卡片
     if (isSelected) {
       return Positioned(
+        key: ValueKey(
+          '${block.course.name}_${block.session.weekday}_${block.session.startSection}',
+        ),
         left: block.columnIndex * dayWidth,
         top: startOffset - 10,
         width: dayWidth,
@@ -1157,6 +1191,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
     // 非选中状态
     return Positioned(
+      key: ValueKey(
+        '${block.course.name}_${block.session.weekday}_${block.session.startSection}',
+      ),
       left: block.columnIndex * dayWidth,
       top: startOffset,
       width: dayWidth,
@@ -1173,8 +1210,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
             }
             if (_selectedSlot != null) {
               setState(() {
+                _previousSlot = _selectedSlot;
                 _selectedSlot = null;
               });
+              _selectionAnimationController.forward(from: 0);
             }
             _showCourseDetails(context, block);
           },
@@ -1188,6 +1227,11 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
               _dragTargetSection = block.session.startSection;
               _dragTargetSectionCount = block.session.sectionCount;
               _hasConflict = false;
+              if (_selectedSlot != null) {
+                _previousSlot = _selectedSlot;
+                _selectedSlot = null;
+                _selectionAnimationController.forward(from: 0);
+              }
             });
             _updateEditMode();
           },
@@ -1919,6 +1963,13 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           });
           _updateEditMode();
         }
+        if (_selectedSlot != null) {
+          setState(() {
+            _previousSlot = _selectedSlot;
+            _selectedSlot = null;
+          });
+          _selectionAnimationController.forward(from: 0);
+        }
         onTimeColumnTap?.call();
       },
       behavior: HitTestBehavior.translucent,
@@ -1994,11 +2045,29 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     final Color borderColor = Theme.of(
       context,
     ).dividerColor.withValues(alpha: 0.1);
-    return Container(
-      height: slot.height,
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8EBF3),
-        border: Border(bottom: BorderSide(color: borderColor)),
+    return GestureDetector(
+      onTap: () {
+        if (_selectedBlock != null) {
+          setState(() {
+            _selectedBlock = null;
+          });
+          _updateEditMode();
+        }
+        if (_selectedSlot != null) {
+          setState(() {
+            _previousSlot = _selectedSlot;
+            _selectedSlot = null;
+          });
+          _selectionAnimationController.forward(from: 0);
+        }
+      },
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        height: slot.height,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8EBF3),
+          border: Border(bottom: BorderSide(color: borderColor)),
+        ),
       ),
     );
   }

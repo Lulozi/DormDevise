@@ -64,12 +64,10 @@ class _TablePageState extends State<TablePage> {
       _showWeekend ? <int>[1, 2, 3, 4, 5, 6, 7] : <int>[1, 2, 3, 4, 5];
 
   void _exitEditMode() {
-    if (_isEditing) {
-      setState(() {
-        _editModeResetToken = Object();
-        _isEditing = false;
-      });
-    }
+    setState(() {
+      _editModeResetToken = Object();
+      _isEditing = false;
+    });
   }
 
   /// 初始化状态并载入课程数据。
