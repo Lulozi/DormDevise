@@ -621,6 +621,11 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
             });
             _updateEditMode();
           }
+          if (_selectedSlot != null) {
+            setState(() {
+              _selectedSlot = null;
+            });
+          }
           onWeekHeaderTap?.call();
         },
         borderRadius: BorderRadius.circular(10),
@@ -715,6 +720,12 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                             weekday: weekdayIndexes[day],
                             section: slot.section!.index,
                           );
+                          if (_selectedSlot == newSlot) {
+                            setState(() {
+                              _selectedSlot = null;
+                            });
+                            return;
+                          }
                           if (_selectedSlot != newSlot) {
                             setState(() {
                               _previousSlot = _selectedSlot;
@@ -788,30 +799,6 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
             );
           }
         }
-
-        // 背景点击检测（用于取消选中）
-        overlays.insert(
-          0,
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () {
-                if (_selectedBlock != null) {
-                  setState(() {
-                    _selectedBlock = null;
-                  });
-                  _updateEditMode();
-                }
-                if (_selectedSlot != null) {
-                  setState(() {
-                    _selectedSlot = null;
-                  });
-                }
-              },
-              child: Container(color: Colors.transparent),
-            ),
-          ),
-        );
 
         // 渐显的当前选择
         if (_selectedSlot != null) {
@@ -1183,6 +1170,11 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 _selectedBlock = null;
               });
               _updateEditMode();
+            }
+            if (_selectedSlot != null) {
+              setState(() {
+                _selectedSlot = null;
+              });
             }
             _showCourseDetails(context, block);
           },
