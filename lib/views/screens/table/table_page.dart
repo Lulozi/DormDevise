@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:linked_scroll_controller/linked_scroll_controller.dart';
+import 'package:dormdevise/utils/app_toast.dart';
 
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
@@ -337,7 +338,33 @@ class _TablePageState extends State<TablePage> {
     );
     if (newCourse != null) {
       setState(() {
-        _courses.add(newCourse);
+        // 查找是否存在同名课程
+        final int existingIndex = _courses.indexWhere(
+          (c) => c.name == newCourse.name,
+        );
+
+        if (existingIndex != -1) {
+          // 如果存在，合并课程时间
+          final Course existingCourse = _courses[existingIndex];
+          final List<CourseSession> mergedSessions = [
+            ...existingCourse.sessions,
+            ...newCourse.sessions,
+          ];
+
+          // 创建更新后的课程对象
+          final Course updatedCourse = Course(
+            name: existingCourse.name,
+            teacher: existingCourse.teacher,
+            color: existingCourse.color,
+            sessions: mergedSessions,
+          );
+
+          _courses[existingIndex] = updatedCourse;
+
+          AppToast.show(context, '已合并到现有课程 "${newCourse.name}"');
+        } else {
+          _courses.add(newCourse);
+        }
       });
       await CourseService.instance.saveCourses(_courses);
     }
