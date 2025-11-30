@@ -71,6 +71,13 @@ class CourseScheduleTable extends StatefulWidget {
   /// 课程被删除的回调 (onCourseDeleted) (被删除的课程)
   final void Function(Course course)? onCourseDeleted;
 
+  /// 编辑模式状态改变的回调 (onEditModeChanged) (是否处于编辑模式)
+  final ValueChanged<bool>? onEditModeChanged;
+
+  /// 用于强制重置编辑模式的令牌 (editModeResetToken)
+  /// 当此对象发生变化时，组件会强制退出编辑模式
+  final Object? editModeResetToken;
+
   const CourseScheduleTable({
     super.key,
     required this.courses,
@@ -94,6 +101,8 @@ class CourseScheduleTable extends StatefulWidget {
     this.onAddCourseTap,
     this.onCourseChanged,
     this.onCourseDeleted,
+    this.onEditModeChanged,
+    this.editModeResetToken,
   }) : assert(
          weekdays.length == weekdayIndexes.length,
          'weekdays 与 weekdayIndexes 长度必须一致',
@@ -159,6 +168,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   ({int weekday, int section})? _selectedSlot;
   ({int weekday, int section})? _previousSlot;
 
+  // 拖拽相关状态
+  _CourseBlock? _selectedBlock; // 当前选中的课程块（编辑模式）
+  _CourseBlock? _draggingBlock;
+  Offset _dragOffset = Offset.zero;
+  double _resizeStartGlobalY = 0.0; // 调整大小的起始Y坐标
+  int? _dragTargetWeekday;
+  int? _dragTargetSection;
+  int? _dragTargetSectionCount;
+  bool _isResizing = false; // 是否在调整大小模式
+  bool _hasConflict = false; // 是否有冲突
+
   List<Course> get courses => widget.courses;
   int get currentWeek => widget.currentWeek;
   List<SectionTime> get sections => widget.sections;
@@ -180,6 +200,13 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   void Function(int weekday, int section)? get onAddCourseTap =>
       widget.onAddCourseTap;
 
+  void _updateEditMode() {
+    final bool isEditing = _selectedBlock != null || _draggingBlock != null;
+    if (widget.onEditModeChanged != null) {
+      widget.onEditModeChanged!(isEditing);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -196,7 +223,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   }
 
   void _handleHorizontalScroll() {
-    if (!mounted) {
+    if (!mounted || !_horizontalController.hasClients) {
       return;
     }
     final double clampedOffset = _horizontalController.offset.clamp(
@@ -209,6 +236,26 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     setState(() {
       _horizontalOffset = clampedOffset;
     });
+  }
+
+  @override
+  void didUpdateWidget(CourseScheduleTable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.editModeResetToken != oldWidget.editModeResetToken) {
+      if (_selectedBlock != null || _draggingBlock != null) {
+        setState(() {
+          _selectedBlock = null;
+          _draggingBlock = null;
+          _isResizing = false;
+          _dragOffset = Offset.zero;
+          _dragTargetWeekday = null;
+          _dragTargetSection = null;
+          _dragTargetSectionCount = null;
+          _hasConflict = false;
+        });
+        _updateEditMode();
+      }
+    }
   }
 
   @override
@@ -241,6 +288,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
             ? gridWidth
             : dayWidth * weekdayIndexes.length;
         final double viewportWidth = math.max(daysWidth, gridWidth);
+        final bool shouldScroll = viewportWidth > gridWidth + 1.0;
         final CourseTableGeometry geometry = buildCourseTableGeometry(
           sections,
           sectionHeight,
@@ -266,7 +314,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 behavior: _NoOverscrollBehavior(),
                 child: SingleChildScrollView(
                   controller: scrollController,
-                  physics: const ClampingScrollPhysics(),
+                  physics: _selectedBlock != null || _draggingBlock != null
+                      ? const NeverScrollableScrollPhysics()
+                      : const ClampingScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: 16),
                   child: SizedBox(
                     height: tableHeight,
@@ -274,40 +324,126 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                       children: <Widget>[
                         Positioned.fill(
                           left: includeTimeColumn ? resolvedTimeWidth : 0,
-                          child: SingleChildScrollView(
-                            controller: _horizontalController,
-                            scrollDirection: Axis.horizontal,
-                            physics: const ClampingScrollPhysics(),
-                            child: SizedBox(
-                              width: viewportWidth,
-                              height: tableHeight,
-                              child: Stack(
-                                children: <Widget>[
-                                  Positioned.fill(
-                                    child: _buildGridLayer(
-                                      context,
-                                      dayWidth,
-                                      geometry.rows,
-                                      timeColumnWidth,
+                          child: shouldScroll
+                              ? SingleChildScrollView(
+                                  controller: _horizontalController,
+                                  scrollDirection: Axis.horizontal,
+                                  physics:
+                                      _selectedBlock != null ||
+                                          _draggingBlock != null
+                                      ? const NeverScrollableScrollPhysics()
+                                      : const ClampingScrollPhysics(),
+                                  child: SizedBox(
+                                    width: viewportWidth,
+                                    height: tableHeight,
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: <Widget>[
+                                        Positioned.fill(
+                                          child: _buildGridLayer(
+                                            context,
+                                            dayWidth,
+                                            geometry.rows,
+                                            timeColumnWidth,
+                                          ),
+                                        ),
+                                        // 编辑模式下的背景点击层（用于取消选中）
+                                        if (_selectedBlock != null)
+                                          Positioned.fill(
+                                            child: GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onTap: () {
+                                                setState(() {
+                                                  _selectedBlock = null;
+                                                });
+                                                _updateEditMode();
+                                              },
+                                              child: Container(
+                                                color: Colors.transparent,
+                                              ),
+                                            ),
+                                          ),
+                                        if (_selectedSlot != null)
+                                          _buildSelectionOverlay(
+                                            context,
+                                            dayWidth,
+                                            sectionOffsets,
+                                          ),
+                                        for (final _CourseBlock block in blocks)
+                                          _buildCourseBlock(
+                                            context,
+                                            block,
+                                            dayWidth,
+                                            sectionOffsets,
+                                            viewportWidth,
+                                            tableHeight,
+                                          ),
+                                        // 拖拽时的悬浮卡片
+                                        if (_draggingBlock != null)
+                                          _buildDraggingOverlay(
+                                            context,
+                                            dayWidth,
+                                            sectionOffsets,
+                                          ),
+                                      ],
                                     ),
                                   ),
-                                  if (_selectedSlot != null)
-                                    _buildSelectionOverlay(
-                                      context,
-                                      dayWidth,
-                                      sectionOffsets,
-                                    ),
-                                  for (final _CourseBlock block in blocks)
-                                    _buildCourseBlock(
-                                      context,
-                                      block,
-                                      dayWidth,
-                                      sectionOffsets,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
+                                )
+                              : SizedBox(
+                                  width: viewportWidth,
+                                  height: tableHeight,
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: <Widget>[
+                                      Positioned.fill(
+                                        child: _buildGridLayer(
+                                          context,
+                                          dayWidth,
+                                          geometry.rows,
+                                          timeColumnWidth,
+                                        ),
+                                      ),
+                                      // 编辑模式下的背景点击层（用于取消选中）
+                                      if (_selectedBlock != null)
+                                        Positioned.fill(
+                                          child: GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: () {
+                                              setState(() {
+                                                _selectedBlock = null;
+                                              });
+                                              _updateEditMode();
+                                            },
+                                            child: Container(
+                                              color: Colors.transparent,
+                                            ),
+                                          ),
+                                        ),
+                                      if (_selectedSlot != null)
+                                        _buildSelectionOverlay(
+                                          context,
+                                          dayWidth,
+                                          sectionOffsets,
+                                        ),
+                                      for (final _CourseBlock block in blocks)
+                                        _buildCourseBlock(
+                                          context,
+                                          block,
+                                          dayWidth,
+                                          sectionOffsets,
+                                          viewportWidth,
+                                          tableHeight,
+                                        ),
+                                      // 拖拽时的悬浮卡片
+                                      if (_draggingBlock != null)
+                                        _buildDraggingOverlay(
+                                          context,
+                                          dayWidth,
+                                          sectionOffsets,
+                                        ),
+                                    ],
+                                  ),
+                                ),
                         ),
                         if (includeTimeColumn)
                           Positioned(
@@ -477,7 +613,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
     return Center(
       child: InkWell(
-        onTap: onWeekHeaderTap,
+        onTap: () {
+          if (_selectedBlock != null) {
+            setState(() {
+              _selectedBlock = null;
+            });
+            _updateEditMode();
+          }
+          onWeekHeaderTap?.call();
+        },
         borderRadius: BorderRadius.circular(10),
         child: Container(
           width: 44,
@@ -556,6 +700,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   for (int day = 0; day < weekdayIndexes.length; day++)
                     GestureDetector(
                       onTap: () {
+                        // 点击空白处时，取消选中的课程块
+                        if (_selectedBlock != null) {
+                          setState(() {
+                            _selectedBlock = null;
+                          });
+                          _updateEditMode();
+                          return; // 如果取消了选中，不进行后续的加号显示
+                        }
+
                         if (slot.section != null) {
                           final newSlot = (
                             weekday: weekdayIndexes[day],
@@ -635,6 +788,30 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           }
         }
 
+        // 背景点击检测（用于取消选中）
+        overlays.insert(
+          0,
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () {
+                if (_selectedBlock != null) {
+                  setState(() {
+                    _selectedBlock = null;
+                  });
+                  _updateEditMode();
+                }
+                if (_selectedSlot != null) {
+                  setState(() {
+                    _selectedSlot = null;
+                  });
+                }
+              },
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+        );
+
         // 渐显的当前选择
         if (_selectedSlot != null) {
           final int columnIndex = weekdayIndexes.indexOf(
@@ -692,8 +869,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     _CourseBlock block,
     double dayWidth,
     Map<int, double> sectionOffsets,
+    double viewportWidth,
+    double tableHeight,
   ) {
     final bool isNonCurrent = block.isNonCurrent;
+    final bool isDragging =
+        _draggingBlock != null &&
+        _draggingBlock!.course == block.course &&
+        _draggingBlock!.session == block.session;
+
     final List<Color> gradientColors = isNonCurrent
         ? <Color>[const Color(0xFFE0E0E0), const Color(0xFFF5F5F5)]
         : <Color>[
@@ -724,64 +908,890 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     final double endOffset = sectionOffsets[endSectionIndex] ?? startOffset;
     final double blockHeight = endOffset + sectionHeight - startOffset;
 
+    final bool isSelected =
+        _selectedBlock != null &&
+        _selectedBlock!.course == block.course &&
+        _selectedBlock!.session == block.session;
+
+    // 构建调整手柄圆点
+    Widget buildDotHandle(bool isTop) {
+      return Positioned(
+        top: isTop ? 0 : null,
+        bottom: isTop ? null : 0,
+        left: 0,
+        right: 0,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (details) {
+            setState(() {
+              _draggingBlock = block;
+              _isResizing = true;
+              _resizeStartGlobalY = details.globalPosition.dy;
+              _dragTargetWeekday = block.session.weekday;
+              _dragTargetSection = block.session.startSection;
+              _dragTargetSectionCount = block.session.sectionCount;
+              _hasConflict = false;
+            });
+            _updateEditMode();
+          },
+          onPanUpdate: (details) {
+            if (_draggingBlock == null || !_isResizing) return;
+            final double currentDy = details.globalPosition.dy;
+            final double totalDelta = currentDy - _resizeStartGlobalY;
+            _handleResizeUpdate(totalDelta, sectionOffsets, isTop);
+          },
+          onPanEnd: (details) {
+            _handleResizeEnd();
+          },
+          child: Container(
+            height: 36, // 进一步增加触摸区域
+            color: Colors.transparent,
+            child: Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final Widget cardContent = Container(
+      margin: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        gradient: LinearGradient(
+          colors: gradientColors,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: gradientColors.first.withValues(alpha: 0.25),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (isNonCurrent)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  '[非本周]',
+                  style: detailStyle.copyWith(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            Text(
+              block.course.name,
+              style: titleStyle.copyWith(fontSize: 12),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              block.session.location,
+              style: detailStyle.copyWith(fontSize: 10),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // 如果是选中状态，显示带手柄的卡片
+    if (isSelected) {
+      return Positioned(
+        left: block.columnIndex * dayWidth,
+        top: startOffset - 10,
+        width: dayWidth,
+        height: blockHeight + 20,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              top: 10,
+              left: 0,
+              right: 0,
+              height: blockHeight,
+              child: GestureDetector(
+                onPanStart: (details) {
+                  setState(() {
+                    _draggingBlock = block;
+                    _isResizing = false;
+                    _dragOffset = Offset(
+                      block.columnIndex * dayWidth,
+                      startOffset,
+                    );
+                    _dragTargetWeekday = block.session.weekday;
+                    _dragTargetSection = block.session.startSection;
+                    _dragTargetSectionCount = block.session.sectionCount;
+                    _hasConflict = false;
+                  });
+                  _updateEditMode();
+                },
+                onPanUpdate: (details) {
+                  if (_draggingBlock == null || _isResizing) return;
+                  setState(() {
+                    _dragOffset = Offset(
+                      (block.columnIndex * dayWidth + details.localPosition.dx)
+                          .clamp(0, viewportWidth - dayWidth),
+                      (startOffset + details.localPosition.dy).clamp(
+                        0,
+                        tableHeight - blockHeight,
+                      ),
+                    );
+
+                    // 计算目标位置
+                    final int targetColumn = (_dragOffset.dx / dayWidth)
+                        .round()
+                        .clamp(0, weekdayIndexes.length - 1);
+                    _dragTargetWeekday = weekdayIndexes[targetColumn];
+
+                    // 找到最近的节次
+                    double minDistance = double.infinity;
+                    int? closestSection;
+                    for (final entry in sectionOffsets.entries) {
+                      final distance = (_dragOffset.dy - entry.value).abs();
+                      if (distance < minDistance) {
+                        minDistance = distance;
+                        closestSection = entry.key;
+                      }
+                    }
+
+                    int targetStart =
+                        closestSection ?? block.session.startSection;
+
+                    // 限制课程不能跨越时段
+                    final SectionTime startInfo = sections.firstWhere(
+                      (SectionTime s) => s.index == targetStart,
+                      orElse: () => sections.first,
+                    );
+                    final String segment = startInfo.segmentName;
+                    final Iterable<SectionTime> segmentSections = sections
+                        .where((SectionTime s) => s.segmentName == segment);
+
+                    if (segmentSections.isNotEmpty) {
+                      final int maxSegmentIndex = segmentSections
+                          .map((SectionTime s) => s.index)
+                          .reduce(math.max);
+                      final int minSegmentIndex = segmentSections
+                          .map((SectionTime s) => s.index)
+                          .reduce(math.min);
+
+                      final int sectionCount = block.session.sectionCount;
+
+                      // 如果课程超出当前时段下界，向上回退
+                      if (targetStart + sectionCount - 1 > maxSegmentIndex) {
+                        targetStart = maxSegmentIndex - sectionCount + 1;
+                      }
+
+                      // 确保不超出上界
+                      if (targetStart < minSegmentIndex) {
+                        targetStart = minSegmentIndex;
+                      }
+                    }
+
+                    _dragTargetSection = targetStart;
+
+                    // 检查冲突
+                    _hasConflict = _checkConflict(
+                      _dragTargetWeekday!,
+                      _dragTargetSection!,
+                      block.session.sectionCount,
+                      block.session,
+                    );
+                  });
+                },
+                onPanEnd: (details) {
+                  if (_draggingBlock == null || _isResizing) return;
+                  final draggedBlock = _draggingBlock!;
+                  final targetWeekday = _dragTargetWeekday;
+                  final targetSection = _dragTargetSection;
+                  final hasConflict = _hasConflict;
+
+                  setState(() {
+                    _draggingBlock = null;
+                    _dragOffset = Offset.zero;
+                    _dragTargetWeekday = null;
+                    _dragTargetSection = null;
+                    _dragTargetSectionCount = null;
+                    _hasConflict = false;
+                  });
+                  _updateEditMode();
+
+                  if (hasConflict) return;
+
+                  if (targetWeekday != null &&
+                      targetSection != null &&
+                      (targetWeekday != draggedBlock.session.weekday ||
+                          targetSection != draggedBlock.session.startSection)) {
+                    final result = _handleCourseMoved(
+                      draggedBlock,
+                      targetWeekday,
+                      targetSection,
+                      draggedBlock.session.sectionCount,
+                    );
+                    if (result != null) {
+                      final (newCourse, newSession) = result;
+                      setState(() {
+                        _selectedBlock = _createUpdatedBlock(
+                          newCourse,
+                          newSession,
+                        );
+                      });
+                    }
+                  }
+                },
+                child: cardContent,
+              ),
+            ),
+            buildDotHandle(true),
+            buildDotHandle(false),
+          ],
+        ),
+      );
+    }
+
+    // 非选中状态
     return Positioned(
       left: block.columnIndex * dayWidth,
       top: startOffset,
       width: dayWidth,
       height: blockHeight,
-      child: GestureDetector(
-        onTap: () => _showCourseDetails(context, block),
-        child: Container(
-          margin: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            gradient: LinearGradient(
-              colors: gradientColors,
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+      child: Opacity(
+        opacity: isDragging ? 0.3 : 1.0,
+        child: GestureDetector(
+          onTap: () {
+            if (_selectedBlock != null) {
+              setState(() {
+                _selectedBlock = null;
+              });
+              _updateEditMode();
+            }
+            _showCourseDetails(context, block);
+          },
+          onLongPressStart: (details) {
+            setState(() {
+              _draggingBlock = block;
+              _isResizing = false;
+              _dragOffset = Offset(block.columnIndex * dayWidth, startOffset);
+              _dragTargetWeekday = block.session.weekday;
+              _dragTargetSection = block.session.startSection;
+              _dragTargetSectionCount = block.session.sectionCount;
+              _hasConflict = false;
+            });
+            _updateEditMode();
+          },
+          onLongPressMoveUpdate: (details) {
+            if (_draggingBlock == null) return;
+            setState(() {
+              _dragOffset = Offset(
+                (block.columnIndex * dayWidth + details.localPosition.dx).clamp(
+                  0,
+                  viewportWidth - dayWidth,
+                ),
+                (startOffset + details.localPosition.dy).clamp(
+                  0,
+                  tableHeight - blockHeight,
+                ),
+              );
+
+              // 计算目标位置
+              final int targetColumn = (_dragOffset.dx / dayWidth)
+                  .round()
+                  .clamp(0, weekdayIndexes.length - 1);
+              _dragTargetWeekday = weekdayIndexes[targetColumn];
+
+              // 找到最近的节次
+              double minDistance = double.infinity;
+              int? closestSection;
+              for (final entry in sectionOffsets.entries) {
+                final distance = (_dragOffset.dy - entry.value).abs();
+                if (distance < minDistance) {
+                  minDistance = distance;
+                  closestSection = entry.key;
+                }
+              }
+
+              int targetStart = closestSection ?? block.session.startSection;
+
+              // 限制课程不能跨越时段
+              final SectionTime startInfo = sections.firstWhere(
+                (SectionTime s) => s.index == targetStart,
+                orElse: () => sections.first,
+              );
+              final String segment = startInfo.segmentName;
+              final Iterable<SectionTime> segmentSections = sections.where(
+                (SectionTime s) => s.segmentName == segment,
+              );
+
+              if (segmentSections.isNotEmpty) {
+                final int maxSegmentIndex = segmentSections
+                    .map((SectionTime s) => s.index)
+                    .reduce(math.max);
+                final int minSegmentIndex = segmentSections
+                    .map((SectionTime s) => s.index)
+                    .reduce(math.min);
+
+                final int sectionCount = block.session.sectionCount;
+
+                // 如果课程超出当前时段下界，向上回退
+                if (targetStart + sectionCount - 1 > maxSegmentIndex) {
+                  targetStart = maxSegmentIndex - sectionCount + 1;
+                }
+
+                // 确保不超出上界
+                if (targetStart < minSegmentIndex) {
+                  targetStart = minSegmentIndex;
+                }
+              }
+
+              _dragTargetSection = targetStart;
+
+              // 检查冲突
+              _hasConflict = _checkConflict(
+                _dragTargetWeekday!,
+                _dragTargetSection!,
+                block.session.sectionCount,
+                block.session,
+              );
+            });
+          },
+          onLongPressEnd: (details) {
+            if (_draggingBlock == null) return;
+            final draggedBlock = _draggingBlock!;
+            final targetWeekday = _dragTargetWeekday;
+            final targetSection = _dragTargetSection;
+            final hasConflict = _hasConflict;
+
+            setState(() {
+              _draggingBlock = null;
+              _dragOffset = Offset.zero;
+              _dragTargetWeekday = null;
+              _dragTargetSection = null;
+              _dragTargetSectionCount = null;
+              _hasConflict = false;
+              _selectedBlock = block;
+            });
+            _updateEditMode();
+
+            if (hasConflict) return;
+
+            if (targetWeekday != null &&
+                targetSection != null &&
+                (targetWeekday != draggedBlock.session.weekday ||
+                    targetSection != draggedBlock.session.startSection)) {
+              final result = _handleCourseMoved(
+                draggedBlock,
+                targetWeekday,
+                targetSection,
+                draggedBlock.session.sectionCount,
+              );
+              if (result != null) {
+                final (newCourse, newSession) = result;
+                setState(() {
+                  _selectedBlock = _createUpdatedBlock(newCourse, newSession);
+                });
+              }
+            }
+          },
+          child: cardContent,
+        ),
+      ),
+    );
+  }
+
+  /// 处理调整大小的更新
+  void _handleResizeUpdate(
+    double totalDelta,
+    Map<int, double> sectionOffsets,
+    bool isTop,
+  ) {
+    if (_draggingBlock == null) return;
+
+    final block = _draggingBlock!;
+    // 使用原始 block 的数据作为基准
+    final initialStart = block.session.startSection;
+    final initialCount = block.session.sectionCount;
+    final initialEnd = initialStart + initialCount - 1;
+
+    // 计算每节课的平均高度用于估算
+    final avgSectionHeight = sectionHeight;
+    final sectionDelta = (totalDelta / avgSectionHeight).round();
+
+    int newStart = initialStart;
+    int newCount = initialCount;
+
+    if (isTop) {
+      // 从顶部调整：改变开始节次和节数
+      newStart = (initialStart + sectionDelta).clamp(1, initialEnd);
+      newCount = initialEnd - newStart + 1;
+    } else {
+      // 从底部调整：只改变节数
+      final newEnd = (initialEnd + sectionDelta).clamp(
+        initialStart,
+        sections.length,
+      );
+      newCount = newEnd - initialStart + 1;
+    }
+
+    // 确保节数至少为1
+    if (newCount < 1) return;
+
+    // 检查冲突
+    final hasConflict = _checkConflict(
+      _dragTargetWeekday ?? block.session.weekday,
+      newStart,
+      newCount,
+      block.session,
+    );
+
+    setState(() {
+      _dragTargetSection = newStart;
+      _dragTargetSectionCount = newCount;
+      _hasConflict = hasConflict;
+    });
+  }
+
+  /// 处理调整大小结束
+  void _handleResizeEnd() {
+    if (_draggingBlock == null) return;
+
+    final block = _draggingBlock!;
+    final targetSection = _dragTargetSection;
+    final targetCount = _dragTargetSectionCount;
+    final hasConflict = _hasConflict;
+
+    setState(() {
+      _draggingBlock = null;
+      _isResizing = false;
+      _dragOffset = Offset.zero;
+      _dragTargetWeekday = null;
+      _dragTargetSection = null;
+      _dragTargetSectionCount = null;
+      _hasConflict = false;
+    });
+    _updateEditMode();
+
+    // 如果有冲突，不执行更新
+    if (hasConflict) return;
+
+    // 如果节次或节数发生变化，触发更新
+    if (targetSection != null && targetCount != null) {
+      // 1. 识别涉及的时间段并分组
+      final originalSession = block.session;
+      final originalStartInfo = sections.firstWhere(
+        (s) => s.index == originalSession.startSection,
+        orElse: () => sections.first,
+      );
+      final originalSegment = originalStartInfo.segmentName;
+
+      final Map<String, List<int>> segmentGroups = {};
+      for (int i = 0; i < targetCount; i++) {
+        final int currentSec = targetSection + i;
+        final info = sections.firstWhere(
+          (s) => s.index == currentSec,
+          orElse: () => sections.first,
+        );
+        segmentGroups.putIfAbsent(info.segmentName, () => []).add(currentSec);
+      }
+
+      final List<CourseSession> newSessions = [];
+      CourseSession? updatedOriginalSession;
+
+      // 2. 处理每个分组
+      for (final entry in segmentGroups.entries) {
+        final segmentName = entry.key;
+        final indices = entry.value..sort();
+        final start = indices.first;
+        final count = indices.length;
+
+        if (segmentName == originalSegment) {
+          // 更新原始课程（无论长度如何都保留，除非被完全移出，但调整大小逻辑保证了锚点在原处）
+          updatedOriginalSession = CourseSession(
+            weekday: originalSession.weekday,
+            startSection: start,
+            sectionCount: count,
+            location: originalSession.location,
+            startWeek: originalSession.startWeek,
+            endWeek: originalSession.endWeek,
+            weekType: originalSession.weekType,
+          );
+          newSessions.add(updatedOriginalSession);
+        } else if (count >= 2) {
+          // 只有当延伸超过2节及以上时，才创建新的课程时间
+          newSessions.add(
+            CourseSession(
+              weekday: originalSession.weekday,
+              startSection: start,
+              sectionCount: count,
+              location: originalSession.location,
+              startWeek: originalSession.startWeek,
+              endWeek: originalSession.endWeek,
+              weekType: originalSession.weekType,
             ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: gradientColors.first.withValues(alpha: 0.25),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
+          );
+        }
+      }
+
+      // 3. 更新 Course 对象
+      if (newSessions.isNotEmpty) {
+        final List<CourseSession> updatedCourseSessions = List.of(
+          block.course.sessions,
+        );
+        updatedCourseSessions.remove(originalSession);
+        updatedCourseSessions.addAll(newSessions);
+
+        final newCourse = Course(
+          name: block.course.name,
+          teacher: block.course.teacher,
+          color: block.course.color,
+          sessions: updatedCourseSessions,
+        );
+
+        widget.onCourseChanged?.call(block.course, newCourse);
+
+        // 保持选中状态（选中原始课程对应的部分）
+        if (updatedOriginalSession != null) {
+          setState(() {
+            _selectedBlock = _createUpdatedBlock(
+              newCourse,
+              updatedOriginalSession!,
+            );
+          });
+        }
+      }
+    }
+  }
+
+  /// 检查是否有课程冲突
+  bool _checkConflict(
+    int weekday,
+    int startSection,
+    int sectionCount,
+    CourseSession excludeSession,
+  ) {
+    final int endSection = startSection + sectionCount - 1;
+
+    for (final course in courses) {
+      for (final session in course.sessions) {
+        // 跳过正在拖拽的课程本身
+        if (session == excludeSession) continue;
+
+        // 只检查同一天的课程
+        if (session.weekday != weekday) continue;
+
+        // 检查是否在当前周有课
+        if (!session.occursInWeek(currentWeek)) continue;
+
+        final int sessionEnd = session.startSection + session.sectionCount - 1;
+
+        // 检查是否重叠
+        if (startSection <= sessionEnd && endSection >= session.startSection) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// 构建拖拽时的悬浮卡片
+  Widget _buildDraggingOverlay(
+    BuildContext context,
+    double dayWidth,
+    Map<int, double> sectionOffsets,
+  ) {
+    if (_draggingBlock == null) return const SizedBox.shrink();
+
+    final block = _draggingBlock!;
+    final bool isNonCurrent = block.isNonCurrent;
+
+    // 使用目标节数计算高度
+    final int targetStart = _dragTargetSection ?? block.session.startSection;
+    final int targetCount =
+        _dragTargetSectionCount ?? block.session.sectionCount;
+    final int targetEnd = targetStart + targetCount - 1;
+
+    final double targetStartOffset = sectionOffsets[targetStart] ?? 0.0;
+    final double targetEndOffset =
+        sectionOffsets[targetEnd] ?? targetStartOffset;
+    final double targetHeight =
+        targetEndOffset + sectionHeight - targetStartOffset;
+
+    // 原始高度（用于拖拽模式）
+    final double startOffset =
+        sectionOffsets[block.session.startSection] ?? 0.0;
+    final int endSectionIndex =
+        block.session.startSection + block.session.sectionCount - 1;
+    final double endOffset = sectionOffsets[endSectionIndex] ?? startOffset;
+    final double blockHeight = endOffset + sectionHeight - startOffset;
+
+    final List<Color> gradientColors = isNonCurrent
+        ? <Color>[const Color(0xFFE0E0E0), const Color(0xFFF5F5F5)]
+        : <Color>[
+            block.course.color.withValues(alpha: 0.92),
+            block.course.color.withValues(alpha: 0.78),
+          ];
+
+    // 冲突时使用红色边框
+    final Color indicatorColor = _hasConflict
+        ? Colors.red.withValues(alpha: 0.6)
+        : Colors.blue.withValues(alpha: 0.6);
+    final Color indicatorBgColor = _hasConflict
+        ? Colors.red.withValues(alpha: 0.1)
+        : Colors.blue.withValues(alpha: 0.1);
+
+    final Color textColor = isNonCurrent
+        ? const Color(0xFF9E9E9E)
+        : const Color(0xFF333333);
+    final Color detailColor = isNonCurrent
+        ? const Color(0xFFBDBDBD)
+        : const Color(0xFF666666);
+
+    final TextTheme textTheme = Theme.of(context).textTheme;
+    final TextStyle titleStyle = textTheme.titleSmall!.copyWith(
+      color: textColor,
+      fontWeight: FontWeight.w700,
+    );
+    final TextStyle detailStyle = textTheme.bodySmall!.copyWith(
+      color: detailColor,
+    );
+
+    // 目标位置指示器（调整大小模式时显示）
+    Widget? targetIndicator;
+    if (_isResizing &&
+        _dragTargetWeekday != null &&
+        _dragTargetSection != null) {
+      final int targetColumn = weekdayIndexes.indexOf(_dragTargetWeekday!);
+      if (targetColumn != -1) {
+        targetIndicator = Positioned(
+          left: targetColumn * dayWidth,
+          top: targetStartOffset,
+          width: dayWidth,
+          height: targetHeight,
+          child: Container(
+            margin: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: indicatorColor, width: 2),
+              color: indicatorBgColor,
+            ),
+            child: _hasConflict
+                ? Center(
+                    child: Icon(
+                      Icons.block,
+                      color: Colors.red.withValues(alpha: 0.5),
+                      size: 32,
+                    ),
+                  )
+                : null,
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                if (isNonCurrent)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      '[非本周]',
-                      style: detailStyle.copyWith(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+        );
+      }
+    }
+
+    // 拖拽模式时的目标位置指示器
+    Widget? dragTargetIndicator;
+    if (!_isResizing &&
+        _dragTargetWeekday != null &&
+        _dragTargetSection != null) {
+      final int targetColumn = weekdayIndexes.indexOf(_dragTargetWeekday!);
+      if (targetColumn != -1) {
+        dragTargetIndicator = Positioned(
+          left: targetColumn * dayWidth,
+          top: targetStartOffset,
+          width: dayWidth,
+          height: targetHeight,
+          child: Container(
+            margin: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: indicatorColor, width: 2),
+              color: indicatorBgColor,
+            ),
+            child: _hasConflict
+                ? Center(
+                    child: Icon(
+                      Icons.block,
+                      color: Colors.red.withValues(alpha: 0.5),
+                      size: 32,
+                    ),
+                  )
+                : null,
+          ),
+        );
+      }
+    }
+
+    // 构建调整手柄圆点
+    Widget buildDotHandle(bool isTop) {
+      return const SizedBox.shrink();
+    }
+
+    // 调整大小模式：只显示指示器
+    if (_isResizing) {
+      return Stack(children: [if (targetIndicator != null) targetIndicator]);
+    }
+
+    // 拖拽模式：显示悬浮卡片和手柄
+    return Stack(
+      children: [
+        if (dragTargetIndicator != null) dragTargetIndicator,
+        Positioned(
+          left: _dragOffset.dx,
+          top: _dragOffset.dy,
+          width: dayWidth,
+          height: blockHeight,
+          child: Transform.scale(
+            scale: 1.05,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: gradientColors,
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      border: Border.all(color: Colors.white, width: 2), // 白色边框
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          if (isNonCurrent)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                '[非本周]',
+                                style: detailStyle.copyWith(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          Text(
+                            block.course.name,
+                            style: titleStyle.copyWith(fontSize: 12),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            block.session.location,
+                            style: detailStyle.copyWith(fontSize: 10),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                Text(
-                  block.course.name,
-                  style: titleStyle.copyWith(fontSize: 12),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  block.session.location,
-                  style: detailStyle.copyWith(fontSize: 10),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                // 顶部圆点
+                buildDotHandle(true),
+                // 底部圆点
+                buildDotHandle(false),
               ],
             ),
           ),
         ),
-      ),
+      ],
+    );
+  }
+
+  /// 处理课程位置移动
+  (Course, CourseSession)? _handleCourseMoved(
+    _CourseBlock block,
+    int newWeekday,
+    int newStartSection,
+    int newSectionCount,
+  ) {
+    CourseSession? targetSession;
+    // 创建新的 session 列表，更新被拖拽的 session
+    final List<CourseSession> newSessions = block.course.sessions.map((s) {
+      if (s == block.session) {
+        targetSession = CourseSession(
+          weekday: newWeekday,
+          startSection: newStartSection,
+          sectionCount: newSectionCount,
+          location: s.location,
+          startWeek: s.startWeek,
+          endWeek: s.endWeek,
+          weekType: s.weekType,
+        );
+        return targetSession!;
+      }
+      return s;
+    }).toList();
+
+    final Course newCourse = Course(
+      name: block.course.name,
+      teacher: block.course.teacher,
+      color: block.course.color,
+      sessions: newSessions,
+    );
+
+    widget.onCourseChanged?.call(block.course, newCourse);
+
+    if (targetSession != null) {
+      return (newCourse, targetSession!);
+    }
+    return null;
+  }
+
+  _CourseBlock _createUpdatedBlock(Course newCourse, CourseSession newSession) {
+    final int columnIndex = weekdayIndexes.indexOf(newSession.weekday);
+
+    final SectionTime startSection = sections.firstWhere(
+      (SectionTime info) => info.index == newSession.startSection,
+      orElse: () => sections.first,
+    );
+    final int endIndex = newSession.startSection + newSession.sectionCount - 1;
+    final SectionTime endSection = sections.firstWhere(
+      (SectionTime info) => info.index == endIndex,
+      orElse: () => startSection,
+    );
+
+    final bool isCurrentWeek = newSession.occursInWeek(currentWeek);
+
+    return _CourseBlock(
+      course: newCourse,
+      session: newSession,
+      columnIndex: columnIndex,
+      startTime: startSection.start,
+      endTime: endSection.end,
+      isNonCurrent: !isCurrentWeek,
     );
   }
 
@@ -905,7 +1915,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   /// 构建时间列，支持进入节次配置。
   Widget _buildTimeColumn(BuildContext context, List<CourseTableRowSlot> rows) {
     return GestureDetector(
-      onTap: onTimeColumnTap,
+      onTap: () {
+        if (_selectedBlock != null) {
+          setState(() {
+            _selectedBlock = null;
+          });
+          _updateEditMode();
+        }
+        onTimeColumnTap?.call();
+      },
       behavior: HitTestBehavior.translucent,
       child: Column(
         children: <Widget>[

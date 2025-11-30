@@ -57,9 +57,20 @@ class _TablePageState extends State<TablePage> {
   bool _showWeekend = false;
   bool _showNonCurrentWeek = true;
   bool _isLoading = true;
+  bool _isEditing = false;
+  Object _editModeResetToken = Object();
 
   List<int> get _visibleWeekdays =>
       _showWeekend ? <int>[1, 2, 3, 4, 5, 6, 7] : <int>[1, 2, 3, 4, 5];
+
+  void _exitEditMode() {
+    if (_isEditing) {
+      setState(() {
+        _editModeResetToken = Object();
+        _isEditing = false;
+      });
+    }
+  }
 
   /// 初始化状态并载入课程数据。
   @override
@@ -181,13 +192,19 @@ class _TablePageState extends State<TablePage> {
         _ToolbarIconButton(
           icon: Icons.calendar_today_outlined,
           tooltip: '跳转日期',
-          onPressed: () => _pickDate(context),
+          onPressed: () {
+            _exitEditMode();
+            _pickDate(context);
+          },
         ),
         const SizedBox(width: 10),
         _ToolbarIconButton(
           icon: Icons.settings_outlined,
           tooltip: '课程表设置',
-          onPressed: () => _openScheduleSettings(),
+          onPressed: () {
+            _exitEditMode();
+            _openScheduleSettings();
+          },
         ),
       ],
     );
@@ -429,17 +446,27 @@ class _TablePageState extends State<TablePage> {
                 weekdayIndexes: const <int>[],
                 maxWeek: _maxWeek,
                 onWeekChanged: _updateWeek,
-                onWeekHeaderTap: _openWeekSelectSheet,
-                onTimeColumnTap: () => _openSectionSheet(),
+                onWeekHeaderTap: () {
+                  _exitEditMode();
+                  _openWeekSelectSheet();
+                },
+                onTimeColumnTap: () {
+                  _exitEditMode();
+                  _openSectionSheet();
+                },
                 includeTimeColumn: true,
                 applySurface: false,
                 timeColumnWidth: timeColumnWidth,
                 scrollController: _timeColumnController,
+                editModeResetToken: _editModeResetToken,
               ),
             ),
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
+                physics: _isEditing
+                    ? const NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
                 itemCount: _maxWeek,
                 onPageChanged: (int index) {
                   setState(() {
@@ -471,6 +498,14 @@ class _TablePageState extends State<TablePage> {
                     scrollController: _scrollControllerForWeek(index),
                     showNonCurrentWeek: _showNonCurrentWeek,
                     applySurface: false,
+                    editModeResetToken: _editModeResetToken,
+                    onEditModeChanged: (isEditing) {
+                      if (_isEditing != isEditing) {
+                        setState(() {
+                          _isEditing = isEditing;
+                        });
+                      }
+                    },
                     onAddCourseTap: (weekday, section) =>
                         _addCourse(weekday: weekday, section: section),
                     onCourseChanged: (oldCourse, newCourse) async {
