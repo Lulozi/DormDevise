@@ -332,24 +332,35 @@ class _TablePageState extends State<TablePage> {
       );
 
       if (existingIndex != -1) {
-        // 如果存在，合并课程时间
         final Course existingCourse = _courses[existingIndex];
-        final List<CourseSession> mergedSessions = [
-          ...existingCourse.sessions,
-          ...newCourse.sessions,
-        ];
 
-        // 创建更新后的课程对象
-        final Course updatedCourse = Course(
-          name: existingCourse.name,
-          teacher: existingCourse.teacher,
-          color: existingCourse.color,
-          sessions: mergedSessions,
-        );
+        // 只有当颜色和教师信息都一致时才合并，否则视为不同课程（即使同名）
+        final bool isSameColor =
+            existingCourse.color.value == newCourse.color.value;
+        final bool isSameTeacher = existingCourse.teacher == newCourse.teacher;
 
-        _courses[existingIndex] = updatedCourse;
+        if (isSameColor && isSameTeacher) {
+          // 如果存在且信息一致，合并课程时间
+          final List<CourseSession> mergedSessions = [
+            ...existingCourse.sessions,
+            ...newCourse.sessions,
+          ];
 
-        AppToast.show(context, '已合并到现有课程 "${newCourse.name}"');
+          // 创建更新后的课程对象
+          final Course updatedCourse = Course(
+            name: existingCourse.name,
+            teacher: existingCourse.teacher,
+            color: existingCourse.color,
+            sessions: mergedSessions,
+          );
+
+          _courses[existingIndex] = updatedCourse;
+
+          AppToast.show(context, '已合并到现有课程 "${newCourse.name}"');
+        } else {
+          // 信息不一致，作为新课程添加
+          _courses.add(newCourse);
+        }
       } else {
         _courses.add(newCourse);
       }
