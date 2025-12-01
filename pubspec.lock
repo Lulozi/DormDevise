@@ -565,14 +565,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.1.8"
-  plugin_wifi_connect:
-    dependency: "direct main"
-    description:
-      name: plugin_wifi_connect
-      sha256: "19d318dfe834e9904bae8328b4ff7b104f7de697dec6709a10f1e9c743e7cbc1"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "2.0.1"
   posix:
     dependency: transitive
     description:
@@ -858,14 +850,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "3.23.1"
-  wifi_scan:
-    dependency: "direct main"
-    description:
-      name: wifi_scan
-      sha256: "78896ea3db8838769053accd47cab02a62ead6480557e235295320603f84c9c7"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.4.1+2"
   win32:
     dependency: transitive
     description:

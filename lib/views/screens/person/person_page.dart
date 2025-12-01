@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../open_door/location_settings_page.dart';
+import '../open_door/local_door_lock_settings_page.dart';
 import '../open_door/mqtt_settings_page.dart';
-import '../open_door/wifi_settings_page.dart';
 import 'about_page.dart';
 import 'door_widget_settings_page.dart';
 import 'download_source_config_page.dart';
@@ -61,14 +60,9 @@ class _PersonPageState extends State<PersonPage> {
         builder: (context) => const MqttSettingsPage(),
       ),
       _buildSettingsEntry(
-        icon: Icons.wifi,
-        title: 'WiFi设置',
-        builder: (context) => const WifiSettingsPage(),
-      ),
-      _buildSettingsEntry(
-        icon: Icons.location_on,
-        title: '定位设置',
-        builder: (context) => const LocationSettingsPage(),
+        icon: Icons.lock_outline,
+        title: '本地门锁配置',
+        builder: (context) => const LocalDoorLockSettingsPage(),
       ),
       _buildSettingsEntry(
         icon: Icons.dashboard_customize,

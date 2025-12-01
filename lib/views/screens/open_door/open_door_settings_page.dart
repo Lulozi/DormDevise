@@ -1,6 +1,5 @@
-import 'location_settings_page.dart';
+import 'local_door_lock_settings_page.dart';
 import 'mqtt_settings_page.dart';
-import 'wifi_settings_page.dart';
 import 'package:flutter/material.dart';
 
 /// 开门相关设置页，整合多项配置标签。
@@ -19,11 +18,7 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  final List<Tab> _tabs = const [
-    Tab(text: 'Wi-Fi 设置'),
-    Tab(text: 'MQTT 设置'),
-    Tab(text: '定位设置'),
-  ];
+  final List<Tab> _tabs = const [Tab(text: '本地门锁配置'), Tab(text: 'MQTT 设置')];
 
   /// 初始化标签控制器。
   @override
@@ -62,9 +57,8 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       body: TabBarView(
         controller: _tabController,
         children: const [
-          WifiSettingsPage(showAppBar: false),
+          LocalDoorLockSettingsPage(showAppBar: false),
           MqttSettingsPage(showAppBar: false),
-          LocationSettingsPage(showAppBar: false),
         ],
       ),
     );
