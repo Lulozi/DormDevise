@@ -224,11 +224,55 @@ class _CourseEditPageState extends State<CourseEditPage> {
     });
   }
 
+  bool _isCrossSegment(CourseSession session) {
+    if (_scheduleConfig == null) return false;
+
+    bool contained = false;
+    int segStart = 1;
+    for (var segment in _scheduleConfig!.segments) {
+      int segEnd = segStart + segment.classCount - 1;
+      final uEnd = session.startSection + session.sectionCount - 1;
+
+      // 检查是否完全包含在当前段内
+      if (session.startSection >= segStart && uEnd <= segEnd) {
+        contained = true;
+        break;
+      }
+      segStart += segment.classCount;
+    }
+    // 如果没有被任何一个段完全包含，则是跨段
+    return !contained;
+  }
+
   Future<void> _loadConfig() async {
     final config = await CourseService.instance.loadConfig();
     if (mounted) {
       setState(() {
         _scheduleConfig = config;
+
+        // 检查初始课程是否跨段，如果是则调整
+        if (widget.course == null &&
+            widget.initialSection != null &&
+            _sessions.isNotEmpty) {
+          // 检查第一个会话（即初始添加的会话）
+          final session = _sessions[0];
+          if (_isCrossSegment(session)) {
+            // 如果跨段，且节数大于1，则缩减为1
+            if (session.sectionCount > 1) {
+              _sessions[0] = CourseSession(
+                weekday: session.weekday,
+                startSection: session.startSection,
+                sectionCount: 1,
+                location: session.location,
+                startWeek: session.startWeek,
+                endWeek: session.endWeek,
+                weekType: session.weekType,
+                customWeeks: session.customWeeks,
+              );
+              _pickerResetVersion++;
+            }
+          }
+        }
       });
     }
   }
@@ -599,6 +643,20 @@ class _CourseEditPageState extends State<CourseEditPage> {
       // 显示错误或直接返回
       AppToast.show(context, '请输入课程名称', variant: AppToastVariant.warning);
       return;
+    }
+
+    // 校验跨段
+    if (_scheduleConfig != null) {
+      for (var session in _sessions) {
+        if (_isCrossSegment(session)) {
+          AppToast.show(
+            context,
+            '课程时间不能跨越时段（如午休/晚修）',
+            variant: AppToastVariant.warning,
+          );
+          return;
+        }
+      }
     }
 
     // 确认临时颜色为永久
