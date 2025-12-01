@@ -180,10 +180,7 @@ class _TablePageState extends State<TablePage> {
             children: <Widget>[
               Text(_tableName, style: titleStyle),
               const SizedBox(height: 4),
-              Text(
-                '第 $_currentWeek 周 | ${_formatSemesterRange()}',
-                style: subtitleStyle,
-              ),
+              Text('${_formatSemesterRange()}', style: subtitleStyle),
             ],
           ),
         ),

@@ -194,25 +194,26 @@ class UpdateDownloadService {
     if (trackCoordinator) {
       coordinator.markStarted();
     }
-    // 先尝试 CDN 主站，若探测显示速率不足，再退回 GitHub 作为备用下载源。
-    // 使用请求提供的 client 或在需要时按需创建。本方法内部的 probe 和下载流程
-    // 各自创建/关闭自己的 client，避免共享 client 的生命周期复杂性。
     File? targetFile;
 
-    // 如果原始是 github 的 asset，自动构造主 CDN 下载地址
-    Uri? constructAlternativeUri(Uri original, String fileName) {
-      // 主源路径规则为: http://download.cdn.xiaoheiwu.fun/App/dormdevise/{filename}
+    // 构造 Gitee 备用下载地址
+    Uri? constructGiteeUri(Uri original) {
+      // GitHub: https://github.com/Lulozi/DormDevise/releases/download/{tag}/{filename}
+      // Gitee:  https://gitee.com/lulo/DormDevise/releases/download/{tag}/{filename}
       try {
-        final sanitizedName = Uri.encodeComponent(fileName);
-        return Uri.parse(
-          'http://download.cdn.xiaoheiwu.fun/App/dormdevise/$sanitizedName',
-        );
+        final String url = original.toString();
+        if (url.contains('github.com/Lulozi/DormDevise')) {
+          return Uri.parse(
+            url
+                .replaceFirst('github.com', 'gitee.com')
+                .replaceFirst('Lulozi', 'lulo'),
+          );
+        }
+        return null;
       } catch (_) {
         return null;
       }
     }
-
-    // 之前的流内切换常量已移至探测阶段，如有需要可在请求中参数化。
 
     try {
       // 辅助函数：安全地删除可能为 null 的文件，忽略异常
@@ -227,173 +228,84 @@ class UpdateDownloadService {
         }
       }
 
-      // 准备候选源列表（主源为首选，备用源可选）
-      final String resolvedName = _resolveSanitizedFileName(request);
-      final List<Uri> sources = <Uri>[];
-      final Uri? cdnUri = constructAlternativeUri(request.uri, resolvedName);
-      if (cdnUri != null) {
-        sources.add(cdnUri);
-      }
-      if (sources.isEmpty ||
-          sources.first.toString() != request.uri.toString()) {
-        sources.add(request.uri);
+      // 准备候选源列表（GitHub 为首选，Gitee 为备用）
+      final List<Uri> sources = <Uri>[request.uri];
+      final Uri? giteeUri = constructGiteeUri(request.uri);
+      if (giteeUri != null) {
+        sources.add(giteeUri);
       }
 
-      // 依据主备源并行测速后的决策选择最终下载地址。
-      final Uri chosen;
-      try {
-        chosen = await _selectPreferredSource(
-          primary: sources.first,
-          backup: sources.length > 1 ? sources[1] : null,
-          shouldCancel: shouldCancel,
-        );
-      } on DownloadCancelled {
-        return const DownloadResult.cancelled();
-      }
-
-      // 从选定的源开始完整下载（单源，不在中途切换）
-      final http.Client client = request.client ?? http.Client();
-      final bool ownsLocalClient = request.client == null;
-      try {
-        final http.Request httpRequest = http.Request('GET', chosen);
-        final http.StreamedResponse response = await client.send(httpRequest);
-        if (response.statusCode != 200) {
-          throw Exception('下载失败，状态码 ${response.statusCode}');
-        }
-        final int? totalBytes =
-            response.contentLength ?? request.totalBytesHint;
-        targetFile = await resolveTargetFile(request: request);
-        final IOSink sink = targetFile.openWrite();
-
-        int received = 0;
-        onProgress?.call(
-          DownloadProgress(receivedBytes: 0, totalBytes: totalBytes),
-        );
-        try {
-          await for (final List<int> chunk in response.stream) {
-            if (shouldCancel?.call() ?? false) {
-              throw const DownloadCancelled();
-            }
-            received += chunk.length;
-            sink.add(chunk);
-            onProgress?.call(
-              DownloadProgress(receivedBytes: received, totalBytes: totalBytes),
-            );
-          }
-        } finally {
-          await sink.flush();
-          await sink.close();
-        }
-
-        return DownloadResult.success(file: targetFile);
-      } on DownloadCancelled {
-        await safeDelete(targetFile);
+      // 尝试下载（依次尝试）
+      for (final Uri uri in sources) {
         if (shouldCancel?.call() ?? false) {
           return const DownloadResult.cancelled();
         }
-        return const DownloadResult.cancelled();
-      } catch (error) {
-        await safeDelete(targetFile);
-        return DownloadResult.failure(error);
-      } finally {
-        if (ownsLocalClient) {
-          client.close();
+
+        final http.Client client = request.client ?? http.Client();
+        final bool ownsLocalClient = request.client == null;
+        try {
+          final http.Request httpRequest = http.Request('GET', uri);
+          final http.StreamedResponse response = await client.send(httpRequest);
+
+          if (response.statusCode != 200) {
+            // 如果不是最后一个源，则尝试下一个
+            if (uri != sources.last) {
+              if (ownsLocalClient) client.close();
+              continue;
+            }
+            throw Exception('下载失败，状态码 ${response.statusCode}');
+          }
+
+          final int? totalBytes =
+              response.contentLength ?? request.totalBytesHint;
+          targetFile = await resolveTargetFile(request: request);
+          final IOSink sink = targetFile.openWrite();
+
+          int received = 0;
+          onProgress?.call(
+            DownloadProgress(receivedBytes: 0, totalBytes: totalBytes),
+          );
+          try {
+            await for (final List<int> chunk in response.stream) {
+              if (shouldCancel?.call() ?? false) {
+                throw const DownloadCancelled();
+              }
+              received += chunk.length;
+              sink.add(chunk);
+              onProgress?.call(
+                DownloadProgress(
+                  receivedBytes: received,
+                  totalBytes: totalBytes,
+                ),
+              );
+            }
+          } finally {
+            await sink.flush();
+            await sink.close();
+          }
+
+          return DownloadResult.success(file: targetFile);
+        } on DownloadCancelled {
+          await safeDelete(targetFile);
+          return const DownloadResult.cancelled();
+        } catch (error) {
+          await safeDelete(targetFile);
+          // 如果是最后一个源，则返回失败
+          if (uri == sources.last) {
+            return DownloadResult.failure(error);
+          }
+        } finally {
+          if (ownsLocalClient) {
+            client.close();
+          }
         }
       }
 
-      // 所有流程已完成或失败，控制流将在上面返回相应结果。
+      return const DownloadResult.failure('所有下载源均不可用');
     } finally {
       if (trackCoordinator) {
         coordinator.markIdle();
       }
-    }
-  }
-
-  /// 并行探测主备源下载速度，快速决定最终下载地址。
-  Future<Uri> _selectPreferredSource({
-    required Uri primary,
-    Uri? backup,
-    bool Function()? shouldCancel,
-  }) async {
-    if (backup == null) {
-      return primary;
-    }
-
-    if (shouldCancel?.call() ?? false) {
-      throw const DownloadCancelled();
-    }
-
-    final _DownloadProbe primaryProbe = _DownloadProbe(primary);
-    final _DownloadProbe backupProbe = _DownloadProbe(backup);
-    await Future.wait(<Future<void>>[
-      primaryProbe.start(),
-      backupProbe.start(),
-    ]);
-
-    const Duration decisionWindow = Duration(seconds: 3);
-    const Duration backupCheckWindow = Duration(seconds: 5);
-    const double backupSpeedThreshold = 400 * 1024; // 400 KB/s
-
-    final Stopwatch stopwatch = Stopwatch()..start();
-    Uri? provisional;
-    bool provisionalIsBackup = false;
-
-    try {
-      while (stopwatch.elapsed < backupCheckWindow) {
-        if (shouldCancel?.call() ?? false) {
-          throw const DownloadCancelled();
-        }
-
-        await Future.delayed(const Duration(milliseconds: 120));
-
-        final Duration elapsed = stopwatch.elapsed;
-        if (provisional == null && elapsed >= decisionWindow) {
-          final double primarySpeed = primaryProbe.speedAt(decisionWindow) ?? 0;
-          final double backupSpeed = backupProbe.speedAt(decisionWindow) ?? 0;
-
-          if (backupSpeed > primarySpeed && backupSpeed > 0) {
-            provisional = backup;
-            provisionalIsBackup = true;
-          } else if (primaryProbe.isReachable) {
-            provisional = primary;
-            provisionalIsBackup = false;
-            break;
-          } else if (backupSpeed > 0) {
-            provisional = backup;
-            provisionalIsBackup = true;
-          }
-        }
-
-        if (elapsed >= backupCheckWindow) {
-          break;
-        }
-      }
-
-      final bool primaryUsable = primaryProbe.isReachable;
-      final bool backupUsable = backupProbe.isReachable;
-
-      Uri? finalSelection = provisional;
-      if (finalSelection == null) {
-        finalSelection = primaryUsable
-            ? primary
-            : (backupUsable ? backup : primary);
-      } else if (provisionalIsBackup) {
-        final double backupSpeedForCheck =
-            backupProbe.speedAt(backupCheckWindow) ??
-            backupProbe.currentAverageSpeed;
-        if (backupSpeedForCheck < backupSpeedThreshold && primaryUsable) {
-          finalSelection = primary;
-        }
-      }
-
-      return finalSelection;
-    } finally {
-      primaryProbe.stop();
-      backupProbe.stop();
-      await Future.wait(<Future<void>>[
-        primaryProbe.completed,
-        backupProbe.completed,
-      ]);
     }
   }
 
@@ -412,142 +324,6 @@ class UpdateDownloadService {
     return sanitizeFileName(
       request.fileName ?? _resolveNameFromUri(request.uri),
     );
-  }
-}
-
-/// 探测速时记录的采样点。
-class _ProbeSample {
-  const _ProbeSample(this.elapsed, this.bytes);
-
-  final Duration elapsed;
-  final int bytes;
-}
-
-/// 负责对单个地址执行限时限量的并行测速。
-class _DownloadProbe {
-  _DownloadProbe(this.uri);
-
-  static const int _limitBytes = 512 * 1024; // 最多下载 512KB 用于测速
-  static const Duration _maxDuration = Duration(seconds: 5);
-
-  final Uri uri;
-  final http.Client _client = http.Client();
-  final Stopwatch _stopwatch = Stopwatch();
-  final Completer<void> _doneCompleter = Completer<void>();
-  final List<_ProbeSample> _samples = <_ProbeSample>[];
-
-  StreamSubscription<List<int>>? _subscription;
-  Timer? _timer;
-  int _received = 0;
-  bool _completed = false;
-  bool _reachable = false;
-
-  /// 是否已经成功收到数据。
-  bool get isReachable => _reachable;
-
-  /// 当前平均下载速度（字节/秒）。
-  double get currentAverageSpeed {
-    if (_samples.isEmpty) {
-      return 0;
-    }
-    final _ProbeSample last = _samples.last;
-    final int millis = last.elapsed.inMilliseconds;
-    if (millis <= 0) {
-      return 0;
-    }
-    return last.bytes / (millis / 1000.0);
-  }
-
-  /// 等待测速流程结束。
-  Future<void> get completed => _doneCompleter.future;
-
-  /// 启动测速流程。
-  Future<void> start() async {
-    if (_completed) {
-      return;
-    }
-
-    try {
-      final http.Request request = http.Request('GET', uri)
-        ..headers['Range'] = 'bytes=0-${_limitBytes - 1}'
-        ..headers['Accept-Encoding'] = 'identity';
-      final http.StreamedResponse response = await _client
-          .send(request)
-          .timeout(_maxDuration);
-      if (response.statusCode != 200 && response.statusCode != 206) {
-        _complete();
-        return;
-      }
-
-      _reachable = true;
-      _stopwatch.start();
-      _timer = Timer(_maxDuration, _complete);
-      _subscription = response.stream.listen(
-        (List<int> chunk) {
-          if (_completed) {
-            return;
-          }
-          _received += chunk.length;
-          final Duration elapsed = _stopwatch.elapsed;
-          _samples.add(_ProbeSample(elapsed, _received));
-          if (_received >= _limitBytes) {
-            _complete();
-          }
-        },
-        onDone: _complete,
-        onError: (Object _, StackTrace __) {
-          _complete();
-        },
-        cancelOnError: true,
-      );
-    } catch (_) {
-      _complete();
-    }
-  }
-
-  /// 停止测速流程，释放网络资源。
-  void stop() {
-    _complete();
-  }
-
-  /// 在指定时间点估算平均速度（字节/秒）。
-  double? speedAt(Duration duration) {
-    if (_samples.isEmpty) {
-      return null;
-    }
-    _ProbeSample? candidate;
-    for (final _ProbeSample sample in _samples) {
-      candidate = sample;
-      if (sample.elapsed >= duration) {
-        break;
-      }
-    }
-    candidate ??= _samples.last;
-    final int millis = candidate.elapsed >= duration
-        ? duration.inMilliseconds
-        : candidate.elapsed.inMilliseconds;
-    if (millis <= 0) {
-      return null;
-    }
-    return candidate.bytes / (millis / 1000.0);
-  }
-
-  void _complete() {
-    if (_completed) {
-      return;
-    }
-    _completed = true;
-    _timer?.cancel();
-    if (_stopwatch.isRunning) {
-      _stopwatch.stop();
-    }
-    _timer = null;
-    unawaited(_subscription?.cancel());
-    _subscription = null;
-    _client.close();
-    if (!_doneCompleter.isCompleted) {
-      _doneCompleter.complete();
-    }
   }
 }
 

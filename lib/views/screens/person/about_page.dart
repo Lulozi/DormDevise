@@ -225,8 +225,63 @@ class _AboutPageState extends State<AboutPage> {
       _activeDownloadSession = null;
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final customPattern = prefs.getString('custom_download_url_pattern');
+    String downloadUrl = asset.browserDownloadUrl;
+
+    if (customPattern != null && customPattern.isNotEmpty) {
+      String candidateUrl;
+      if (customPattern.contains(r'$sanitizedName')) {
+        // 包含变量，执行替换
+        candidateUrl = customPattern.replaceAll(r'$sanitizedName', asset.name);
+      } else {
+        // 不包含变量，视为目录前缀，自动拼接文件名
+        final prefix = customPattern.endsWith('/')
+            ? customPattern
+            : '$customPattern/';
+
+        String filename = asset.name;
+        // 尝试根据规则构造文件名: com.lulo.dormdevise-v{version}-{arch}-release.apk
+        if (releaseVersion != null) {
+          final variant = _inferAndroidApkVariant(asset);
+          String? arch;
+          switch (variant) {
+            case _AndroidApkVariant.arm64V8a:
+              arch = 'arm64-v8a';
+              break;
+            case _AndroidApkVariant.armeabiV7a:
+              arch = 'armeabi-v7a';
+              break;
+            case _AndroidApkVariant.x86_64:
+              arch = 'x86_64';
+              break;
+            case _AndroidApkVariant.x86:
+              arch = 'x86';
+              break;
+            case _AndroidApkVariant.universal:
+              arch = 'universal';
+              break;
+            default:
+              arch = null;
+          }
+
+          if (arch != null) {
+            filename = 'com.lulo.dormdevise-v$releaseVersion-$arch-release.apk';
+          }
+        }
+
+        candidateUrl = '$prefix$filename';
+      }
+
+      // 测速对比，超时 5 秒
+      downloadUrl = await _pickFastestUrl(
+        asset.browserDownloadUrl,
+        candidateUrl,
+      );
+    }
+
     final DownloadRequest downloadRequest = DownloadRequest(
-      uri: Uri.parse(asset.browserDownloadUrl),
+      uri: Uri.parse(downloadUrl),
       fileName: asset.name.isEmpty ? null : asset.name,
       totalBytesHint: totalHint,
     );
@@ -288,6 +343,60 @@ class _AboutPageState extends State<AboutPage> {
     );
 
     await dialogFuture;
+  }
+
+  /// 竞速选择最快的下载链接，超时 5 秒。
+  Future<String> _pickFastestUrl(String original, String custom) async {
+    final completer = Completer<String>();
+    bool originalFailed = false;
+    bool customFailed = false;
+
+    void check(String url, bool isOriginal) async {
+      try {
+        final uri = Uri.parse(url);
+        final client = http.Client();
+        // 使用 HEAD 请求测试连通性与响应速度
+        final response = await client
+            .head(uri)
+            .timeout(const Duration(seconds: 4));
+        client.close();
+
+        if (response.statusCode == 200) {
+          if (!completer.isCompleted) {
+            completer.complete(url);
+          }
+        } else {
+          if (isOriginal) {
+            originalFailed = true;
+          } else {
+            customFailed = true;
+          }
+        }
+      } catch (_) {
+        if (isOriginal) {
+          originalFailed = true;
+        } else {
+          customFailed = true;
+        }
+      }
+
+      if (originalFailed && customFailed && !completer.isCompleted) {
+        // 两个都失败，默认回退到原始链接
+        completer.complete(original);
+      }
+    }
+
+    // 同时发起请求
+    check(original, true);
+    check(custom, false);
+
+    try {
+      // 等待第一个完成，或者 5 秒超时
+      return await completer.future.timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // 超时或都失败，默认使用原始链接
+      return original;
+    }
   }
 
   /// 展示下载进度弹窗，必要时启动下载任务。
@@ -1357,7 +1466,7 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
       }
     }
 
-    final allReleases = await _loadReleasesFromApi();
+    final allReleases = await _fetchAllReleasesBasedOnConfig();
     if (allReleases.isEmpty) return const [];
 
     final releases = allReleases
@@ -1480,11 +1589,52 @@ class _ReleaseInfo {
   }
 }
 
+/// 根据配置获取所有发布信息
+Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig() async {
+  final prefs = await SharedPreferences.getInstance();
+  final sourceType = prefs.getString('update_source_type') ?? 'auto';
+  final customApiUrl = prefs.getString('custom_update_api_url');
+
+  List<_ReleaseInfo> releases = [];
+
+  try {
+    if (sourceType == 'auto') {
+      // 自动模式：GitHub 优先，Gitee 备用，最后比较版本
+      try {
+        final githubReleases = await _loadReleasesFromGitHub();
+        releases.addAll(githubReleases);
+      } catch (e) {
+        debugPrint('GitHub 获取失败: $e');
+      }
+
+      try {
+        final giteeReleases = await _loadReleasesFromGitee();
+        releases.addAll(giteeReleases);
+      } catch (e) {
+        debugPrint('Gitee 获取失败: $e');
+      }
+    } else if (sourceType == 'github') {
+      releases = await _loadReleasesFromGitHub();
+    } else if (sourceType == 'gitee') {
+      releases = await _loadReleasesFromGitee();
+    } else if (sourceType == 'custom') {
+      if (customApiUrl != null && customApiUrl.isNotEmpty) {
+        releases = await _loadReleasesFromCustom(customApiUrl);
+      }
+    }
+  } catch (e) {
+    debugPrint('获取发布信息失败: $e');
+  }
+  return releases;
+}
+
 /// 获取最新的稳定版本信息，若无稳定版则返回候选。
 Future<_ReleaseInfo?> _fetchLatestReleaseInfo() async {
-  final releases = await _loadReleasesFromApi();
+  final releases = await _fetchAllReleasesBasedOnConfig();
+
   if (releases.isEmpty) return null;
 
+  // 过滤掉 Draft 和 Prerelease (除非只有 Prerelease)
   final stable = releases
       .where((release) => !release.isDraft && !release.isPrerelease)
       .toList();
@@ -1493,29 +1643,50 @@ Future<_ReleaseInfo?> _fetchLatestReleaseInfo() async {
       : releases.where((release) => !release.isDraft).toList();
 
   if (candidates.isEmpty) {
+    // 如果只有 Draft，也尝试取一个
     releases.sort(_compareReleaseOrder);
     return releases.first;
   }
 
+  // 排序取最新
   candidates.sort(_compareReleaseOrder);
   return candidates.first;
 }
 
 /// 从 GitHub API 拉取发布列表。
-Future<List<_ReleaseInfo>> _loadReleasesFromApi() async {
+Future<List<_ReleaseInfo>> _loadReleasesFromGitHub() async {
   final uri = Uri.parse(
     'https://api.github.com/repos/Lulozi/DormDevise/releases',
   );
+  return _fetchReleases(uri);
+}
+
+/// 从 Gitee API 拉取发布列表。
+Future<List<_ReleaseInfo>> _loadReleasesFromGitee() async {
+  final uri = Uri.parse(
+    'https://gitee.com/api/v5/repos/lulo/DormDevise/releases',
+  );
+  return _fetchReleases(uri);
+}
+
+/// 从自定义 API 拉取发布列表。
+Future<List<_ReleaseInfo>> _loadReleasesFromCustom(String url) async {
+  final uri = Uri.parse(url);
+  return _fetchReleases(uri);
+}
+
+/// 通用 API 获取方法
+Future<List<_ReleaseInfo>> _fetchReleases(Uri uri) async {
   final response = await http.get(
     uri,
     headers: {
-      'Accept': 'application/vnd.github+json',
+      'Accept': 'application/json', // Gitee 使用 application/json
       'User-Agent': 'DormDevise-App',
     },
   );
 
   if (response.statusCode != 200) {
-    throw Exception('GitHub 返回状态码 ${response.statusCode}');
+    throw Exception('API 返回状态码 ${response.statusCode} ($uri)');
   }
 
   final List<dynamic> jsonList = jsonDecode(response.body) as List<dynamic>;
