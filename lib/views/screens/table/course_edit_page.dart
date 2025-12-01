@@ -43,6 +43,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   CourseScheduleConfig? _scheduleConfig;
   final Map<int, Timer> _debounceTimers = {};
   int _pickerResetVersion = 0;
+  List<Course> _suggestions = [];
 
   // 全局周次设置
   int _startWeek = 1;
@@ -180,30 +181,30 @@ class _CourseEditPageState extends State<CourseEditPage> {
   void _onNameChanged() {
     final String name = _nameController.text.trim();
 
-    Course? match;
-    if (name.isNotEmpty) {
-      try {
-        match = widget.existingCourses.firstWhere((c) => c.name == name);
-      } catch (e) {
-        match = null;
+    if (name.isEmpty) {
+      if (_suggestions.isNotEmpty) {
+        setState(() {
+          _suggestions = [];
+        });
+      }
+      return;
+    }
+
+    final lowerName = name.toLowerCase();
+    final matches = widget.existingCourses.where((c) {
+      return c.name.toLowerCase().contains(lowerName);
+    }).toList();
+
+    final uniqueMatches = <String, Course>{};
+    for (var c in matches) {
+      if (!uniqueMatches.containsKey(c.name)) {
+        uniqueMatches[c.name] = c;
       }
     }
 
-    if (match != null) {
-      final matchedColor = match.color;
-      if (_selectedColor != matchedColor) {
-        setState(() {
-          _selectedColor = matchedColor;
-        });
-      }
-    } else {
-      // No match (or empty), restore to initial/manual color
-      if (_selectedColor != _initialSmartColor) {
-        setState(() {
-          _selectedColor = _initialSmartColor;
-        });
-      }
-    }
+    setState(() {
+      _suggestions = uniqueMatches.values.toList();
+    });
   }
 
   Future<void> _loadConfig() async {
@@ -738,11 +739,64 @@ class _CourseEditPageState extends State<CourseEditPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          _buildInputGroup(
-            label: '课程名',
-            controller: _nameController,
-            placeholder: '必填',
-            isLast: false,
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 120,
+                        child: Text(
+                          '课程名',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _nameController,
+                          textAlign: TextAlign.left,
+                          decoration: InputDecoration(
+                            hintText: '必填',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFFC4C4C6),
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                            ),
+                          ),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_suggestions.isNotEmpty) ...[
+                  const Divider(
+                    height: 1,
+                    indent: 16,
+                    color: Color(0xFFE5E5EA),
+                  ),
+                  ..._suggestions.map(_buildSuggestionItem),
+                ],
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           _buildInputGroup(
@@ -837,6 +891,46 @@ class _CourseEditPageState extends State<CourseEditPage> {
             child: const Text('删除'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionItem(Course course) {
+    return InkWell(
+      onTap: () {
+        _nameController.text = course.name;
+        _teacherController.text = course.teacher;
+        setState(() {
+          _selectedColor = course.color;
+          _suggestions = [];
+        });
+        // 如果当前教室为空且选中课程有教室信息，则自动填充
+        if (_classroomController.text.isEmpty && course.sessions.isNotEmpty) {
+          _classroomController.text = course.sessions.first.location;
+        }
+        FocusScope.of(context).unfocus();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: course.color,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                course.name,
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
