@@ -172,8 +172,9 @@ class CourseDetailSheet extends StatelessWidget {
           _buildDetailRow('备注（如老师）', item.course.teacher),
           const SizedBox(height: 4),
           _buildDetailRow(
-            '${_weekdayToString(item.session.weekday)} 第 ${item.session.startSection}-${item.session.startSection + item.session.sectionCount - 1} 节',
+            '${_weekdayToString(item.session.weekday)} 第 ${item.session.startSection}${item.session.sectionCount > 1 ? '-${item.session.startSection + item.session.sectionCount - 1}' : ''} 节',
             '(${_formatTime(item.startTime)} - ${_formatTime(item.endTime)})',
+            showColon: false,
           ),
           const SizedBox(height: 4),
           _buildDetailRow(formatWeeks(item.session), ''),
@@ -183,13 +184,13 @@ class CourseDetailSheet extends StatelessWidget {
   }
 
   /// 构建详情行（标签 + 值）
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, String value, {bool showColon = true}) {
     // 当 value 为空时，不显示冒号；否则显示“标签： 值”格式
     final List<InlineSpan> children = <InlineSpan>[];
     if (value.trim().isEmpty) {
       children.add(TextSpan(text: label));
     } else {
-      children.add(TextSpan(text: '$label： '));
+      children.add(TextSpan(text: showColon ? '$label： ' : '$label '));
       children.add(
         TextSpan(
           text: value,
