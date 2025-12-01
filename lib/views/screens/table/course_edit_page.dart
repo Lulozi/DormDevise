@@ -648,13 +648,25 @@ class _CourseEditPageState extends State<CourseEditPage> {
     // 校验跨段
     if (_scheduleConfig != null) {
       for (var session in _sessions) {
-        if (_isCrossSegment(session)) {
-          AppToast.show(
-            context,
-            '课程时间不能跨越时段（如午休/晚修）',
-            variant: AppToastVariant.warning,
-          );
-          return;
+        int segStart = 1;
+        for (int i = 0; i < _scheduleConfig!.segments.length; i++) {
+          final segment = _scheduleConfig!.segments[i];
+          int segEnd = segStart + segment.classCount - 1;
+          final uStart = session.startSection;
+          final uEnd = session.startSection + session.sectionCount - 1;
+
+          // 检查是否跨越了当前段的结束边界
+          if (uStart >= segStart && uStart <= segEnd && uEnd > segEnd) {
+            String errorMsg = '课程时间不能跨越时段';
+            if (i == 0) {
+              errorMsg = '课程时间不能跨越午休';
+            } else if (i == 1) {
+              errorMsg = '课程时间不能跨越晚修';
+            }
+            AppToast.show(context, errorMsg, variant: AppToastVariant.warning);
+            return;
+          }
+          segStart += segment.classCount;
         }
       }
     }
