@@ -190,6 +190,23 @@ class _CourseEditPageState extends State<CourseEditPage> {
       return;
     }
 
+    // 若是已经输入的课程名已经已经导入（完全匹配且内容一致），则不需要再联想
+    final exactMatches = widget.existingCourses.where((c) => c.name == name);
+    if (exactMatches.isNotEmpty) {
+      final exactMatch = exactMatches.first;
+      final bool isTeacherSame = exactMatch.teacher == _teacherController.text;
+      final bool isColorSame = exactMatch.color.value == _selectedColor.value;
+
+      if (isTeacherSame && isColorSame) {
+        if (_suggestions.isNotEmpty) {
+          setState(() {
+            _suggestions = [];
+          });
+        }
+        return;
+      }
+    }
+
     final lowerName = name.toLowerCase();
     final matches = widget.existingCourses.where((c) {
       return c.name.toLowerCase().contains(lowerName);
