@@ -8,11 +8,13 @@ class CourseDetailSheet extends StatelessWidget {
   /// 课程详情项列表 (items)
   final List<CourseDetailItem> items;
   final List<Course> allCourses;
+  final int maxWeek;
 
   const CourseDetailSheet({
     super.key,
     required this.items,
     required this.allCourses,
+    this.maxWeek = 20,
   });
 
   @override
@@ -31,7 +33,7 @@ class CourseDetailSheet extends StatelessWidget {
           _buildHeader(context),
           Flexible(
             child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               shrinkWrap: true,
               itemCount: items.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
@@ -40,7 +42,46 @@ class CourseDetailSheet extends StatelessWidget {
               },
             ),
           ),
+          _buildAddButton(context),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAddButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextButton(
+        onPressed: () async {
+          final navigator = Navigator.of(context);
+          final result = await navigator.push(
+            MaterialPageRoute(
+              builder: (context) => CourseEditPage(
+                existingCourses: allCourses,
+                initialWeekday: items.isNotEmpty
+                    ? items.first.session.weekday
+                    : null,
+                initialSection: items.isNotEmpty
+                    ? items.first.session.startSection
+                    : null,
+                maxWeek: maxWeek,
+              ),
+              fullscreenDialog: true,
+            ),
+          );
+
+          if (result != null && result is Course) {
+            navigator.pop({'action': 'create', 'newCourse': result});
+          }
+        },
+        child: const Text(
+          '新建课程',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue,
+          ),
+        ),
       ),
     );
   }
@@ -123,6 +164,7 @@ class CourseDetailSheet extends StatelessWidget {
                           builder: (context) => CourseEditPage(
                             course: item.course,
                             existingCourses: allCourses,
+                            maxWeek: maxWeek,
                           ),
                           fullscreenDialog: true,
                         ),

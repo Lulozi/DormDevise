@@ -324,6 +324,39 @@ class _TablePageState extends State<TablePage> {
     );
   }
 
+  Future<void> _handleCourseAdded(Course newCourse) async {
+    setState(() {
+      // 查找是否存在同名课程
+      final int existingIndex = _courses.indexWhere(
+        (c) => c.name == newCourse.name,
+      );
+
+      if (existingIndex != -1) {
+        // 如果存在，合并课程时间
+        final Course existingCourse = _courses[existingIndex];
+        final List<CourseSession> mergedSessions = [
+          ...existingCourse.sessions,
+          ...newCourse.sessions,
+        ];
+
+        // 创建更新后的课程对象
+        final Course updatedCourse = Course(
+          name: existingCourse.name,
+          teacher: existingCourse.teacher,
+          color: existingCourse.color,
+          sessions: mergedSessions,
+        );
+
+        _courses[existingIndex] = updatedCourse;
+
+        AppToast.show(context, '已合并到现有课程 "${newCourse.name}"');
+      } else {
+        _courses.add(newCourse);
+      }
+    });
+    await CourseService.instance.saveCourses(_courses);
+  }
+
   /// 添加新课程。
   Future<void> _addCourse({int? weekday, int? section}) async {
     final Course? newCourse = await Navigator.of(context).push(
@@ -337,36 +370,7 @@ class _TablePageState extends State<TablePage> {
       ),
     );
     if (newCourse != null) {
-      setState(() {
-        // 查找是否存在同名课程
-        final int existingIndex = _courses.indexWhere(
-          (c) => c.name == newCourse.name,
-        );
-
-        if (existingIndex != -1) {
-          // 如果存在，合并课程时间
-          final Course existingCourse = _courses[existingIndex];
-          final List<CourseSession> mergedSessions = [
-            ...existingCourse.sessions,
-            ...newCourse.sessions,
-          ];
-
-          // 创建更新后的课程对象
-          final Course updatedCourse = Course(
-            name: existingCourse.name,
-            teacher: existingCourse.teacher,
-            color: existingCourse.color,
-            sessions: mergedSessions,
-          );
-
-          _courses[existingIndex] = updatedCourse;
-
-          AppToast.show(context, '已合并到现有课程 "${newCourse.name}"');
-        } else {
-          _courses.add(newCourse);
-        }
-      });
-      await CourseService.instance.saveCourses(_courses);
+      await _handleCourseAdded(newCourse);
     }
   }
 
@@ -548,6 +552,7 @@ class _TablePageState extends State<TablePage> {
                       });
                       await CourseService.instance.saveCourses(_courses);
                     },
+                    onCourseAdded: _handleCourseAdded,
                   );
                 },
               ),

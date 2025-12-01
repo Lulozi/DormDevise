@@ -131,11 +131,29 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
     if (widget.course == null) {
       if (widget.initialWeekday != null && widget.initialSection != null) {
+        int initialCount = 2;
+        final int nextSection = widget.initialSection! + 1;
+
+        // Check if the next section is occupied by any existing course
+        bool nextSectionOccupied = widget.existingCourses.any((course) {
+          return course.sessions.any((session) {
+            if (session.weekday != widget.initialWeekday!) return false;
+            final int sessionEnd =
+                session.startSection + session.sectionCount - 1;
+            return session.startSection <= nextSection &&
+                sessionEnd >= nextSection;
+          });
+        });
+
+        if (nextSectionOccupied) {
+          initialCount = 1;
+        }
+
         _sessions.add(
           CourseSession(
             weekday: widget.initialWeekday!,
             startSection: widget.initialSection!,
-            sectionCount: 2,
+            sectionCount: initialCount,
             location: '',
             startWeek: 1,
             endWeek: widget.maxWeek,

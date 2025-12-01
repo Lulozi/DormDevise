@@ -71,6 +71,9 @@ class CourseScheduleTable extends StatefulWidget {
   /// 课程被删除的回调 (onCourseDeleted) (被删除的课程)
   final void Function(Course course)? onCourseDeleted;
 
+  /// 课程被添加的回调 (onCourseAdded) (新课程)
+  final void Function(Course course)? onCourseAdded;
+
   /// 编辑模式状态改变的回调 (onEditModeChanged) (是否处于编辑模式)
   final ValueChanged<bool>? onEditModeChanged;
 
@@ -101,6 +104,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.onAddCourseTap,
     this.onCourseChanged,
     this.onCourseDeleted,
+    this.onCourseAdded,
     this.onEditModeChanged,
     this.editModeResetToken,
   }) : assert(
@@ -1913,19 +1917,27 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (BuildContext context) =>
-          CourseDetailSheet(items: overlapping, allCourses: courses),
+      builder: (BuildContext context) => CourseDetailSheet(
+        items: overlapping,
+        allCourses: courses,
+        maxWeek: widget.maxWeek,
+      ),
     );
 
     if (result != null && result is Map) {
       final action = result['action'];
-      final target = result['target'] as Course;
 
-      if (action == 'delete') {
-        widget.onCourseDeleted?.call(target);
-      } else if (action == 'update') {
+      if (action == 'create') {
         final newCourse = result['newCourse'] as Course;
-        widget.onCourseChanged?.call(target, newCourse);
+        widget.onCourseAdded?.call(newCourse);
+      } else {
+        final target = result['target'] as Course;
+        if (action == 'delete') {
+          widget.onCourseDeleted?.call(target);
+        } else if (action == 'update') {
+          final newCourse = result['newCourse'] as Course;
+          widget.onCourseChanged?.call(target, newCourse);
+        }
       }
     }
   }
