@@ -787,14 +787,22 @@ class _CourseEditPageState extends State<CourseEditPage> {
                     ],
                   ),
                 ),
-                if (_suggestions.isNotEmpty) ...[
-                  const Divider(
-                    height: 1,
-                    indent: 16,
-                    color: Color(0xFFE5E5EA),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: Column(
+                    children: [
+                      if (_suggestions.isNotEmpty) ...[
+                        const Divider(
+                          height: 1,
+                          indent: 16,
+                          color: Color(0xFFE5E5EA),
+                        ),
+                        ..._suggestions.map(_buildSuggestionItem),
+                      ],
+                    ],
                   ),
-                  ..._suggestions.map(_buildSuggestionItem),
-                ],
+                ),
               ],
             ),
           ),
