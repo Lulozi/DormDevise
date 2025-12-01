@@ -16,7 +16,8 @@
     <application
         android:label="舍设"
         android:name=".DormdeviseApplication"
-        android:icon="@mipmap/icon_dormdevise">
+        android:icon="@mipmap/icon_dormdevise"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

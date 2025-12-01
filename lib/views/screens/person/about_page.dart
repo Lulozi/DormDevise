@@ -159,7 +159,7 @@ class _AboutPageState extends State<AboutPage> {
       final latestVersion = latest.version;
       final currentVersion = _safeParseVersion(_currentVersion);
       final supportedAbis = await _ensureSupportedAbis();
-      final asset = _selectAndroidAsset(latest.assets, supportedAbis);
+      var asset = _selectAndroidAsset(latest.assets, supportedAbis);
 
       final hasNewer = latestVersion != null && currentVersion != null
           ? latestVersion > currentVersion
@@ -182,6 +182,19 @@ class _AboutPageState extends State<AboutPage> {
           variant: AppToastVariant.warning,
         );
         return;
+      }
+
+      // 若 API 未返回文件大小（如 Gitee），尝试通过 HEAD 请求获取
+      if (asset.size <= 0) {
+        final size = await _tryFetchAssetSize(asset.browserDownloadUrl);
+        if (size > 0) {
+          asset = _ReleaseAsset(
+            name: asset.name,
+            browserDownloadUrl: asset.browserDownloadUrl,
+            contentType: asset.contentType,
+            size: size,
+          );
+        }
       }
 
       final shouldUpdate = await _showUpdateAvailableDialog(
@@ -343,6 +356,24 @@ class _AboutPageState extends State<AboutPage> {
     );
 
     await dialogFuture;
+  }
+
+  /// 尝试通过 HEAD 请求获取文件大小。
+  Future<int> _tryFetchAssetSize(String url) async {
+    try {
+      final response = await http
+          .head(Uri.parse(url))
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode == 200) {
+        final contentLength = response.headers['content-length'];
+        if (contentLength != null) {
+          return int.tryParse(contentLength) ?? 0;
+        }
+      }
+    } catch (_) {
+      // 忽略网络错误
+    }
+    return 0;
   }
 
   /// 竞速选择最快的下载链接，超时 5 秒。
@@ -1203,6 +1234,15 @@ class _InfoTile extends StatelessWidget {
 /// 将异常信息转换为更易读的字符串。
 String _mapErrorMessage(Object error) {
   final raw = error.toString();
+  if (raw.contains('SocketException') || raw.contains('Failed host lookup')) {
+    return '网络连接失败，无法访问服务器';
+  }
+  if (raw.contains('TimeoutException')) {
+    return '请求超时，请稍后重试';
+  }
+  if (raw.contains('HandshakeException')) {
+    return 'SSL 握手失败，请检查系统时间或网络环境';
+  }
   if (raw.startsWith('Exception: ')) {
     return raw.substring('Exception: '.length);
   }
@@ -1393,7 +1433,7 @@ class ReleaseNotesCard extends StatefulWidget {
 }
 
 class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
-  late final Future<List<String>> _notesFuture;
+  late final Future<List<String>?> _notesFuture;
 
   /// 初始化时立即触发更新说明的异步加载。
   @override
@@ -1405,7 +1445,7 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
   /// 构建包含异步加载状态的说明卡片。
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<String>>(
+    return FutureBuilder<List<String>?>(
       future: _notesFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1428,15 +1468,16 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
           );
         }
 
-        if (snapshot.hasError) {
+        // 如果 snapshot.data 为 null，说明获取失败（被限流或网络错误）
+        if (snapshot.hasError || snapshot.data == null) {
           return _SectionCard(
             icon: Icons.auto_graph_outlined,
             title: '本次更新亮点',
-            children: const [_BulletTile(text: '无法获取更新说明，请稍请检查网络后重试。')],
+            children: const [_BulletTile(text: '获取失败，请等待片刻后再试。')],
           );
         }
 
-        final notes = snapshot.data ?? const [];
+        final notes = snapshot.data!;
         final displayNotes = notes.isEmpty ? ['暂无更新说明。'] : notes;
 
         return _SectionCard(
@@ -1451,34 +1492,60 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
   }
 
   /// 拉取指定版本的更新记录，必要时回退至缓存。
-  Future<List<String>> _fetchReleaseNotes(String appVersionString) async {
+  /// 返回 null 表示获取失败（如被限流或网络错误），返回空列表表示无更新说明。
+  Future<List<String>?> _fetchReleaseNotes(String appVersionString) async {
     final normalizedVersion = appVersionString.split('+').first;
     final cacheKey = 'release_notes_$normalizedVersion';
-    final prefs = await SharedPreferences.getInstance();
+    final lastTimeKey = 'release_notes_last_fetch_time';
+    final lastSourceKey = 'release_notes_last_source';
 
+    final prefs = await SharedPreferences.getInstance();
+    final currentSource = prefs.getString('update_source_type') ?? 'auto';
+
+    // 1. 检查缓存中的有效内容
+    List<String> cachedNotes = [];
     final cachedValue = prefs.getString(cacheKey);
     if (cachedValue != null) {
       try {
-        final cachedList = List<String>.from(jsonDecode(cachedValue) as List);
-        return cachedList;
+        cachedNotes = List<String>.from(jsonDecode(cachedValue) as List);
+        // 如果缓存中有具体内容，直接使用，不再请求
+        if (cachedNotes.isNotEmpty) {
+          return cachedNotes;
+        }
       } catch (_) {
-        // 缓存格式异常时继续从服务器拉取。
+        // 缓存格式异常时忽略
       }
     }
 
-    final allReleases = await _fetchAllReleasesBasedOnConfig();
-    if (allReleases.isEmpty) return const [];
+    // 2. 检查频率限制 (30s) 和 源切换
+    // 如果缓存是空的（说明上次没获取到或者还没获取过），且源没有变化，且距离上次获取不到 30秒
+    final lastSource = prefs.getString(lastSourceKey);
+    final lastTime = prefs.getInt(lastTimeKey) ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
 
-    final releases = allReleases
-        .where((info) => info.version != null && !info.isDraft)
-        .toList();
-    if (releases.isEmpty) return const [];
+    if (cachedNotes.isEmpty &&
+        currentSource == lastSource &&
+        (now - lastTime) < 30000) {
+      // 返回 null 以显示“获取失败”
+      return null;
+    }
 
     final appVersion = _safeParseVersion(appVersionString);
-    releases.sort(_compareReleaseOrder);
+    if (appVersion == null) return const [];
 
-    _ReleaseInfo? matchedRelease;
-    if (appVersion != null) {
+    // 辅助函数：尝试从发布列表中提取对应版本的说明
+    List<String>? tryFindNotes(List<_ReleaseInfo> sourceReleases) {
+      if (sourceReleases.isEmpty) return null;
+
+      final releases = sourceReleases
+          .where((info) => info.version != null && !info.isDraft)
+          .toList();
+      if (releases.isEmpty) return null;
+
+      releases.sort(_compareReleaseOrder);
+
+      _ReleaseInfo? matchedRelease;
+      // 1. 精确匹配
       for (final info in releases) {
         if (info.version == appVersion) {
           matchedRelease = info;
@@ -1486,6 +1553,7 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
         }
       }
 
+      // 2. 模糊匹配（找最近的旧版本）
       if (matchedRelease == null) {
         for (final info in releases) {
           if (info.version! <= appVersion) {
@@ -1494,21 +1562,71 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
           }
         }
       }
+
+      // 3. 兜底（最新版本）
+      if (matchedRelease == null) {
+        matchedRelease = releases.first;
+      }
+
+      final body = matchedRelease.body?.trim() ?? '';
+      if (body.isEmpty) return null;
+
+      final notes = _extractReleaseHighlights(body);
+      return notes.isNotEmpty ? notes : null;
+    }
+
+    // 定义单次获取逻辑
+    Future<List<String>?> fetchOnce() async {
+      try {
+        // 3.1 优先尝试根据配置获取
+        final configReleases = await _fetchAllReleasesBasedOnConfig();
+        var notes = tryFindNotes(configReleases);
+        if (notes != null) return notes;
+
+        // 3.2 仅在自动模式下进行跨源兜底
+        if (currentSource == 'auto') {
+          // 尝试 GitHub
+          try {
+            final github = await _loadReleasesFromGitHub();
+            notes = tryFindNotes(github);
+            if (notes != null) return notes;
+          } catch (_) {}
+
+          // 尝试 Gitee
+          try {
+            final gitee = await _loadReleasesFromGitee();
+            notes = tryFindNotes(gitee);
+            if (notes != null) return notes;
+          } catch (_) {}
+        }
+      } catch (_) {
+        return null;
+      }
+      return null;
+    }
+
+    // 3. 执行获取（含重试机制）
+    List<String>? result = await fetchOnce();
+
+    // 如果第一次获取失败或无内容，等待 5 秒后重试
+    if (result == null) {
+      await Future.delayed(const Duration(seconds: 5));
+      result = await fetchOnce();
+    }
+
+    // 4. 保存结果并返回
+    await prefs.setInt(lastTimeKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setString(lastSourceKey, currentSource);
+
+    if (result != null) {
+      await prefs.setString(cacheKey, jsonEncode(result));
+      return result;
     } else {
-      matchedRelease = releases.first;
+      // 没找到内容，存个空列表
+      await prefs.setString(cacheKey, jsonEncode([]));
+      // 返回 null 以显示“获取失败”
+      return null;
     }
-
-    if (matchedRelease == null) {
-      return const [];
-    }
-
-    final body = matchedRelease.body?.trim() ?? '';
-    if (body.isEmpty) return const [];
-
-    final notes = _extractReleaseHighlights(body);
-
-    await prefs.setString(cacheKey, jsonEncode(notes));
-    return notes;
   }
 }
 
@@ -1587,45 +1705,194 @@ class _ReleaseInfo {
       assets: assets,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'tag_name': tagName,
+      'body': body,
+      'draft': isDraft,
+      'prerelease': isPrerelease,
+      'published_at': publishedAt?.toIso8601String(),
+      'assets': assets.map((e) => e.toJson()).toList(),
+    };
+  }
 }
 
+// 缓存变量，用于限制 API 请求频率
+DateTime? _lastFetchTime;
+List<_ReleaseInfo>? _cachedReleases;
+String? _lastSourceType;
+String? _lastCustomApiUrl;
+Future<List<_ReleaseInfo>>? _pendingFetch;
+
 /// 根据配置获取所有发布信息
-Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig() async {
+Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
+  bool forceRefresh = false,
+}) async {
   final prefs = await SharedPreferences.getInstance();
   final sourceType = prefs.getString('update_source_type') ?? 'auto';
   final customApiUrl = prefs.getString('custom_update_api_url');
+  final lastAttemptKey = 'update_last_attempt_time';
+  final cacheDataKey = 'update_cached_releases_data';
 
-  List<_ReleaseInfo> releases = [];
+  // 1. 检查内存缓存 (5秒)
+  if (!forceRefresh &&
+      _cachedReleases != null &&
+      _lastFetchTime != null &&
+      _lastSourceType == sourceType &&
+      _lastCustomApiUrl == customApiUrl &&
+      DateTime.now().difference(_lastFetchTime!) < const Duration(seconds: 5)) {
+    return _cachedReleases!;
+  }
 
-  try {
-    if (sourceType == 'auto') {
-      // 自动模式：GitHub 优先，Gitee 备用，最后比较版本
+  // 2. 检查持久化缓存 (60秒)
+  final now = DateTime.now().millisecondsSinceEpoch;
+  final lastAttempt = prefs.getInt(lastAttemptKey) ?? 0;
+
+  // 如果不是强制刷新，且距离上次尝试不足 60 秒，尝试读取本地缓存
+  if (!forceRefresh && (now - lastAttempt) < 60000) {
+    final cachedJson = prefs.getString(cacheDataKey);
+    if (cachedJson != null) {
       try {
-        final githubReleases = await _loadReleasesFromGitHub();
-        releases.addAll(githubReleases);
-      } catch (e) {
-        debugPrint('GitHub 获取失败: $e');
-      }
+        final List<dynamic> list = jsonDecode(cachedJson);
+        final releases = list.map((e) => _ReleaseInfo.fromJson(e)).toList();
+        if (releases.isNotEmpty) {
+          _cachedReleases = releases;
+          _lastFetchTime = DateTime.now();
+          _lastSourceType = sourceType;
+          _lastCustomApiUrl = customApiUrl;
+          return releases;
+        }
+      } catch (_) {}
+    }
+  }
 
-      try {
-        final giteeReleases = await _loadReleasesFromGitee();
-        releases.addAll(giteeReleases);
-      } catch (e) {
-        debugPrint('Gitee 获取失败: $e');
+  // 3. 检查是否有正在进行的请求
+  if (_pendingFetch != null) {
+    return _pendingFetch!;
+  }
+
+  Future<List<_ReleaseInfo>> executeFetch() async {
+    // 定义单次获取逻辑
+    Future<List<_ReleaseInfo>> fetchOnce() async {
+      List<_ReleaseInfo> releases = [];
+      if (sourceType == 'auto') {
+        // 自动模式：同时请求 GitHub 和 Gitee
+        // 优先 GitHub，若失败则记录错误但不中断 Gitee
+        List<_ReleaseInfo> githubReleases = [];
+        List<_ReleaseInfo> giteeReleases = [];
+
+        await Future.wait([
+          _loadReleasesFromGitHub()
+              .then((v) => githubReleases = v)
+              .catchError((_) => <_ReleaseInfo>[]),
+          _loadReleasesFromGitee()
+              .then((v) => giteeReleases = v)
+              .catchError((_) => <_ReleaseInfo>[]),
+        ]);
+
+        // 合并逻辑：优先使用有内容的 GitHub 版本
+        // 1. 创建版本映射
+        final Map<String, _ReleaseInfo> mergedMap = {};
+
+        // 先放入 Gitee (优先级低)
+        for (var r in giteeReleases) {
+          if (r.version != null) {
+            mergedMap[r.version.toString()] = r;
+          }
+        }
+
+        // 再放入 GitHub (优先级高，或者根据内容决定)
+        for (var r in githubReleases) {
+          if (r.version != null) {
+            final key = r.version.toString();
+            final existing = mergedMap[key];
+
+            // 如果 Gitee 已存在该版本
+            if (existing != null) {
+              final existingBody = existing.body?.trim() ?? '';
+              final newBody = r.body?.trim() ?? '';
+
+              // 如果 GitHub 有内容，或者 Gitee 没内容，则覆盖 (即优先 GitHub，除非 GitHub 空且 Gitee 非空)
+              if (newBody.isNotEmpty || existingBody.isEmpty) {
+                mergedMap[key] = r;
+              }
+            } else {
+              mergedMap[key] = r;
+            }
+          }
+        }
+
+        releases = mergedMap.values.toList();
+
+        // 如果合并后为空，说明两个都失败了
+        if (releases.isEmpty) {
+          throw Exception('All sources failed in auto mode');
+        }
+      } else if (sourceType == 'github') {
+        releases = await _loadReleasesFromGitHub();
+      } else if (sourceType == 'gitee') {
+        releases = await _loadReleasesFromGitee();
+      } else if (sourceType == 'custom') {
+        if (customApiUrl != null && customApiUrl.isNotEmpty) {
+          releases = await _loadReleasesFromCustom(customApiUrl);
+        }
       }
-    } else if (sourceType == 'github') {
-      releases = await _loadReleasesFromGitHub();
-    } else if (sourceType == 'gitee') {
-      releases = await _loadReleasesFromGitee();
-    } else if (sourceType == 'custom') {
-      if (customApiUrl != null && customApiUrl.isNotEmpty) {
-        releases = await _loadReleasesFromCustom(customApiUrl);
+      return releases;
+    }
+
+    List<_ReleaseInfo> releases = [];
+    try {
+      // 第一次尝试
+      releases = await fetchOnce();
+    } catch (_) {
+      // 第二次失败，等待 5 秒后重试
+      await Future.delayed(const Duration(seconds: 5));
+      try {
+        releases = await fetchOnce();
+      } catch (e) {
+        debugPrint('获取发布信息最终失败: $e');
+        // 最终失败，更新尝试时间，以便 60s 后再试
+        await prefs.setInt(
+          lastAttemptKey,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        // 尝试返回旧缓存
+        final cachedJson = prefs.getString(cacheDataKey);
+        if (cachedJson != null) {
+          try {
+            final List<dynamic> list = jsonDecode(cachedJson);
+            return list.map((e) => _ReleaseInfo.fromJson(e)).toList();
+          } catch (_) {}
+        }
+        return [];
       }
     }
-  } catch (e) {
-    debugPrint('获取发布信息失败: $e');
+
+    // 获取成功，更新缓存
+    if (releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+
+      await prefs.setInt(lastAttemptKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setString(
+        cacheDataKey,
+        jsonEncode(releases.map((e) => e.toJson()).toList()),
+      );
+    }
+
+    return releases;
   }
-  return releases;
+
+  _pendingFetch = executeFetch();
+  try {
+    return await _pendingFetch!;
+  } finally {
+    _pendingFetch = null;
+  }
 }
 
 /// 获取最新的稳定版本信息，若无稳定版则返回候选。
@@ -1853,7 +2120,7 @@ _AndroidApkVariant? _variantForAbi(String abi) {
 
 /// 将字节大小转换为可读字符串。
 String _formatFileSize(int bytes) {
-  if (bytes <= 0) return '0 B';
+  if (bytes <= 0) return '未知大小';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   double size = bytes.toDouble();
   var unitIndex = 0;
@@ -2038,6 +2305,15 @@ class _ReleaseAsset {
       contentType: json['content_type'] as String? ?? '',
       size: json['size'] as int? ?? 0,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'browser_download_url': browserDownloadUrl,
+      'content_type': contentType,
+      'size': size,
+    };
   }
 }
 
