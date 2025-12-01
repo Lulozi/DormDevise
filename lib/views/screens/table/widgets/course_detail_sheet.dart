@@ -177,7 +177,7 @@ class CourseDetailSheet extends StatelessWidget {
             showColon: false,
           ),
           const SizedBox(height: 4),
-          _buildDetailRow(formatWeeks(item.session), ''),
+          _buildDetailRow(formatWeeks(item.session), '', showColon: false),
         ],
       ),
     );
@@ -185,10 +185,9 @@ class CourseDetailSheet extends StatelessWidget {
 
   /// 构建详情行（标签 + 值）
   Widget _buildDetailRow(String label, String value, {bool showColon = true}) {
-    // 当 value 为空时，不显示冒号；否则显示“标签： 值”格式
     final List<InlineSpan> children = <InlineSpan>[];
     if (value.trim().isEmpty) {
-      children.add(TextSpan(text: label));
+      children.add(TextSpan(text: showColon ? '$label： ' : label));
     } else {
       children.add(TextSpan(text: showColon ? '$label： ' : '$label '));
       children.add(
