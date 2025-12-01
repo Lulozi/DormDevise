@@ -1015,7 +1015,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 ),
               ),
             // 1. 自适应课程名（标题）
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: Text(
                 block.course.name,
                 style: titleStyle.copyWith(
@@ -1083,6 +1084,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   setState(() {
                     _draggingBlock = block;
                     _isResizing = false;
+                    _initialDragOffset = details.localPosition;
                     _dragOffset = Offset(
                       block.columnIndex * dayWidth,
                       startOffset,
@@ -1098,12 +1100,14 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   if (_draggingBlock == null || _isResizing) return;
                   setState(() {
                     _dragOffset = Offset(
-                      (block.columnIndex * dayWidth + details.localPosition.dx)
+                      (block.columnIndex * dayWidth +
+                              details.localPosition.dx -
+                              _initialDragOffset.dx)
                           .clamp(0, viewportWidth - dayWidth),
-                      (startOffset + details.localPosition.dy).clamp(
-                        0,
-                        tableHeight - blockHeight,
-                      ),
+                      (startOffset +
+                              details.localPosition.dy -
+                              _initialDragOffset.dy)
+                          .clamp(0, tableHeight - blockHeight),
                     );
 
                     // 计算目标位置
