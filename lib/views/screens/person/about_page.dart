@@ -1564,9 +1564,7 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
       }
 
       // 3. 兜底（最新版本）
-      if (matchedRelease == null) {
-        matchedRelease = releases.first;
-      }
+      matchedRelease ??= releases.first;
 
       final body = matchedRelease.body?.trim() ?? '';
       if (body.isEmpty) return null;

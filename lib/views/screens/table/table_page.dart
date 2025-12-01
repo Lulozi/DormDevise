@@ -180,7 +180,7 @@ class _TablePageState extends State<TablePage> {
             children: <Widget>[
               Text(_tableName, style: titleStyle),
               const SizedBox(height: 4),
-              Text('${_formatSemesterRange()}', style: subtitleStyle),
+              Text(_formatSemesterRange(), style: subtitleStyle),
             ],
           ),
         ),
