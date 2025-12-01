@@ -39,6 +39,9 @@ class CourseSession {
   /// 周次类型限制（单双周或全周）。
   final CourseWeekType weekType;
 
+  /// 自定义周次列表（若非空，则忽略 weekType，仅匹配列表中的周次）。
+  final List<int> customWeeks;
+
   const CourseSession({
     required this.weekday,
     required this.startSection,
@@ -47,10 +50,14 @@ class CourseSession {
     required this.startWeek,
     required this.endWeek,
     this.weekType = CourseWeekType.all,
+    this.customWeeks = const [],
   });
 
   /// 判断指定周次是否需要上课。
   bool occursInWeek(int week) {
+    if (customWeeks.isNotEmpty) {
+      return customWeeks.contains(week);
+    }
     if (week < startWeek || week > endWeek) {
       return false;
     }
@@ -74,6 +81,7 @@ class CourseSession {
       'startWeek': startWeek,
       'endWeek': endWeek,
       'weekType': weekType.index,
+      if (customWeeks.isNotEmpty) 'customWeeks': customWeeks,
     };
   }
 
@@ -87,6 +95,7 @@ class CourseSession {
       startWeek: json['startWeek'] as int,
       endWeek: json['endWeek'] as int,
       weekType: CourseWeekType.values[json['weekType'] as int],
+      customWeeks: (json['customWeeks'] as List<dynamic>?)?.cast<int>() ?? [],
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dormdevise/utils/course_utils.dart';
 import '../../../../models/course.dart';
 import '../course_edit_page.dart';
 
@@ -175,10 +176,7 @@ class CourseDetailSheet extends StatelessWidget {
             '(${_formatTime(item.startTime)} - ${_formatTime(item.endTime)})',
           ),
           const SizedBox(height: 4),
-          _buildDetailRow(
-            '第 ${item.session.startWeek}-${item.session.endWeek} 周',
-            '',
-          ),
+          _buildDetailRow(formatWeeks(item.session), ''),
         ],
       ),
     );
@@ -186,6 +184,20 @@ class CourseDetailSheet extends StatelessWidget {
 
   /// 构建详情行（标签 + 值）
   Widget _buildDetailRow(String label, String value) {
+    // 当 value 为空时，不显示冒号；否则显示“标签： 值”格式
+    final List<InlineSpan> children = <InlineSpan>[];
+    if (value.trim().isEmpty) {
+      children.add(TextSpan(text: label));
+    } else {
+      children.add(TextSpan(text: '$label： '));
+      children.add(
+        TextSpan(
+          text: value,
+          style: const TextStyle(color: Color(0xFF666666)),
+        ),
+      );
+    }
+
     return RichText(
       text: TextSpan(
         style: const TextStyle(
@@ -193,13 +205,7 @@ class CourseDetailSheet extends StatelessWidget {
           color: Color(0xFF999999),
           height: 1.5,
         ),
-        children: [
-          TextSpan(text: '$label： '),
-          TextSpan(
-            text: value,
-            style: const TextStyle(color: Color(0xFF666666)),
-          ),
-        ],
+        children: children,
       ),
     );
   }

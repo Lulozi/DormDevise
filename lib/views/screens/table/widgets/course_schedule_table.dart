@@ -1504,6 +1504,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
             startWeek: originalSession.startWeek,
             endWeek: originalSession.endWeek,
             weekType: originalSession.weekType,
+            customWeeks: originalSession.customWeeks,
           );
           newSessions.add(updatedOriginalSession);
         } else if (count >= 2) {
@@ -1517,6 +1518,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
               startWeek: originalSession.startWeek,
               endWeek: originalSession.endWeek,
               weekType: originalSession.weekType,
+              customWeeks: originalSession.customWeeks,
             ),
           );
         }
@@ -1822,6 +1824,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           startWeek: s.startWeek,
           endWeek: s.endWeek,
           weekType: s.weekType,
+          customWeeks: s.customWeeks,
         );
         return targetSession!;
       }

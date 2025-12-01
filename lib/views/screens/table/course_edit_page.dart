@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/utils/index.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import 'package:dormdevise/utils/course_utils.dart';
 import '../../../../models/course.dart';
 import '../../../../models/course_schedule_config.dart';
 import '../../../../services/course_service.dart';
@@ -47,6 +48,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
   int _startWeek = 1;
   late int _endWeek;
   CourseWeekType _weekType = CourseWeekType.all;
+  List<int> _customWeeks = [];
 
   int? _expandedSessionIndex;
 
@@ -96,6 +98,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
       _startWeek = widget.course!.sessions.first.startWeek;
       _endWeek = widget.course!.sessions.first.endWeek;
       _weekType = widget.course!.sessions.first.weekType;
+      _customWeeks = widget.course!.sessions.first.customWeeks;
     }
     _classroomController = TextEditingController(text: initialLocation);
 
@@ -357,6 +360,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
               startWeek: session.startWeek,
               endWeek: session.endWeek,
               weekType: session.weekType,
+              customWeeks: session.customWeeks,
             ),
           );
         }
@@ -578,6 +582,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         startWeek: _startWeek, // 应用全局开始周
         endWeek: _endWeek, // 应用全局结束周
         weekType: _weekType, // 应用全局周类型
+        customWeeks: _customWeeks, // 应用全局自定义周
       );
     }).toList();
 
@@ -601,6 +606,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
           startWeek: _startWeek,
           endWeek: _endWeek,
           weekType: _weekType,
+          customWeeks: _customWeeks,
         ),
       );
     });
@@ -623,6 +629,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         initialStart: _startWeek,
         initialEnd: _endWeek,
         initialType: _weekType,
+        initialCustomWeeks: _customWeeks,
         maxWeek: widget.maxWeek,
       ),
     );
@@ -632,6 +639,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         _startWeek = result['start'] as int;
         _endWeek = result['end'] as int;
         _weekType = result['type'] as CourseWeekType;
+        _customWeeks = result['customWeeks'] as List<int>;
       });
     }
   }
@@ -660,12 +668,18 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   @override
   Widget build(BuildContext context) {
-    String weekText = '第 $_startWeek-$_endWeek 周';
-    if (_weekType == CourseWeekType.single) {
-      weekText += ' 单周';
-    } else if (_weekType == CourseWeekType.double) {
-      weekText += ' 双周';
-    }
+    // 构造一个临时的 CourseSession 来使用 formatWeeks
+    final tempSession = CourseSession(
+      weekday: 1, // 占位
+      startSection: 1, // 占位
+      sectionCount: 1, // 占位
+      location: '',
+      startWeek: _startWeek,
+      endWeek: _endWeek,
+      weekType: _weekType,
+      customWeeks: _customWeeks,
+    );
+    String weekText = formatWeeks(tempSession);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
@@ -988,6 +1002,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                         startWeek: session.startWeek,
                         endWeek: session.endWeek,
                         weekType: session.weekType,
+                        customWeeks: session.customWeeks,
                       );
                     });
                   },
@@ -1028,6 +1043,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                       startWeek: session.startWeek,
                       endWeek: session.endWeek,
                       weekType: session.weekType,
+                      customWeeks: session.customWeeks,
                     );
                     _updateSession(index, newSession);
                   },
@@ -1067,6 +1083,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                       startWeek: session.startWeek,
                       endWeek: session.endWeek,
                       weekType: session.weekType,
+                      customWeeks: session.customWeeks,
                     );
                     _updateSession(index, newSession);
                   },
@@ -1125,22 +1142,29 @@ class _CourseEditPageState extends State<CourseEditPage> {
               label,
               style: const TextStyle(fontSize: 16, color: Colors.black87),
             ),
-            Row(
-              children: [
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF8E8E93),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF8E8E93),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(
-                  Icons.chevron_right,
-                  size: 20,
-                  color: Color(0xFFC4C4C6),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: Color(0xFFC4C4C6),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1199,12 +1223,14 @@ class _WeekRangePicker extends StatefulWidget {
   final int initialStart;
   final int initialEnd;
   final CourseWeekType initialType;
+  final List<int> initialCustomWeeks;
   final int maxWeek;
 
   const _WeekRangePicker({
     required this.initialStart,
     required this.initialEnd,
     required this.initialType,
+    this.initialCustomWeeks = const [],
     required this.maxWeek,
   });
 
@@ -1220,17 +1246,22 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
   @override
   void initState() {
     super.initState();
-    _currentType = widget.initialType;
     _selectedWeeks = {};
 
-    // 根据范围和类型初始化选择
-    for (int i = widget.initialStart; i <= widget.initialEnd; i++) {
-      if (widget.initialType == CourseWeekType.all) {
-        _selectedWeeks.add(i);
-      } else if (widget.initialType == CourseWeekType.single) {
-        if (i % 2 != 0) _selectedWeeks.add(i);
-      } else if (widget.initialType == CourseWeekType.double) {
-        if (i % 2 == 0) _selectedWeeks.add(i);
+    if (widget.initialCustomWeeks.isNotEmpty) {
+      _selectedWeeks.addAll(widget.initialCustomWeeks);
+      _currentType = null;
+    } else {
+      _currentType = widget.initialType;
+      // 根据范围和类型初始化选择
+      for (int i = widget.initialStart; i <= widget.initialEnd; i++) {
+        if (widget.initialType == CourseWeekType.all) {
+          _selectedWeeks.add(i);
+        } else if (widget.initialType == CourseWeekType.single) {
+          if (i % 2 != 0) _selectedWeeks.add(i);
+        } else if (widget.initialType == CourseWeekType.double) {
+          if (i % 2 == 0) _selectedWeeks.add(i);
+        }
       }
     }
   }
@@ -1258,13 +1289,82 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
 
   void _toggleWeek(int week) {
     setState(() {
-      _currentType = null; // 手动修改时清除预设类型状态
       if (_selectedWeeks.contains(week)) {
         _selectedWeeks.remove(week);
       } else {
         _selectedWeeks.add(week);
       }
+      _updateCurrentTypeFromSelection();
     });
+  }
+
+  void _updateCurrentTypeFromSelection() {
+    if (_selectedWeeks.isEmpty) {
+      _currentType = null;
+      return;
+    }
+
+    final sortedWeeks = _selectedWeeks.toList()..sort();
+    final start = sortedWeeks.first;
+    final end = sortedWeeks.last;
+
+    bool isAllOdd = true;
+    bool isAllEven = true;
+
+    for (final w in sortedWeeks) {
+      if (w % 2 == 0) isAllOdd = false;
+      if (w % 2 != 0) isAllEven = false;
+    }
+
+    CourseWeekType? candidateType;
+    if (isAllOdd) {
+      candidateType = CourseWeekType.single;
+    } else if (isAllEven) {
+      candidateType = CourseWeekType.double;
+    } else {
+      // 检查是否连续
+      bool isContiguous = true;
+      for (int i = 0; i < sortedWeeks.length - 1; i++) {
+        if (sortedWeeks[i + 1] - sortedWeeks[i] != 1) {
+          isContiguous = false;
+          break;
+        }
+      }
+      if (isContiguous) {
+        candidateType = CourseWeekType.all;
+      }
+    }
+
+    if (candidateType == null) {
+      _currentType = null;
+      return;
+    }
+
+    // 验证完整性：检查 start 到 end 之间是否包含了所有该类型应有的周次
+    bool match = true;
+    for (int i = start; i <= end; i++) {
+      bool shouldHave = false;
+      if (candidateType == CourseWeekType.all) {
+        shouldHave = true;
+      } else if (candidateType == CourseWeekType.single) {
+        if (i % 2 != 0) shouldHave = true;
+      } else if (candidateType == CourseWeekType.double) {
+        if (i % 2 == 0) shouldHave = true;
+      }
+
+      if (shouldHave) {
+        if (!_selectedWeeks.contains(i)) {
+          match = false;
+          break;
+        }
+      }
+    }
+
+    if (match) {
+      _currentType = candidateType;
+    } else {
+      _currentType = null;
+    }
   }
 
   @override
@@ -1460,7 +1560,41 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
       type = CourseWeekType.all;
     }
 
-    Navigator.pop(context, {'start': start, 'end': end, 'type': type});
+    // 检查推断的类型是否完全匹配选中的周次
+    Set<int> inferredWeeks = {};
+    for (int i = start; i <= end; i++) {
+      if (type == CourseWeekType.all) {
+        inferredWeeks.add(i);
+      } else if (type == CourseWeekType.single) {
+        if (i % 2 != 0) inferredWeeks.add(i);
+      } else if (type == CourseWeekType.double) {
+        if (i % 2 == 0) inferredWeeks.add(i);
+      }
+    }
+
+    List<int> customWeeks = [];
+    bool match = true;
+    if (inferredWeeks.length != sortedWeeks.length) {
+      match = false;
+    } else {
+      for (int w in sortedWeeks) {
+        if (!inferredWeeks.contains(w)) {
+          match = false;
+          break;
+        }
+      }
+    }
+
+    if (!match) {
+      customWeeks = sortedWeeks;
+    }
+
+    Navigator.pop(context, {
+      'start': start,
+      'end': end,
+      'type': type,
+      'customWeeks': customWeeks,
+    });
   }
 }
 
