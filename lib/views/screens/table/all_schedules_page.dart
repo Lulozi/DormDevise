@@ -74,6 +74,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
 
   // 动画状态标记
   String? _newlyAddedId;
+  bool _shouldFlashNewlyAdded = true;
 
   @override
   void initState() {
@@ -173,6 +174,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
           // 若删除了全部课程表，则自动创建的默认课表视为新建并播放入场动画
           if (deletingAll && schedules.isNotEmpty) {
             _newlyAddedId = schedules.first.id;
+            _shouldFlashNewlyAdded = false;
           }
         });
 
@@ -271,6 +273,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             if (_schedules.isNotEmpty) {
               setState(() {
                 _newlyAddedId = _schedules.first.id;
+                _shouldFlashNewlyAdded = true;
               });
             }
           }
@@ -470,7 +473,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                     );
 
                     Color? flashColor;
-                    if (flashInput > 0) {
+                    if (_shouldFlashNewlyAdded && flashInput > 0) {
                       // 使用抛物线形曲线实现单次平滑闪烁：0 -> 1 -> 0
                       // 模拟一次呼吸/闪烁效果
                       final double flashIntensity =
