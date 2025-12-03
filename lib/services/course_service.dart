@@ -244,4 +244,39 @@ class CourseService {
     final String key = await _getKey(_showNonCurrentWeekKey, scheduleId);
     await prefs.setBool(key, show);
   }
+
+  /// 删除课程表
+  Future<void> deleteSchedules(List<String> ids) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final schedules = await loadSchedules();
+    final currentId = await getCurrentScheduleId();
+
+    // 过滤掉要删除的 ID
+    schedules.removeWhere((s) => ids.contains(s.id));
+
+    // 如果删除了当前课程表，或者删除了所有课程表，需要重置当前 ID
+    if (ids.contains(currentId) || schedules.isEmpty) {
+      if (schedules.isNotEmpty) {
+        await switchSchedule(schedules.first.id);
+      } else {
+        // 如果删空了，创建一个默认的
+        final newId = const Uuid().v4();
+        schedules.add(ScheduleMetadata(id: newId, name: '我的课表'));
+        await switchSchedule(newId);
+      }
+    }
+
+    await _saveSchedules(schedules);
+
+    // 清理相关数据 (可选，为了保持存储整洁)
+    for (final id in ids) {
+      await prefs.remove('${_coursesKey}_$id');
+      await prefs.remove('${_configKey}_$id');
+      await prefs.remove('${_semesterStartKey}_$id');
+      await prefs.remove('${_maxWeekKey}_$id');
+      await prefs.remove('${_tableNameKey}_$id');
+      await prefs.remove('${_showWeekendKey}_$id');
+      await prefs.remove('${_showNonCurrentWeekKey}_$id');
+    }
+  }
 }

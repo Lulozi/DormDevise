@@ -66,6 +66,10 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   String _currentScheduleId = '';
   bool _isLoading = true;
 
+  // Selection Mode
+  bool _isSelectionMode = false;
+  final Set<String> _selectedIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -89,6 +93,78 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         _currentScheduleId = currentId;
         _isLoading = false;
       });
+    }
+  }
+
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelectionMode = !_isSelectionMode;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      if (_selectedIds.length == _schedules.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds.addAll(_schedules.map((s) => s.id));
+      }
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedIds.isEmpty) return;
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除选中的 ${_selectedIds.length} 个课程表吗？此操作不可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await CourseService.instance.deleteSchedules(_selectedIds.toList());
+      _toggleSelectionMode();
+      _loadSchedules();
+      // 如果当前课表被删除了，需要通知上层更新
+      // 这里简单起见，直接返回 true 让上层刷新
+      if (mounted) {
+        // 检查是否需要强制刷新上层
+        // 由于 deleteSchedules 内部处理了 currentId 的重置，
+        // 我们只需要确保 TablePage 知道发生了变化。
+        // 目前 TablePage 在 pop(true) 时会刷新。
+        // 但这里我们还在 AllSchedulesPage 内部。
+        // 如果删除了当前课表，_currentScheduleId 会变。
+        final newCurrentId = await CourseService.instance
+            .getCurrentScheduleId();
+        if (newCurrentId != _currentScheduleId) {
+          // 如果当前课表变了，我们应该通知 TablePage
+          // 但 AllSchedulesPage 是 push 进来的，我们不能直接通知
+          // 只能在 pop 时返回 true
+        }
+      }
     }
   }
 
@@ -201,13 +277,26 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7F8FC),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          '全部课程表',
-          style: TextStyle(
+        leading: _isSelectionMode
+            ? TextButton(
+                onPressed: _selectAll,
+                child: Text(
+                  _selectedIds.length == _schedules.length ? '不全选' : '全选',
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+        leadingWidth: _isSelectionMode ? 80 : null,
+        title: Text(
+          _isSelectionMode ? '已选择${_selectedIds.length}项' : '全部课程表',
+          style: const TextStyle(
             color: Colors.black,
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -215,59 +304,124 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const FaIcon(
-              FontAwesomeIcons.squareCheck,
-              color: Colors.black87,
-              size: 22,
+          if (_isSelectionMode)
+            TextButton(
+              onPressed: _toggleSelectionMode,
+              child: const Text(
+                '取消',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          else ...[
+            IconButton(
+              icon: const FaIcon(
+                FontAwesomeIcons.squareCheck,
+                color: Colors.black87,
+                size: 22,
+              ),
+              onPressed: _toggleSelectionMode,
             ),
-            onPressed: () {
-              AppToast.show(context, '功能开发中');
-            },
-          ),
-          IconButton(
-            key: _addBtnKey,
-            icon: Icon(
-              Icons.add,
-              color: _isAddMenuOpen ? Colors.grey : Colors.black87,
-              size: 28,
-            ),
-            onPressed: () async {
-              setState(() {
-                _isAddMenuOpen = true;
-              });
-              await _showAddMenu(context);
-              if (mounted) {
+            IconButton(
+              key: _addBtnKey,
+              icon: Icon(
+                Icons.add,
+                color: _isAddMenuOpen ? Colors.grey : Colors.black87,
+                size: 28,
+              ),
+              onPressed: () async {
                 setState(() {
-                  _isAddMenuOpen = false;
+                  _isAddMenuOpen = true;
                 });
-              }
-            },
-          ),
+                await _showAddMenu(context);
+                if (mounted) {
+                  setState(() {
+                    _isAddMenuOpen = false;
+                  });
+                }
+              },
+            ),
+          ],
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Stack(
         children: [
-          const SizedBox(height: 12),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _schedules.length,
-                    itemBuilder: (context, index) {
-                      final schedule = _schedules[index];
-                      return _buildScheduleCard(
-                        context,
-                        isCurrent: schedule.id == _currentScheduleId,
-                        name: schedule.name,
-                        id: schedule.id,
-                      );
-                    },
+          ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+            itemCount: _schedules.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _isSelectionMode
+                        ? '删除全部课程表将自动生成默认课程表'
+                        : '点击课程表卡片可切换当前并查看课程',
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
                   ),
+                );
+              }
+              final schedule = _schedules[index - 1];
+              return _buildScheduleCard(
+                context,
+                isCurrent: schedule.id == _currentScheduleId,
+                name: schedule.name,
+                id: schedule.id,
+              );
+            },
           ),
+          if (_isSelectionMode)
+            Positioned(
+              left: 48,
+              right: 48,
+              bottom: 32,
+              child: SafeArea(
+                child: GestureDetector(
+                  onTap: _selectedIds.isEmpty ? null : _deleteSelected,
+                  child: Container(
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color.fromRGBO(0, 0, 0, 0.08),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.delete_outline,
+                          color: _selectedIds.isEmpty
+                              ? Colors.grey
+                              : const Color(0xFF333333),
+                          size: 26,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '删除',
+                          style: TextStyle(
+                            color: _selectedIds.isEmpty
+                                ? Colors.grey
+                                : const Color(0xFF333333),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -279,6 +433,8 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     required String name,
     required String id,
   }) {
+    final bool isSelected = _selectedIds.contains(id);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -296,11 +452,21 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
+          onLongPress: () {
+            if (!_isSelectionMode) {
+              _toggleSelectionMode();
+              _toggleSelection(id);
+            }
+          },
           onTap: () async {
-            if (!isCurrent) {
-              await CourseService.instance.switchSchedule(id);
-              if (context.mounted) {
-                Navigator.of(context).pop(true);
+            if (_isSelectionMode) {
+              _toggleSelection(id);
+            } else {
+              if (!isCurrent) {
+                await CourseService.instance.switchSchedule(id);
+                if (context.mounted) {
+                  Navigator.of(context).pop(true);
+                }
               }
             }
           },
@@ -308,6 +474,16 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             child: Row(
               children: [
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  child: _isSelectionMode
+                      ? Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: _buildAnimatedCheckbox(isSelected),
+                        )
+                      : const SizedBox.shrink(),
+                ),
                 Text(
                   name,
                   style: const TextStyle(
@@ -338,35 +514,56 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                   ),
                 ],
                 const Spacer(),
-                Material(
-                  color: const Color(0xFFF2F2F2),
-                  borderRadius: BorderRadius.circular(16),
-                  child: InkWell(
+                if (!_isSelectionMode)
+                  Material(
+                    color: const Color(0xFFF2F2F2),
                     borderRadius: BorderRadius.circular(16),
-                    onTap: () {
-                      _openSettings(context, id);
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 6,
-                      ),
-                      child: Text(
-                        '设置',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        _openSettings(context, id);
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
+                        child: Text(
+                          '设置',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAnimatedCheckbox(bool isSelected) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.blue : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isSelected ? Colors.blue : Colors.grey.shade300,
+          width: 2,
+        ),
+      ),
+      child: isSelected
+          ? const Icon(Icons.check, size: 16, color: Colors.white)
+          : null,
     );
   }
 
