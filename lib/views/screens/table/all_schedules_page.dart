@@ -135,9 +135,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         opaque: false,
         barrierDismissible: true,
         barrierColor: Colors.transparent,
-        transitionDuration: Duration.zero,
-        reverseTransitionDuration: Duration.zero,
-        pageBuilder: (context, _, __) {
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        pageBuilder: (context, animation, __) {
           return Stack(
             children: [
               GestureDetector(
@@ -148,43 +148,54 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               Positioned(
                 top: topOffset + 10,
                 right: rightOffset,
-                child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(20),
-                  color: Colors.white,
-                  child: SizedBox(
-                    width: 180,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildCustomMenuItem(
-                          context,
-                          'web',
-                          '网页导入课程表',
-                          Icons.language,
+                child: ScaleTransition(
+                  scale: CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutBack,
+                    reverseCurve: Curves.easeIn,
+                  ),
+                  alignment: Alignment.topRight,
+                  child: FadeTransition(
+                    opacity: animation,
+                    child: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.white,
+                      child: SizedBox(
+                        width: 180,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildCustomMenuItem(
+                              context,
+                              'web',
+                              '网页导入课程表',
+                              Icons.language,
+                            ),
+                            const Divider(height: 1, thickness: 0.5),
+                            _buildCustomMenuItem(
+                              context,
+                              'camera',
+                              '拍照导入课程表',
+                              Icons.camera_alt_outlined,
+                            ),
+                            const Divider(height: 1, thickness: 0.5),
+                            _buildCustomMenuItem(
+                              context,
+                              'file',
+                              '文件导入课程表',
+                              Icons.folder_open,
+                            ),
+                            const Divider(height: 1, thickness: 0.5),
+                            _buildCustomMenuItem(
+                              context,
+                              'manual',
+                              '手动创建课程表',
+                              Icons.edit_outlined,
+                            ),
+                          ],
                         ),
-                        const Divider(height: 1, thickness: 0.5),
-                        _buildCustomMenuItem(
-                          context,
-                          'camera',
-                          '拍照导入课程表',
-                          Icons.camera_alt_outlined,
-                        ),
-                        const Divider(height: 1, thickness: 0.5),
-                        _buildCustomMenuItem(
-                          context,
-                          'file',
-                          '文件导入课程表',
-                          Icons.folder_open,
-                        ),
-                        const Divider(height: 1, thickness: 0.5),
-                        _buildCustomMenuItem(
-                          context,
-                          'manual',
-                          '手动创建课程表',
-                          Icons.edit_outlined,
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
