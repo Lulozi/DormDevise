@@ -216,12 +216,80 @@ class _TablePageState extends State<TablePage> {
     final DateTime initialDate = _firstWeekStart.add(
       Duration(days: (_currentWeek - 1) * 7),
     );
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
       firstDate: _firstWeekStart,
       lastDate: _firstWeekStart.add(Duration(days: (_maxWeek - 1) * 7 + 6)),
       helpText: '选择要跳转的日期',
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: theme.copyWith(
+            colorScheme: colorScheme.copyWith(
+              surface: Colors.white,
+              onSurface: const Color(0xFF3D4555),
+              primary: colorScheme.primary,
+              onPrimary: Colors.white,
+              secondaryContainer: colorScheme.primary.withValues(alpha: 0.15),
+              onSecondaryContainer: colorScheme.primary,
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              headerBackgroundColor: const Color(0xFFF8FAFF),
+              headerForegroundColor: const Color(0xFF3D4555),
+              dividerColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              headerHeadlineStyle: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3D4555),
+                letterSpacing: -0.5,
+              ),
+              headerHelpStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF6C768A),
+              ),
+              weekdayStyle: const TextStyle(
+                color: Color(0xFF6C768A),
+                fontWeight: FontWeight.w600,
+              ),
+              dayStyle: const TextStyle(
+                color: Color(0xFF3D4555),
+                fontWeight: FontWeight.w500,
+              ),
+              yearStyle: const TextStyle(color: Color(0xFF3D4555)),
+              todayBorder: BorderSide(color: colorScheme.primary, width: 1.5),
+              todayForegroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return Colors.white;
+                }
+                return colorScheme.primary;
+              }),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.primary,
+                textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked == null) {
       return;
