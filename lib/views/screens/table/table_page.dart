@@ -195,9 +195,9 @@ class _TablePageState extends State<TablePage> {
             AppToast.show(context, '功能开发中');
           },
           useFaIcon: true,
-          iconSize: 20,
+          iconSize: 16,
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         _ToolbarIconButton(
           icon: FontAwesomeIcons.shareFromSquare,
           tooltip: '分享课表',
@@ -206,9 +206,9 @@ class _TablePageState extends State<TablePage> {
             AppToast.show(context, '功能开发中');
           },
           useFaIcon: true,
-          iconSize: 20,
+          iconSize: 16,
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         _ToolbarIconButton(
           icon: FontAwesomeIcons.listUl,
           tooltip: '课程表设置',
@@ -217,7 +217,7 @@ class _TablePageState extends State<TablePage> {
             _openScheduleSettings();
           },
           useFaIcon: true,
-          iconSize: 20,
+          iconSize: 16,
         ),
       ],
     );
