@@ -76,6 +76,16 @@ DormDevise is a cross-platform Flutter app designed for dormitory scenarios, sup
 - MQTT topic subscription debugging records the last topic by default, which can be cleared in settings.
 - Some hardware features (Wi-Fi scan, APK download) may not be available on desktop or web.
 
+## Environment & Requirements
+
+To ensure consistent builds and compatibility, please set up your development or CI environment with the following minimum requirements:
+
+- JDK: **Java 21** (OpenJDK 21 or equivalent JDK 21+). Verify with `java -version`.
+- Gradle Wrapper: **Gradle 8.12** (see `android/gradle/wrapper/gradle-wrapper.properties`).
+- Android Gradle Plugin: **AGP 8.9.1** (defined in `android/settings.gradle.kts`).
+- Kotlin plugin: **Kotlin 2.1.0**.
+- Flutter: Use a stable Flutter SDK compatible with the packages used; update the SDK as necessary for newer plugin versions.
+
 ## Changelog
 
 See the Chinese README for detailed version history.

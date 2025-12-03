@@ -74,6 +74,16 @@ DormDevise 是一款面向宿舍场景的 Flutter 跨平台应用，当前适配
 - MQTT Topic 订阅调试默认会记录最近一次订阅主题，可在设置页清除。
 - 若在桌面端或 Web 上运行，部分硬件特性（如 Wi-Fi 扫描、APK 下载）可能不可用。
 
+## 环境与构建要求
+
+为保证稳定的构建与兼容性，建议开发与 CI 环境满足以下要求：
+
+- JDK: **Java 21**（OpenJDK 21 或等效 JDK 21+，确保 `java -version` 输出为 21.x）。
+- Gradle Wrapper: **Gradle 8.12**（仓库中的 `android/gradle/wrapper/gradle-wrapper.properties` 已指定）。
+- Android Gradle Plugin: **AGP 8.9.1**（由 `android/settings.gradle.kts` 中定义的插件版本决定）。
+- Kotlin 插件: **Kotlin 2.1.0**（与 AGP 配合使用）。
+- Flutter SDK: 使用稳定通道（stable）且保持为最新稳定版本以避免与依赖的不兼容。
+
 ## 更新日志
 
 <details>
@@ -159,7 +169,6 @@ DormDevise 是一款面向宿舍场景的 Flutter 跨平台应用，当前适配
    - 初始构建个人页面
    - MQTT 配置页面迁移
 </details>
-
 
 ## License
 
