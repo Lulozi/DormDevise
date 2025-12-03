@@ -44,6 +44,9 @@ class CourseScheduleTable extends StatefulWidget {
   /// 点击周次表头时触发的回调 (onWeekHeaderTap)。
   final VoidCallback? onWeekHeaderTap;
 
+  /// 点击日期表头时触发的回调 (onHeaderDateTap)。
+  final VoidCallback? onHeaderDateTap;
+
   /// 点击时间列任意位置时触发的回调 (onTimeColumnTap)（除了周次表头）。
   final VoidCallback? onTimeColumnTap;
 
@@ -95,6 +98,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.onWeekChanged,
     this.onSectionTap,
     this.onWeekHeaderTap,
+    this.onHeaderDateTap,
     this.onTimeColumnTap,
     this.includeTimeColumn = true,
     this.applySurface = true,
@@ -622,6 +626,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           });
           _selectionAnimationController.forward(from: 0);
         }
+        widget.onHeaderDateTap?.call();
       },
       behavior: HitTestBehavior.translucent,
       child: Column(

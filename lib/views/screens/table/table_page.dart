@@ -186,15 +186,6 @@ class _TablePageState extends State<TablePage> {
         ),
         const SizedBox(width: 16),
         _ToolbarIconButton(
-          icon: Icons.calendar_today_outlined,
-          tooltip: '跳转日期',
-          onPressed: () {
-            _exitEditMode();
-            _pickDate(context);
-          },
-        ),
-        const SizedBox(width: 10),
-        _ToolbarIconButton(
           icon: Icons.settings_outlined,
           tooltip: '课程表设置',
           onPressed: () {
@@ -529,6 +520,10 @@ class _TablePageState extends State<TablePage> {
                     maxWeek: _maxWeek,
                     onWeekChanged: _updateWeek,
                     onSectionTap: _handleSectionTap,
+                    onHeaderDateTap: () {
+                      _exitEditMode();
+                      _pickDate(context);
+                    },
                     includeTimeColumn: false,
                     timeColumnWidth: timeColumnWidth,
                     leadingInset: 0,
