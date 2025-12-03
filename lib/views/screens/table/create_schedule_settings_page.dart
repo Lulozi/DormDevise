@@ -94,9 +94,9 @@ class _CreateScheduleSettingsPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF7F8FC),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F5F5),
+        backgroundColor: const Color(0xFFF7F8FC),
         elevation: 0,
         leading: TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -148,7 +148,7 @@ class _CreateScheduleSettingsPageState
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: TextField(
                 controller: _nameController,

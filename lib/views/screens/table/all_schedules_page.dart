@@ -150,7 +150,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 right: rightOffset,
                 child: Material(
                   elevation: 4,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(20),
                   color: Colors.white,
                   child: SizedBox(
                     width: 180,
@@ -243,9 +243,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), // Light grey background
+      backgroundColor: const Color(0xFFF7F8FC), // Light grey background
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F5F5),
+        backgroundColor: const Color(0xFFF7F8FC),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),

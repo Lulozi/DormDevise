@@ -278,7 +278,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F7),
+      backgroundColor: const Color(0xFFF7F8FC),
       appBar: AppBar(
         title: const Text(
           '课程表设置',
@@ -288,7 +288,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF7F8FC),
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
@@ -422,7 +422,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
       ),
       clipBehavior: Clip.hardEdge,
       child: Column(
