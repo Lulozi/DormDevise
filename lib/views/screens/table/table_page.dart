@@ -8,10 +8,10 @@ import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
 import 'widgets/course_schedule_table.dart';
-import 'widgets/schedule_settings_sheet.dart';
 import 'widgets/section_config_sheet.dart';
 import 'widgets/week_select_sheet.dart';
 import 'course_edit_page.dart';
+import 'all_schedules_page.dart';
 
 /// 展示并管理大学课程表的页面。
 class TablePage extends StatefulWidget {
@@ -484,7 +484,7 @@ class _TablePageState extends State<TablePage> {
     Navigator.of(context).push(
       CupertinoPageRoute(
         builder: (BuildContext context) {
-          return ScheduleSettingsPage(
+          return AllSchedulesPage(
             scheduleConfig: _scheduleConfig,
             semesterStart: _currentSemesterStart,
             currentWeek: _currentWeek,
