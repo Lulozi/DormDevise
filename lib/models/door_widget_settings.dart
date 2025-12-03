@@ -1,4 +1,4 @@
-/// 桌面微件的显示与行为配置，支持转换为 Map 以便持久化。
+/// 桌面小部件（桌面微件）的显示与行为配置类，提供序列化/反序列化能力以便持久化。
 class DoorWidgetSettings {
   final bool showLastResult;
   final bool enableHaptics;
@@ -12,7 +12,7 @@ class DoorWidgetSettings {
     required this.autoRefreshMinutes,
   });
 
-  /// 提供默认配置，避免未初始化时出现空指针。
+  /// 返回一份用于初始化的默认配置，避免未设置字段导致的空指针。
   factory DoorWidgetSettings.defaults() => const DoorWidgetSettings(
     showLastResult: true,
     enableHaptics: true,
@@ -20,7 +20,7 @@ class DoorWidgetSettings {
     autoRefreshMinutes: 30,
   );
 
-  /// 复制当前配置并应用增量修改。
+  /// 复制当前配置并应用可选的增量修改，返回新的 `DoorWidgetSettings` 实例。
   DoorWidgetSettings copyWith({
     bool? showLastResult,
     bool? enableHaptics,
@@ -35,7 +35,7 @@ class DoorWidgetSettings {
     );
   }
 
-  /// 转换为 Map 存储结构，便于写入 SharedPreferences。
+  /// 将配置转换为 Map，便于存储到 SharedPreferences 或其他 KV 存储。
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'showLastResult': showLastResult,
@@ -45,7 +45,7 @@ class DoorWidgetSettings {
     };
   }
 
-  /// 从 Map 数据还原配置对象，兼容缺失字段场景。
+  /// 从 Map 数据还原 `DoorWidgetSettings`，支持缺失字段并使用默认值。
   factory DoorWidgetSettings.fromMap(Map<String, dynamic> map) {
     return DoorWidgetSettings(
       showLastResult: map['showLastResult'] as bool? ?? true,

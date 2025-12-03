@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-// Allow extension import to be present (used only for extension methods) to satisfy
-// our usage of `toARGB32()` in JSON serialization.
+// 允许扩展方法导入（仅用于扩展方法），用于 `toARGB32()` 等颜色序列化方法
 // ignore: unused_import
 import 'package:dormdevise/utils/index.dart';
 
-/// 课程在周次上的单双周限制。
+/// 课程在周次上的单双周限制枚举（用于描述课程每周的适用规则）。
 enum CourseWeekType {
   /// 所有周次都适用。
   all,
@@ -16,7 +15,7 @@ enum CourseWeekType {
   double,
 }
 
-/// 课程在课表中的一次具体安排。
+/// 表示课程的一次具体排课信息（单次上课的时间/教室/周次范围等）。
 class CourseSession {
   /// 所属星期，取值范围 1（周一）至 7（周日）。
   final int weekday;
@@ -53,7 +52,7 @@ class CourseSession {
     this.customWeeks = const [],
   });
 
-  /// 判断指定周次是否需要上课。
+  /// 检查传入周次是否包含在当前排课范围内，遵循自定义周次或单双周逻辑。
   bool occursInWeek(int week) {
     if (customWeeks.isNotEmpty) {
       return customWeeks.contains(week);
@@ -71,7 +70,7 @@ class CourseSession {
     return isEvenWeek;
   }
 
-  /// 将对象转换为 JSON Map。
+  /// 将 CourseSession 序列化为 JSON Map，便于持久化存储或网络传输。
   Map<String, dynamic> toJson() {
     return {
       'weekday': weekday,
@@ -85,7 +84,7 @@ class CourseSession {
     };
   }
 
-  /// 从 JSON Map 创建对象。
+  /// 从 JSON Map 反序列化为 `CourseSession` 对象。
   factory CourseSession.fromJson(Map<String, dynamic> json) {
     return CourseSession(
       weekday: json['weekday'] as int,
@@ -100,7 +99,7 @@ class CourseSession {
   }
 }
 
-/// 表示一门课程及其全部排课安排。
+/// 表示课程的基本信息及其所有排课片段（多个 `CourseSession`）。
 class Course {
   /// 课程名称。
   final String name;
@@ -121,12 +120,12 @@ class Course {
     required this.sessions,
   });
 
-  /// 根据当前周次筛选需要呈现的排课列表。
+  /// 基于传入的周次筛选出当前应该展示的 `CourseSession` 列表。
   List<CourseSession> sessionsForWeek(int week) {
     return sessions.where((session) => session.occursInWeek(week)).toList();
   }
 
-  /// 将对象转换为 JSON Map。
+  /// 将 Course 对象序列化为 JSON Map（颜色为 ARGB32 整数）。
   Map<String, dynamic> toJson() {
     return {
       'name': name,
@@ -136,7 +135,7 @@ class Course {
     };
   }
 
-  /// 从 JSON Map 创建对象。
+  /// 从 JSON Map 反序列化为 Course 对象。
   factory Course.fromJson(Map<String, dynamic> json) {
     return Course(
       name: json['name'] as String,

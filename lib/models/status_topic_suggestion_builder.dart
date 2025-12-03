@@ -1,6 +1,6 @@
-/// 描述状态主题联想的基本数据模型。
+/// 状态主题联想建议的数据结构与构建器。
 class StatusTopicSuggestion {
-  /// 构造函数，接收联想选项的展示文本与真实取值。
+  /// 构造函数：`value` 为实际写入的主题值，`display` 为界面展示的文本。
   const StatusTopicSuggestion({required this.value, required this.display});
 
   /// 用户确认联想时写入的实际主题值。
@@ -10,7 +10,7 @@ class StatusTopicSuggestion {
   final String display;
 }
 
-/// 封装状态主题联想构建逻辑的模型类。
+/// 状态主题建议构建器：根据命令主题与用户输入，生成可能的状态主题建议。
 class StatusTopicSuggestionBuilder {
   /// 常量构造函数，允许在全局或状态类中复用实例。
   const StatusTopicSuggestionBuilder();
@@ -37,7 +37,7 @@ class StatusTopicSuggestionBuilder {
     'metrics',
   ];
 
-  /// 根据命令主题与用户输入计算联想建议。
+  /// 根据输入的命令主题与当前用户输入，计算并生成可用的状态主题建议列表。
   Iterable<StatusTopicSuggestion> buildSuggestions({
     required String commandTopic,
     required String input,
@@ -142,7 +142,7 @@ class StatusTopicSuggestionBuilder {
     return List<StatusTopicSuggestion>.unmodifiable(suggestions);
   }
 
-  /// 规范化 MQTT 主题路径，移除多余斜杠与尾随斜杠。
+  /// 将主题路径标准化：去除重复斜杠、修剪首尾斜杠等，返回干净的主题前缀/路径。
   String _normalizePath(String value) {
     final collapsed = value.replaceAll(RegExp(r'/+'), '/').trim();
     if (collapsed.isEmpty || collapsed == '/') {
@@ -154,7 +154,7 @@ class StatusTopicSuggestionBuilder {
     return collapsed;
   }
 
-  /// 计算命令主题对应的建议前缀。
+  /// 解析命令主题，返回其可能作为状态主题前缀的路径（不包含尾部的具体动作）。
   String _derivePrefix(
     String normalizedCommand, {
     required bool hasCommandTopic,
@@ -168,7 +168,7 @@ class StatusTopicSuggestionBuilder {
     return normalizedCommand.substring(0, idx);
   }
 
-  /// 去除建议展示文本中的前置斜杠，便于界面呈现。
+  /// 将建议字符串中可能存在的前置斜杠移除，用于更简洁地显示在 UI 中。
   String _displayOf(String value) {
     return value.startsWith('/') ? value.substring(1) : value;
   }

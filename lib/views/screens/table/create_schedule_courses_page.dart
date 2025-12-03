@@ -85,19 +85,19 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
     });
 
     try {
-      // 1. Create Schedule Metadata
+      // 1. 创建课程表元数据（Metadata）
       final id = await CourseService.instance.createSchedule(
         widget.scheduleName,
       );
 
-      // 2. Switch to new schedule
+      // 2. 切换至新创建的课程表
       await CourseService.instance.switchSchedule(id);
 
-      // 3. Save all data
+      // 3. 保存课程表的全部配置与课程数据
       await CourseService.instance.saveConfig(widget.scheduleConfig, id);
       await CourseService.instance.saveSemesterStart(widget.semesterStart, id);
       await CourseService.instance.saveMaxWeek(widget.maxWeek, id);
-      // Use schedule name as table name since we hid the table name field
+      // 将课程表名作为表格展示名保存（我们在创建页面隐藏了独立的表格名称字段）
       await CourseService.instance.saveTableName(widget.scheduleName, id);
       await CourseService.instance.saveShowWeekend(widget.showWeekend, id);
       await CourseService.instance.saveShowNonCurrentWeek(
@@ -108,7 +108,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
 
       if (!mounted) return;
 
-      // 4. Navigate back to AllSchedulesPage
+      // 4. 导航返回到全部课程表页面（上层页面会根据返回值刷新）
       Navigator.of(context).pop(true);
     } catch (e) {
       setState(() {

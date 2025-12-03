@@ -67,12 +67,12 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   String _currentScheduleId = '';
   bool _isLoading = true;
 
-  // Selection Mode
+  // 选择模式开关
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
   final Set<String> _deletingIds = {};
 
-  // Animation
+  // 动画状态标记
   String? _newlyAddedId;
 
   @override
@@ -150,16 +150,15 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         _deletingIds.addAll(_selectedIds);
       });
 
-      // Wait for animation
+      // 等待动画完成
       await Future.delayed(const Duration(milliseconds: 400));
-
-      // Check if we are deleting all
+      // 判断是否删除了全部课程表
       final bool deletingAll = _selectedIds.length == _schedules.length;
 
       await CourseService.instance.deleteSchedules(_selectedIds.toList());
       _toggleSelectionMode();
 
-      // Reload
+      // 重新加载列表
       final service = CourseService.instance;
       final schedules = await service.loadSchedules();
       final currentId = await service.getCurrentScheduleId();
@@ -171,7 +170,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
           _currentScheduleId = currentId;
           _isLoading = false;
 
-          // If we deleted all, the new single schedule is "newly added"
+          // 若删除了全部课程表，则自动创建的默认课表视为新建并播放入场动画
           if (deletingAll && schedules.isNotEmpty) {
             _newlyAddedId = schedules.first.id;
           }
@@ -307,7 +306,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC), // Light grey background
+      backgroundColor: const Color(0xFFF7F8FC), // 浅灰背景色
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7F8FC),
         elevation: 0,
@@ -455,16 +454,16 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                     }
                   },
                   builder: (context, value, child) {
-                    // 1. Slide Animation (0ms - 800ms)
-                    // value 0.0 -> 0.666
+                    // 1. 滑动动画 (0ms - 800ms)
+                    // 动画滑动阶段：value 0.0 -> 0.666
                     final double slideInput = (value / 0.666).clamp(0.0, 1.0);
                     final double slideValue = Curves.easeOutQuart.transform(
                       slideInput,
                     );
 
-                    // 2. Flash Animation (400ms - 1200ms)
-                    // value 0.333 -> 1.0
-                    // Starts when slide is halfway (time-wise)
+                    // 2. 闪烁动画 (400ms - 1200ms)
+                    // 闪烁阶段：value 0.333 -> 1.0
+                    // 在滑动动画进行到一半时开始触发（时间上）
                     final double flashInput = ((value - 0.333) / 0.666).clamp(
                       0.0,
                       1.0,
@@ -472,8 +471,8 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
 
                     Color? flashColor;
                     if (flashInput > 0) {
-                      // Parabola for smooth flash: 0 -> 1 -> 0
-                      // Simulates a single breath/flash
+                      // 使用抛物线形曲线实现单次平滑闪烁：0 -> 1 -> 0
+                      // 模拟一次呼吸/闪烁效果
                       final double flashIntensity =
                           4 * flashInput * (1 - flashInput);
                       flashColor = Color.lerp(
@@ -517,6 +516,13 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               );
             },
           ),
+          if (_isLoading)
+            Positioned.fill(
+              child: Container(
+                color: Colors.white.withOpacity(0.6),
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+            ),
           if (_isSelectionMode)
             Positioned(
               left: 48,
@@ -786,7 +792,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 setState(() => _scheduleConfig = newConfig);
               }
               await CourseService.instance.saveConfig(newConfig, scheduleId);
-              config = newConfig; // Update local variable
+              config = newConfig; // 更新本地变量
             },
             onSemesterStartChanged: (date) async {
               if (scheduleId == _currentScheduleId) {
@@ -794,14 +800,14 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 setState(() => _semesterStart = date);
               }
               await CourseService.instance.saveSemesterStart(date, scheduleId);
-              semesterStart = date; // Update local variable
+              semesterStart = date; // 更新本地变量
             },
             onCurrentWeekChanged: (week) {
               if (scheduleId == _currentScheduleId) {
                 widget.onCurrentWeekChanged(week);
                 setState(() => _currentWeek = week);
               }
-              currentWeek = week; // Update local variable
+              currentWeek = week; // 更新本地变量
             },
             onMaxWeekChanged: (max) async {
               if (scheduleId == _currentScheduleId) {
@@ -809,7 +815,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 setState(() => _maxWeek = max);
               }
               await CourseService.instance.saveMaxWeek(max, scheduleId);
-              maxWeek = max; // Update local variable
+              maxWeek = max; // 更新本地变量
             },
             onTableNameChanged: (newName) async {
               if (scheduleId == _currentScheduleId) {
@@ -830,7 +836,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               }
 
               await CourseService.instance.saveTableName(newName, scheduleId);
-              tableName = newName; // Update local variable
+              tableName = newName; // 更新本地变量
             },
             onShowWeekendChanged: (show) async {
               if (scheduleId == _currentScheduleId) {
@@ -838,7 +844,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 setState(() => _showWeekend = show);
               }
               await CourseService.instance.saveShowWeekend(show, scheduleId);
-              showWeekend = show; // Update local variable
+              showWeekend = show; // 更新本地变量
             },
             onShowNonCurrentWeekChanged: (show) async {
               if (scheduleId == _currentScheduleId) {
@@ -849,7 +855,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 show,
                 scheduleId,
               );
-              showNonCurrentWeek = show; // Update local variable
+              showNonCurrentWeek = show; // 更新本地变量
             },
             onOpenSectionSettings: () {
               if (scheduleId == _currentScheduleId) {
@@ -863,7 +869,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       ),
     );
 
-    // Reload schedules to reflect any name changes
+    // 重新加载课程表以反映名称变更
     _loadSchedules();
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 表示单节课程的时间信息，用于渲染课节列表。
+/// 表示单节课程的时间信息（用于构建课节时间表与渲染）。
 class SectionTime {
   /// 课节序号，从 1 开始计数。
   final int index;
@@ -22,7 +22,7 @@ class SectionTime {
   });
 }
 
-/// 配置特定教学时段（上午/下午/晚上）的课节数量与时长。
+/// 配置特定教学时段（如上午/下午/晚上）内的课节数量和每节时长。
 class ScheduleSegmentConfig {
   /// 时段名称，用于展示和区分。
   final String name;
@@ -63,7 +63,7 @@ class ScheduleSegmentConfig {
          'perBreakDurations 长度必须为 classCount - 1',
        );
 
-  /// 生成包含增量修改的新配置对象。
+  /// 以当前实例为基础生成一个新的 `ScheduleSegmentConfig`，可覆盖指定字段。
   ScheduleSegmentConfig copyWith({
     String? name,
     TimeOfDay? startTime,
@@ -95,7 +95,7 @@ class ScheduleSegmentConfig {
     );
   }
 
-  /// 将对象转换为 JSON Map。
+  /// 将 `ScheduleSegmentConfig` 序列化为 JSON Map，时间以小时/分钟和分钟为单位保存。
   Map<String, dynamic> toJson() {
     return {
       'name': name,
@@ -108,7 +108,7 @@ class ScheduleSegmentConfig {
     };
   }
 
-  /// 从 JSON Map 创建对象。
+  /// 从 JSON Map 反序列化 `ScheduleSegmentConfig`。
   factory ScheduleSegmentConfig.fromJson(Map<String, dynamic> json) {
     return ScheduleSegmentConfig(
       name: json['name'] as String,
@@ -133,7 +133,7 @@ class ScheduleSegmentConfig {
   }
 }
 
-/// 管理课程表的课节配置，支持全局与分时段自定义。
+/// 管理课程表的全局与分时段配置，支持生成具体节次与时长计算。
 class CourseScheduleConfig {
   /// 全局默认单节课时长。
   final Duration defaultClassDuration;
@@ -154,7 +154,7 @@ class CourseScheduleConfig {
     this.useSegmentBreakDurations = false,
   }) : segments = List<ScheduleSegmentConfig>.unmodifiable(segments);
 
-  /// 提供南京大学默认课表配置，上下午各 4 节课，晚上 3 节课。
+  /// 返回基于南京大学常见排课的默认配置（上下午 4 节，晚上 3 节）。
   factory CourseScheduleConfig.njuDefaults() {
     return CourseScheduleConfig(
       defaultClassDuration: const Duration(minutes: 45),
@@ -181,7 +181,7 @@ class CourseScheduleConfig {
     );
   }
 
-  /// 将对象转换为 JSON Map。
+  /// 将 `CourseScheduleConfig` 序列化为 JSON Map，便于持久化。
   Map<String, dynamic> toJson() {
     return {
       'defaultClassDuration': defaultClassDuration.inMinutes,
@@ -191,7 +191,7 @@ class CourseScheduleConfig {
     };
   }
 
-  /// 从 JSON Map 创建对象。
+  /// 从 JSON Map 创建 `CourseScheduleConfig` 对象。
   factory CourseScheduleConfig.fromJson(Map<String, dynamic> json) {
     return CourseScheduleConfig(
       defaultClassDuration: Duration(
@@ -207,7 +207,7 @@ class CourseScheduleConfig {
     );
   }
 
-  /// 依据当前配置生成连续编号的课节时间列表。
+  /// 根据当前配置生成一个从 1 开始的连续 `SectionTime` 列表，按分段合并。
   List<SectionTime> generateSections() {
     final List<SectionTime> sections = <SectionTime>[];
     int sectionIndex = 1;
@@ -218,7 +218,7 @@ class CourseScheduleConfig {
     return sections;
   }
 
-  /// 为特定时段生成详细课节信息。
+  /// 为指定的教学时段（`ScheduleSegmentConfig`）生成该段内所有课节的 `SectionTime` 信息。
   List<SectionTime> _buildSegmentSections(
     ScheduleSegmentConfig segment,
     int startIndex,
@@ -244,7 +244,7 @@ class CourseScheduleConfig {
     return sectionTimes;
   }
 
-  /// 解析指定课节的上课时长，优先使用逐节配置。
+  /// 获取指定时段第 index 节课的时长，优先使用逐节配置，否则回退至段配置或全局默认。
   Duration resolveClassDuration(ScheduleSegmentConfig segment, int index) {
     if (segment.perClassDurations != null &&
         segment.perClassDurations!.length > index) {
@@ -253,7 +253,7 @@ class CourseScheduleConfig {
     return segment.classDuration ?? defaultClassDuration;
   }
 
-  /// 解析指定课节后的休息时长，优先使用逐节配置。
+  /// 获取指定时段第 index 节课后的休息时长，优先使用逐节配置或分段休息配置。
   Duration resolveBreakDuration(ScheduleSegmentConfig segment, int index) {
     if (!useSegmentBreakDurations) {
       return defaultBreakDuration;
@@ -268,7 +268,7 @@ class CourseScheduleConfig {
     return defaultBreakDuration;
   }
 
-  /// 获取指定段的全部课时长列表。
+  /// 返回指定段内每节课的时长列表。
   List<Duration> getClassDurations(ScheduleSegmentConfig segment) {
     return List<Duration>.generate(
       segment.classCount,
@@ -276,7 +276,7 @@ class CourseScheduleConfig {
     );
   }
 
-  /// 获取指定段的课间休息时长列表。
+  /// 返回指定段内每节课间的休息时长列表（节数 - 1）。
   List<Duration> getBreakDurations(ScheduleSegmentConfig segment) {
     return List<Duration>.generate(
       segment.classCount > 0 ? segment.classCount - 1 : 0,
@@ -284,7 +284,7 @@ class CourseScheduleConfig {
     );
   }
 
-  /// 查找课节序号所属的教学时段索引。
+  /// 获取给定节次所属的分段索引（segments 列表的下标）。
   int segmentIndexForSection(int sectionIndex) {
     int cursor = 1;
     for (int i = 0; i < segments.length; i++) {
@@ -298,7 +298,7 @@ class CourseScheduleConfig {
     return -1;
   }
 
-  /// 复制当前配置并替换指定索引的教学时段。
+  /// 复制整个配置并替换第 index 个分段为新的分段配置。
   CourseScheduleConfig replaceSegment(
     int index,
     ScheduleSegmentConfig segment,

@@ -1,4 +1,5 @@
-/// 桌面微件的运行态数据，包括忙碌状态与上次开门结果等信息。
+/// 桌面小部件的运行时状态数据模型，包含当前是否忙碌、上次操作是否成功、
+/// 上次操作信息以及最后更新时间等字段。
 class DoorWidgetState {
   final bool busy;
   final bool? lastResultSuccess;
@@ -12,7 +13,7 @@ class DoorWidgetState {
     required this.lastUpdatedAt,
   });
 
-  /// 构建初始状态，默认处于空闲并无历史记录。
+  /// 返回初始状态实例：处于空闲且没有任何历史结果。
   factory DoorWidgetState.initial() => const DoorWidgetState(
     busy: false,
     lastResultSuccess: null,
@@ -22,7 +23,7 @@ class DoorWidgetState {
 
   static const Object _unset = Object();
 
-  /// 复制当前状态并根据入参更新部分字段，支持显式写入 `null` 以清除旧值。
+  /// 复制当前状态并更新指定字段，采用特殊占位对象 `_unset` 区分未传值和显式 `null`。
   DoorWidgetState copyWith({
     bool? busy,
     Object? lastResultSuccess = _unset,
@@ -43,7 +44,7 @@ class DoorWidgetState {
     );
   }
 
-  /// 序列化为 Map，便于写入 SharedPreferences。
+  /// 序列化为 Map，方便持久化存储（例如 SharedPreferences）。
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'busy': busy,
@@ -53,7 +54,7 @@ class DoorWidgetState {
     };
   }
 
-  /// 从 Map 结构恢复状态实例，对于缺失字段提供默认值。
+  /// 从 Map 恢复 `DoorWidgetState`，对缺失字段使用默认值以保证健壮性。
   factory DoorWidgetState.fromMap(Map<String, dynamic> map) {
     return DoorWidgetState(
       busy: map['busy'] as bool? ?? false,

@@ -78,6 +78,7 @@ class CourseService {
     }
     final newId = const Uuid().v4();
     final newSchedule = ScheduleMetadata(id: newId, name: name);
+    // 新建课表放到列表起始位置，保证新课表在界面上“置顶”可见
     schedules.insert(0, newSchedule);
     await _saveSchedules(schedules);
     return newId;
@@ -213,7 +214,7 @@ class CourseService {
     final schedules = await loadSchedules();
     final index = schedules.indexWhere((s) => s.id == targetId);
     if (index != -1) {
-      // 检查重名 (排除自己)
+      // 检查重名（排除自己）
       if (schedules.any((s) => s.name == name && s.id != targetId)) {
         throw Exception('课程表名称已存在');
       }
@@ -259,12 +260,12 @@ class CourseService {
     // 过滤掉要删除的 ID
     schedules.removeWhere((s) => ids.contains(s.id));
 
-    // 如果删除了当前课程表，或者删除了所有课程表，需要重置当前 ID
+    // 如果删除了当前课程表，或列表被清空，就需要重新设置当前课程表
     if (ids.contains(currentId) || schedules.isEmpty) {
       if (schedules.isNotEmpty) {
         await switchSchedule(schedules.first.id);
       } else {
-        // 如果删空了，创建一个默认的
+        // 如果删空了，自动追加一个默认课表并切换至该课表
         final newId = const Uuid().v4();
         schedules.add(ScheduleMetadata(id: newId, name: '我的课表'));
         await switchSchedule(newId);

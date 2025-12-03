@@ -1,6 +1,6 @@
 import '../models/course.dart';
 
-/// 根据 CourseSession 的 start/end/weekType，生成周数展示文本
+/// 根据 `CourseSession` 的 start/end/weekType 生成周次展示字符串
 /// - 连续：返回 "第 start-end 周"
 /// - 非连续：返回 "第a,b,c 周"
 String formatWeeks(CourseSession session) {
@@ -12,7 +12,7 @@ String formatWeeks(CourseSession session) {
   }
   if (weeks.isEmpty) return '';
   if (weeks.length == 1) return '第${weeks.first}周';
-  // Check contiguous
+  // 判断周数是否连续
   bool contiguous = true;
   for (int i = 1; i < weeks.length; i++) {
     if (weeks[i] - weeks[i - 1] != 1) {

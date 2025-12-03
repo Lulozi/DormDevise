@@ -141,7 +141,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         int initialCount = 2;
         final int nextSection = widget.initialSection! + 1;
 
-        // Check if the next section is occupied by any existing course
+        // 检查下一个节次是否被已有课程占用
         bool nextSectionOccupied = widget.existingCourses.any((course) {
           return course.sessions.any((session) {
             if (session.weekday != widget.initialWeekday!) return false;
@@ -152,7 +152,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
           });
         });
 
-        // Check if the default 2-section session would cross a segment
+        // 检查默认的 2 节课程是否会跨越分段（例如上午 -> 下午）
         bool isCrossSegment = false;
         if (_scheduleConfig != null) {
           final tempSession = CourseSession(
@@ -501,7 +501,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     } else if (action == 'reuse') {
       addNew = false;
     } else {
-      // Show selection dialog
+      // 显示选择对话框
       addNew = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -522,7 +522,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
       );
 
       if (addNew != null && mounted) {
-        // Ask if user wants to remember the choice
+        // 询问用户是否要记住该选择
         final bool? remember = await showDialog<bool>(
           context: context,
           barrierDismissible: false,

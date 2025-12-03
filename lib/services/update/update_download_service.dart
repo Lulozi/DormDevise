@@ -393,8 +393,8 @@ class UpdateDownloadService {
 
     // 构造 Gitee 备用下载地址
     Uri? constructGiteeUri(Uri original) {
-      // GitHub: https://github.com/Lulozi/DormDevise/releases/download/{tag}/{filename}
-      // Gitee:  https://gitee.com/lulo/DormDevise/releases/download/{tag}/{filename}
+      // GitHub 下载链接示例： https://github.com/Lulozi/DormDevise/releases/download/{tag}/{filename}
+      // Gitee 下载链接示例：  https://gitee.com/lulo/DormDevise/releases/download/{tag}/{filename}
       try {
         final String url = original.toString();
         if (url.contains('github.com/Lulozi/DormDevise')) {

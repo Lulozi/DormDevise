@@ -18,7 +18,7 @@ class _CreateScheduleSettingsPageState
     extends State<CreateScheduleSettingsPage> {
   final TextEditingController _nameController = TextEditingController();
 
-  // Initial settings
+  // 初始设置
   CourseScheduleConfig _scheduleConfig = CourseScheduleConfig.njuDefaults();
   DateTime _semesterStart = DateTime(2025, 9, 1);
   int _currentWeek = 1;
@@ -40,7 +40,7 @@ class _CreateScheduleSettingsPageState
       return;
     }
 
-    // Check for duplicate name
+    // 校验是否名称重复
     try {
       final schedules = await CourseService.instance.loadSchedules();
       if (schedules.any((s) => s.name == name)) {
@@ -49,7 +49,7 @@ class _CreateScheduleSettingsPageState
         return;
       }
     } catch (e) {
-      // Ignore error or handle it
+      // 忽略错误（或在需要时处理），不阻塞流程
     }
 
     if (!mounted) return;

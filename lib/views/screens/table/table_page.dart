@@ -49,7 +49,7 @@ class _TablePageState extends State<TablePage> {
 
   // 返回学期第一周的起始日期（本周的星期一）
   DateTime get _firstWeekStart {
-    // DateTime.weekday: Monday = 1, Sunday = 7
+    // DateTime.weekday：周一 = 1，周日 = 7
     return _currentSemesterStart.subtract(
       Duration(days: _currentSemesterStart.weekday - 1),
     );

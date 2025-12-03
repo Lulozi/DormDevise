@@ -1,4 +1,5 @@
-/// MQTT 连接与订阅所需的完整配置封装，集中提供校验与转换能力。
+/// MQTT 连接与订阅所需配置的封装类：包含连接信息、认证、证书路径、
+/// 命令主题与状态主题等字段，并提供默认配置、存储映射与校验接口。
 class MqttConfig {
   /// MQTT 服务器地址。
   final String host;
@@ -59,7 +60,7 @@ class MqttConfig {
     required this.customMessage,
   });
 
-  /// 创建默认配置，作为未设置场景的兜底值。
+  /// 生成用于初始化的默认配置，避免出现空值或非法字段。
   factory MqttConfig.defaults() => const MqttConfig(
     host: '',
     port: 1883,
@@ -77,7 +78,7 @@ class MqttConfig {
     customMessage: 'OPEN',
   );
 
-  /// 根据存储内容构建配置对象，自动处理缺失字段。
+  /// 从持久化存储（Map）构建 `MqttConfig` 实例，并对字段做必要的格式/空值处理。
   factory MqttConfig.fromStorage(Map<String, Object?> storage) {
     final String host = (storage['mqtt_host'] as String? ?? '').trim();
     final String topic = (storage['mqtt_topic'] as String? ?? '').trim();
@@ -115,7 +116,7 @@ class MqttConfig {
     );
   }
 
-  /// 将配置转换为可持久化的 Map 结构。
+  /// 将配置序列化为 Map，便于写入 SharedPreferences 或其他 KV 存储。
   Map<String, Object?> toStorageMap() {
     return <String, Object?>{
       'mqtt_host': host,
@@ -135,14 +136,14 @@ class MqttConfig {
     };
   }
 
-  /// 判断开门指令相关配置是否已完成。
+  /// 判断用于发送开门指令的最少参数是否已经准备完成（host 与 topic）。
   bool get isCommandReady => host.isNotEmpty && commandTopic.isNotEmpty;
 
-  /// 判断状态订阅是否具备启用条件。
+  /// 判断状态订阅是否具备启用条件（需要开启状态订阅且存在有效的 statusTopic）。
   bool get isStatusReady =>
       statusEnabled && statusTopic != null && statusTopic!.isNotEmpty;
 
-  /// 返回带有指纹信息的字符串，用于 MQ 连接复用。
+  /// 返回包含关键字段（host、port、clientId 等）的指纹字符串，便于比较或复用连接。
   String buildFingerprint({bool includeStatusTopic = false}) {
     final buffer = StringBuffer()
       ..write(host)
@@ -168,7 +169,7 @@ class MqttConfig {
     return buffer.toString();
   }
 
-  /// 创建一个新的配置副本，仅替换指定字段。
+  /// 复制当前实例并替换所提供字段，返回新的 `MqttConfig` 实例。
   MqttConfig copyWith({
     String? host,
     int? port,
