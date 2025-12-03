@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'package:dormdevise/utils/index.dart';
+import 'package:dormdevise/utils/app_toast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../models/course_schedule_config.dart';
@@ -25,6 +26,9 @@ class ScheduleSettingsPage extends StatefulWidget {
   final ValueChanged<bool> onShowWeekendChanged;
   final ValueChanged<bool> onShowNonCurrentWeekChanged;
   final VoidCallback onOpenSectionSettings;
+  final bool isEmbedded;
+  final Widget? header;
+  final Future<String?> Function(String)? nameValidator;
 
   const ScheduleSettingsPage({
     super.key,
@@ -43,6 +47,9 @@ class ScheduleSettingsPage extends StatefulWidget {
     required this.onShowWeekendChanged,
     required this.onShowNonCurrentWeekChanged,
     required this.onOpenSectionSettings,
+    this.isEmbedded = false,
+    this.header,
+    this.nameValidator,
   });
 
   @override
@@ -126,6 +133,150 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final content = ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (widget.header != null) ...[
+          widget.header!,
+          const SizedBox(height: 16),
+        ],
+        _buildGroup(
+          children: [
+            if (!widget.isEmbedded) ...[
+              _buildTile(
+                title: '课程表名称',
+                trailing: _buildTrailingText(_tableName),
+                onTap: () => _showEditNameDialog(context),
+              ),
+              _buildDivider(),
+            ],
+            ExpandableItem(
+              title: '学期开始时间',
+              value: Text(
+                DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(_semesterStart),
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+              isExpanded: _isStartDateExpanded,
+              onTap: () {
+                setState(() {
+                  _isStartDateExpanded = !_isStartDateExpanded;
+                  _isMaxWeekExpanded = false;
+                });
+              },
+              content: _buildCustomDatePicker(
+                initialDate: _semesterStart,
+                onChanged: (DateTime date) {
+                  setState(() {
+                    _semesterStart = date;
+                  });
+                  widget.onSemesterStartChanged(date);
+                },
+              ),
+              showDivider: false,
+            ),
+            _buildDivider(),
+            ExpandableItem(
+              title: '学期总周数',
+              value: Text(
+                '$_maxWeek 周',
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+              isExpanded: _isMaxWeekExpanded,
+              onTap: () {
+                setState(() {
+                  _isMaxWeekExpanded = !_isMaxWeekExpanded;
+                  _isStartDateExpanded = false;
+                });
+              },
+              content: _buildNumberPicker(
+                value: _maxWeek,
+                min: 1,
+                max: 30,
+                onChanged: (int value) {
+                  setState(() {
+                    _maxWeek = value;
+                    if (_currentWeek > _maxWeek) {
+                      _currentWeek = _maxWeek;
+                      widget.onCurrentWeekChanged(_currentWeek);
+                    }
+                  });
+                  widget.onMaxWeekChanged(value);
+                },
+                unit: '周',
+              ),
+              showDivider: false,
+            ),
+            _buildDivider(),
+            _buildSwitchTile(
+              title: '周末有课',
+              value: _showWeekend,
+              onChanged: (bool value) {
+                setState(() {
+                  _showWeekend = value;
+                });
+                widget.onShowWeekendChanged(value);
+              },
+            ),
+            _buildDivider(),
+            _buildTile(
+              title: '课程时间设置',
+              subtitle: '设置课程节数，调整每节课时间',
+              onTap: widget.onOpenSectionSettings,
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildGroup(
+          children: [
+            _buildSwitchTile(
+              title: '显示非本周课程',
+              value: _showNonCurrentWeek,
+              onChanged: (bool value) {
+                setState(() {
+                  _showNonCurrentWeek = value;
+                });
+                widget.onShowNonCurrentWeekChanged(value);
+              },
+            ),
+            _buildDivider(),
+            _buildColorAllocationItem(),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildGroup(
+          children: [
+            _buildTile(
+              title: '课程提醒时间',
+              trailing: _buildTrailingText('15分钟前'),
+              onTap: () {},
+            ),
+            _buildDivider(),
+            _buildTile(
+              title: '课程提醒方式',
+              trailing: _buildTrailingText('通知提醒'),
+              onTap: () {},
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildGroup(
+          children: [
+            _buildSwitchTile(
+              title: '在日历和组件中显示',
+              subtitle: '课程将以日程形式在日历及组件中显示',
+              value: false,
+              onChanged: (v) {},
+            ),
+          ],
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+
+    if (widget.isEmbedded) {
+      return content;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F7),
       appBar: AppBar(
@@ -149,139 +300,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildGroup(
-            children: [
-              _buildTile(
-                title: '课程表名称',
-                trailing: _buildTrailingText(_tableName),
-                onTap: () => _showEditNameDialog(context),
-              ),
-              _buildDivider(),
-              ExpandableItem(
-                title: '学期开始时间',
-                value: Text(
-                  DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(_semesterStart),
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-                isExpanded: _isStartDateExpanded,
-                onTap: () {
-                  setState(() {
-                    _isStartDateExpanded = !_isStartDateExpanded;
-                    _isMaxWeekExpanded = false;
-                  });
-                },
-                content: _buildCustomDatePicker(
-                  initialDate: _semesterStart,
-                  onChanged: (DateTime date) {
-                    setState(() {
-                      _semesterStart = date;
-                    });
-                    widget.onSemesterStartChanged(date);
-                  },
-                ),
-                showDivider: false,
-              ),
-              _buildDivider(),
-              ExpandableItem(
-                title: '学期总周数',
-                value: Text(
-                  '$_maxWeek 周',
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-                isExpanded: _isMaxWeekExpanded,
-                onTap: () {
-                  setState(() {
-                    _isMaxWeekExpanded = !_isMaxWeekExpanded;
-                    _isStartDateExpanded = false;
-                  });
-                },
-                content: _buildNumberPicker(
-                  value: _maxWeek,
-                  min: 1,
-                  max: 30,
-                  onChanged: (int value) {
-                    setState(() {
-                      _maxWeek = value;
-                      if (_currentWeek > _maxWeek) {
-                        _currentWeek = _maxWeek;
-                        widget.onCurrentWeekChanged(_currentWeek);
-                      }
-                    });
-                    widget.onMaxWeekChanged(value);
-                  },
-                  unit: '周',
-                ),
-                showDivider: false,
-              ),
-              _buildDivider(),
-              _buildSwitchTile(
-                title: '周末有课',
-                value: _showWeekend,
-                onChanged: (bool value) {
-                  setState(() {
-                    _showWeekend = value;
-                  });
-                  widget.onShowWeekendChanged(value);
-                },
-              ),
-              _buildDivider(),
-              _buildTile(
-                title: '课程时间设置',
-                subtitle: '设置课程节数，调整每节课时间',
-                onTap: widget.onOpenSectionSettings,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _buildGroup(
-            children: [
-              _buildSwitchTile(
-                title: '显示非本周课程',
-                value: _showNonCurrentWeek,
-                onChanged: (bool value) {
-                  setState(() {
-                    _showNonCurrentWeek = value;
-                  });
-                  widget.onShowNonCurrentWeekChanged(value);
-                },
-              ),
-              _buildDivider(),
-              _buildColorAllocationItem(),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _buildGroup(
-            children: [
-              _buildTile(
-                title: '课程提醒时间',
-                trailing: _buildTrailingText('15分钟前'),
-                onTap: () {},
-              ),
-              _buildDivider(),
-              _buildTile(
-                title: '课程提醒方式',
-                trailing: _buildTrailingText('通知提醒'),
-                onTap: () {},
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _buildGroup(
-            children: [
-              _buildSwitchTile(
-                title: '在日历和组件中显示',
-                subtitle: '课程将以日程形式在日历及组件中显示',
-                value: false,
-                onChanged: (v) {},
-              ),
-            ],
-          ),
-          const SizedBox(height: 40),
-        ],
-      ),
+      body: content,
     );
   }
 
@@ -559,58 +578,89 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          title: const Text('', style: TextStyle(fontSize: 10)),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: TextField(
-              controller: controller,
-              autofocus: true,
-              style: const TextStyle(fontSize: 16),
-              decoration: InputDecoration(
-                labelText: '课程表名称',
-                prefixIcon: const Icon(Icons.edit_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: Theme.of(context).primaryColor),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(
-                    color: Theme.of(context).primaryColor,
-                    width: 2,
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final bool isEnabled = controller.text.trim().isNotEmpty;
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              title: const Text('', style: TextStyle(fontSize: 10)),
+              content: Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 16),
+                  onChanged: (value) {
+                    setDialogState(() {});
+                  },
+                  decoration: InputDecoration(
+                    labelText: '课程表名称',
+                    prefixIcon: const Icon(Icons.edit_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).primaryColor,
+                        width: 2,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
                   ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('取消'),
-              onPressed: () => Navigator.pop(context),
-            ),
-            TextButton(
-              child: const Text('确定'),
-              onPressed: () {
-                widget.onTableNameChanged(controller.text);
-                setState(() {
-                  _tableName = controller.text;
-                });
-                Navigator.pop(context);
-              },
-            ),
-          ],
+              actions: [
+                TextButton(
+                  child: const Text('取消'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                TextButton(
+                  onPressed: isEnabled
+                      ? () async {
+                          final name = controller.text.trim();
+                          if (widget.nameValidator != null) {
+                            final error = await widget.nameValidator!(name);
+                            if (error != null) {
+                              if (context.mounted) {
+                                AppToast.show(context, error);
+                              }
+                              return;
+                            }
+                          }
+                          widget.onTableNameChanged(name);
+                          setState(() {
+                            _tableName = name;
+                          });
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                          }
+                        }
+                      : null,
+                  child: Text(
+                    '确定',
+                    style: TextStyle(
+                      color: isEnabled
+                          ? Theme.of(context).primaryColor
+                          : Colors.grey,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     );
