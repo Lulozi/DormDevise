@@ -78,7 +78,7 @@ class CourseService {
     }
     final newId = const Uuid().v4();
     final newSchedule = ScheduleMetadata(id: newId, name: name);
-    schedules.add(newSchedule);
+    schedules.insert(0, newSchedule);
     await _saveSchedules(schedules);
     return newId;
   }

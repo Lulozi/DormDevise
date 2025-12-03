@@ -54,7 +54,7 @@ class _CreateScheduleSettingsPageState
 
     if (!mounted) return;
 
-    Navigator.of(context).push(
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CreateScheduleCoursesPage(
           scheduleName: name,
@@ -68,6 +68,10 @@ class _CreateScheduleSettingsPageState
         ),
       ),
     );
+
+    if (result == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   Future<void> _openSectionSettings() async {

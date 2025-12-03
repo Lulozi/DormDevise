@@ -108,8 +108,8 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
 
       if (!mounted) return;
 
-      // 4. Navigate back to TablePage
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      // 4. Navigate back to AllSchedulesPage
+      Navigator.of(context).pop(true);
     } catch (e) {
       setState(() {
         _isSaving = false;
