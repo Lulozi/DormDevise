@@ -6,6 +6,7 @@ import 'package:dormdevise/utils/app_toast.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../models/schedule_metadata.dart';
 import '../../../services/course_service.dart';
+import '../../widgets/bubble_popup.dart';
 import 'widgets/schedule_settings_sheet.dart';
 import 'create_schedule_settings_page.dart';
 
@@ -118,91 +119,33 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   }
 
   Future<void> _showAddMenu(BuildContext context) async {
-    final RenderBox button =
-        _addBtnKey.currentContext!.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
-
-    final Offset buttonBottomRight = button.localToGlobal(
-      button.size.bottomRight(Offset.zero),
-      ancestor: overlay,
-    );
-    final double rightOffset = overlay.size.width - buttonBottomRight.dx;
-    final double topOffset = buttonBottomRight.dy;
-
-    await Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierDismissible: true,
-        barrierColor: Colors.transparent,
-        transitionDuration: const Duration(milliseconds: 300),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
-        pageBuilder: (context, animation, __) {
-          return Stack(
-            children: [
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                behavior: HitTestBehavior.translucent,
-                child: Container(color: Colors.transparent),
-              ),
-              Positioned(
-                top: topOffset + 10,
-                right: rightOffset,
-                child: ScaleTransition(
-                  scale: CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutBack,
-                    reverseCurve: Curves.easeIn,
-                  ),
-                  alignment: Alignment.topRight,
-                  child: FadeTransition(
-                    opacity: animation,
-                    child: Material(
-                      elevation: 4,
-                      borderRadius: BorderRadius.circular(20),
-                      color: Colors.white,
-                      child: SizedBox(
-                        width: 180,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildCustomMenuItem(
-                              context,
-                              'web',
-                              '网页导入课程表',
-                              Icons.language,
-                            ),
-                            const Divider(height: 1, thickness: 0.5),
-                            _buildCustomMenuItem(
-                              context,
-                              'camera',
-                              '拍照导入课程表',
-                              Icons.camera_alt_outlined,
-                            ),
-                            const Divider(height: 1, thickness: 0.5),
-                            _buildCustomMenuItem(
-                              context,
-                              'file',
-                              '文件导入课程表',
-                              Icons.folder_open,
-                            ),
-                            const Divider(height: 1, thickness: 0.5),
-                            _buildCustomMenuItem(
-                              context,
-                              'manual',
-                              '手动创建课程表',
-                              Icons.edit_outlined,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+    await showBubblePopup(
+      context: context,
+      anchorKey: _addBtnKey,
+      content: SizedBox(
+        width: 180,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildCustomMenuItem(context, 'web', '网页导入课程表', Icons.language),
+            const Divider(height: 1, thickness: 0.5),
+            _buildCustomMenuItem(
+              context,
+              'camera',
+              '拍照导入课程表',
+              Icons.camera_alt_outlined,
+            ),
+            const Divider(height: 1, thickness: 0.5),
+            _buildCustomMenuItem(context, 'file', '文件导入课程表', Icons.folder_open),
+            const Divider(height: 1, thickness: 0.5),
+            _buildCustomMenuItem(
+              context,
+              'manual',
+              '手动创建课程表',
+              Icons.edit_outlined,
+            ),
+          ],
+        ),
       ),
     );
   }

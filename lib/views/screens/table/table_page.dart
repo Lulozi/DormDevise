@@ -7,6 +7,7 @@ import 'package:dormdevise/utils/app_toast.dart';
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
+import '../../widgets/bubble_popup.dart';
 import 'widgets/course_schedule_table.dart';
 import 'widgets/section_config_sheet.dart';
 import 'widgets/week_select_sheet.dart';
@@ -62,6 +63,9 @@ class _TablePageState extends State<TablePage> {
   bool _isEditing = false;
   Object _editModeResetToken = Object();
   DateTime? _highlightDate;
+
+  final GlobalKey _importBtnKey = GlobalKey();
+  final GlobalKey _shareBtnKey = GlobalKey();
 
   List<int> get _visibleWeekdays =>
       _showWeekend ? <int>[1, 2, 3, 4, 5, 6, 7] : <int>[1, 2, 3, 4, 5];
@@ -188,22 +192,44 @@ class _TablePageState extends State<TablePage> {
         ),
         const SizedBox(width: 16),
         _ToolbarIconButton(
+          key: _importBtnKey,
           icon: FontAwesomeIcons.calendarPlus,
           tooltip: '导入课表',
           onPressed: () {
             _exitEditMode();
-            AppToast.show(context, '功能开发中');
+            showBubblePopup(
+              context: context,
+              anchorKey: _importBtnKey,
+              content: const SizedBox(
+                width: 160,
+                height: 80,
+                child: Center(
+                  child: Text('导入功能开发中', style: TextStyle(color: Colors.grey)),
+                ),
+              ),
+            );
           },
           useFaIcon: true,
           iconSize: 16,
         ),
         const SizedBox(width: 8),
         _ToolbarIconButton(
+          key: _shareBtnKey,
           icon: FontAwesomeIcons.shareFromSquare,
           tooltip: '分享课表',
           onPressed: () {
             _exitEditMode();
-            AppToast.show(context, '功能开发中');
+            showBubblePopup(
+              context: context,
+              anchorKey: _shareBtnKey,
+              content: const SizedBox(
+                width: 160,
+                height: 80,
+                child: Center(
+                  child: Text('分享功能开发中', style: TextStyle(color: Colors.grey)),
+                ),
+              ),
+            );
           },
           useFaIcon: true,
           iconSize: 16,
@@ -707,6 +733,7 @@ class _ToolbarIconButton extends StatelessWidget {
   final double? iconSize;
 
   const _ToolbarIconButton({
+    super.key,
     required this.icon,
     required this.tooltip,
     required this.onPressed,
