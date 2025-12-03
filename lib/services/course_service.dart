@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/course.dart';
 import '../models/course_schedule_config.dart';
+import '../models/schedule_metadata.dart';
 
 /// 课程表数据服务，负责课程和配置的持久化。
 class CourseService {
@@ -21,10 +23,77 @@ class CourseService {
   static const String _showNonCurrentWeekKey =
       'course_service_show_non_current_week';
 
-  /// 加载所有课程。
-  Future<List<Course>> loadCourses() async {
+  static const String _schedulesKey = 'course_service_schedules';
+  static const String _currentScheduleIdKey =
+      'course_service_current_schedule_id';
+
+  /// 获取当前 Schedule ID
+  Future<String> getCurrentScheduleId() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString(_coursesKey);
+    return prefs.getString(_currentScheduleIdKey) ?? 'default';
+  }
+
+  /// 获取当前 Schedule ID 对应的 Key
+  Future<String> _getKey(String baseKey, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String targetId =
+        scheduleId ?? (prefs.getString(_currentScheduleIdKey) ?? 'default');
+    if (targetId == 'default') {
+      return baseKey;
+    }
+    return '${baseKey}_$targetId';
+  }
+
+  /// 加载所有课程表元数据
+  Future<List<ScheduleMetadata>> loadSchedules() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? raw = prefs.getString(_schedulesKey);
+    if (raw == null || raw.isEmpty) {
+      // 如果没有多课表数据，假设存在一个默认课表
+      return [ScheduleMetadata(id: 'default', name: '我的课表')];
+    }
+    try {
+      final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => ScheduleMetadata.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('加载课程表列表失败: $e');
+      return [ScheduleMetadata(id: 'default', name: '我的课表')];
+    }
+  }
+
+  /// 保存课程表元数据列表
+  Future<void> _saveSchedules(List<ScheduleMetadata> schedules) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String raw = jsonEncode(schedules.map((s) => s.toJson()).toList());
+    await prefs.setString(_schedulesKey, raw);
+  }
+
+  /// 创建新课程表
+  Future<String> createSchedule(String name) async {
+    final schedules = await loadSchedules();
+    if (schedules.any((s) => s.name == name)) {
+      throw Exception('课程表名称已存在');
+    }
+    final newId = const Uuid().v4();
+    final newSchedule = ScheduleMetadata(id: newId, name: name);
+    schedules.add(newSchedule);
+    await _saveSchedules(schedules);
+    return newId;
+  }
+
+  /// 切换当前课程表
+  Future<void> switchSchedule(String id) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_currentScheduleIdKey, id);
+  }
+
+  /// 加载所有课程。
+  Future<List<Course>> loadCourses([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_coursesKey, scheduleId);
+    final String? raw = prefs.getString(key);
     if (raw == null || raw.isEmpty) {
       return [];
     }
@@ -40,16 +109,18 @@ class CourseService {
   }
 
   /// 保存所有课程。
-  Future<void> saveCourses(List<Course> courses) async {
+  Future<void> saveCourses(List<Course> courses, [String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_coursesKey, scheduleId);
     final String raw = jsonEncode(courses.map((c) => c.toJson()).toList());
-    await prefs.setString(_coursesKey, raw);
+    await prefs.setString(key, raw);
   }
 
   /// 加载课程表配置。
-  Future<CourseScheduleConfig> loadConfig() async {
+  Future<CourseScheduleConfig> loadConfig([String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString(_configKey);
+    final String key = await _getKey(_configKey, scheduleId);
+    final String? raw = prefs.getString(key);
     if (raw == null || raw.isEmpty) {
       return CourseScheduleConfig.njuDefaults();
     }
@@ -64,16 +135,21 @@ class CourseService {
   }
 
   /// 保存课程表配置。
-  Future<void> saveConfig(CourseScheduleConfig config) async {
+  Future<void> saveConfig(
+    CourseScheduleConfig config, [
+    String? scheduleId,
+  ]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_configKey, scheduleId);
     final String raw = jsonEncode(config.toJson());
-    await prefs.setString(_configKey, raw);
+    await prefs.setString(key, raw);
   }
 
   /// 加载学期开始时间。
-  Future<DateTime?> loadSemesterStart() async {
+  Future<DateTime?> loadSemesterStart([String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final int? millis = prefs.getInt(_semesterStartKey);
+    final String key = await _getKey(_semesterStartKey, scheduleId);
+    final int? millis = prefs.getInt(key);
     if (millis == null) {
       return null;
     }
@@ -81,56 +157,91 @@ class CourseService {
   }
 
   /// 保存学期开始时间。
-  Future<void> saveSemesterStart(DateTime date) async {
+  Future<void> saveSemesterStart(DateTime date, [String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_semesterStartKey, date.millisecondsSinceEpoch);
+    final String key = await _getKey(_semesterStartKey, scheduleId);
+    await prefs.setInt(key, date.millisecondsSinceEpoch);
   }
 
   /// 加载最大周数。
-  Future<int> loadMaxWeek() async {
+  Future<int> loadMaxWeek([String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_maxWeekKey) ?? 20;
+    final String key = await _getKey(_maxWeekKey, scheduleId);
+    return prefs.getInt(key) ?? 20;
   }
 
   /// 保存最大周数。
-  Future<void> saveMaxWeek(int maxWeek) async {
+  Future<void> saveMaxWeek(int maxWeek, [String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_maxWeekKey, maxWeek);
+    final String key = await _getKey(_maxWeekKey, scheduleId);
+    await prefs.setInt(key, maxWeek);
   }
 
   /// 加载课程表名称。
-  Future<String> loadTableName() async {
+  Future<String> loadTableName([String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tableNameKey) ?? '我的课表';
+    final String key = await _getKey(_tableNameKey, scheduleId);
+
+    String? name = prefs.getString(key);
+    if (name == null) {
+      // 尝试从 metadata 获取
+      final targetId =
+          scheduleId ?? (prefs.getString(_currentScheduleIdKey) ?? 'default');
+      final schedules = await loadSchedules();
+      final schedule = schedules.firstWhere(
+        (s) => s.id == targetId,
+        orElse: () => ScheduleMetadata(id: 'default', name: '我的课表'),
+      );
+      name = schedule.name;
+    }
+    return name;
   }
 
   /// 保存课程表名称。
-  Future<void> saveTableName(String name) async {
+  Future<void> saveTableName(String name, [String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tableNameKey, name);
+    final String key = await _getKey(_tableNameKey, scheduleId);
+    await prefs.setString(key, name);
+
+    final targetId =
+        scheduleId ?? (prefs.getString(_currentScheduleIdKey) ?? 'default');
+    final schedules = await loadSchedules();
+    final index = schedules.indexWhere((s) => s.id == targetId);
+    if (index != -1) {
+      // 检查重名 (排除自己)
+      if (schedules.any((s) => s.name == name && s.id != targetId)) {
+        throw Exception('课程表名称已存在');
+      }
+      schedules[index] = ScheduleMetadata(id: targetId, name: name);
+      await _saveSchedules(schedules);
+    }
   }
 
   /// 加载是否显示周末。
-  Future<bool> loadShowWeekend() async {
+  Future<bool> loadShowWeekend([String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_showWeekendKey) ?? false;
+    final String key = await _getKey(_showWeekendKey, scheduleId);
+    return prefs.getBool(key) ?? false;
   }
 
   /// 保存是否显示周末。
-  Future<void> saveShowWeekend(bool show) async {
+  Future<void> saveShowWeekend(bool show, [String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_showWeekendKey, show);
+    final String key = await _getKey(_showWeekendKey, scheduleId);
+    await prefs.setBool(key, show);
   }
 
   /// 加载是否显示非本周课程。
-  Future<bool> loadShowNonCurrentWeek() async {
+  Future<bool> loadShowNonCurrentWeek([String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_showNonCurrentWeekKey) ?? true;
+    final String key = await _getKey(_showNonCurrentWeekKey, scheduleId);
+    return prefs.getBool(key) ?? true;
   }
 
   /// 保存是否显示非本周课程。
-  Future<void> saveShowNonCurrentWeek(bool show) async {
+  Future<void> saveShowNonCurrentWeek(bool show, [String? scheduleId]) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_showNonCurrentWeekKey, show);
+    final String key = await _getKey(_showNonCurrentWeekKey, scheduleId);
+    await prefs.setBool(key, show);
   }
 }
