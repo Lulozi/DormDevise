@@ -70,6 +70,10 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   // Selection Mode
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
+  final Set<String> _deletingIds = {};
+
+  // Animation
+  String? _newlyAddedId;
 
   @override
   void initState() {
@@ -142,12 +146,37 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     final bool? confirm = await BottomSheetConfirm.show(context, title: title);
 
     if (confirm == true) {
+      setState(() {
+        _deletingIds.addAll(_selectedIds);
+      });
+
+      // Wait for animation
+      await Future.delayed(const Duration(milliseconds: 400));
+
+      // Check if we are deleting all
+      final bool deletingAll = _selectedIds.length == _schedules.length;
+
       await CourseService.instance.deleteSchedules(_selectedIds.toList());
       _toggleSelectionMode();
-      _loadSchedules();
-      // 如果当前课表被删除了，需要通知上层更新
-      // 这里简单起见，直接返回 true 让上层刷新
+
+      // Reload
+      final service = CourseService.instance;
+      final schedules = await service.loadSchedules();
+      final currentId = await service.getCurrentScheduleId();
+
       if (mounted) {
+        setState(() {
+          _deletingIds.clear();
+          _schedules = schedules;
+          _currentScheduleId = currentId;
+          _isLoading = false;
+
+          // If we deleted all, the new single schedule is "newly added"
+          if (deletingAll && schedules.isNotEmpty) {
+            _newlyAddedId = schedules.first.id;
+          }
+        });
+
         // 检查是否需要强制刷新上层
         // 由于 deleteSchedules 内部处理了 currentId 的重置，
         // 我们只需要确保 TablePage 知道发生了变化。
@@ -230,14 +259,22 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     IconData icon,
   ) {
     return InkWell(
-      onTap: () {
+      onTap: () async {
         Navigator.of(context).pop();
         if (value == 'manual') {
-          Navigator.of(context).push(
+          final result = await Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => const CreateScheduleSettingsPage(),
             ),
           );
+          if (result == true && mounted) {
+            await _loadSchedules();
+            if (_schedules.isNotEmpty) {
+              setState(() {
+                _newlyAddedId = _schedules.first.id;
+              });
+            }
+          }
         } else {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -278,7 +315,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             ? TextButton(
                 onPressed: _selectAll,
                 child: Text(
-                  _selectedIds.length == _schedules.length ? '不全选' : '全选',
+                  _selectedIds.length == _schedules.length ? '全不选' : '全选',
                   style: const TextStyle(
                     color: Colors.blue,
                     fontSize: 16,
@@ -373,6 +410,101 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             buildDefaultDragHandles: false,
             itemBuilder: (context, index) {
               final schedule = _schedules[index];
+              final isNew = schedule.id == _newlyAddedId;
+              final isDeleting = _deletingIds.contains(schedule.id);
+
+              if (isDeleting) {
+                return TweenAnimationBuilder<double>(
+                  key: ValueKey(schedule.id),
+                  tween: Tween(begin: 1.0, end: 0.0),
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeInQuart,
+                  builder: (context, value, child) {
+                    return ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: value,
+                        child: Opacity(
+                          opacity: value.clamp(0.0, 1.0),
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: _buildScheduleCard(
+                    context,
+                    isCurrent: schedule.id == _currentScheduleId,
+                    name: schedule.name,
+                    id: schedule.id,
+                    index: index,
+                  ),
+                );
+              }
+
+              if (isNew) {
+                return TweenAnimationBuilder<double>(
+                  key: ValueKey(schedule.id),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 1200),
+                  curve: Curves.linear,
+                  onEnd: () {
+                    if (mounted) {
+                      setState(() {
+                        _newlyAddedId = null;
+                      });
+                    }
+                  },
+                  builder: (context, value, child) {
+                    // 1. Slide Animation (0ms - 800ms)
+                    // value 0.0 -> 0.666
+                    final double slideInput = (value / 0.666).clamp(0.0, 1.0);
+                    final double slideValue = Curves.easeOutQuart.transform(
+                      slideInput,
+                    );
+
+                    // 2. Flash Animation (400ms - 1200ms)
+                    // value 0.333 -> 1.0
+                    // Starts when slide is halfway (time-wise)
+                    final double flashInput = ((value - 0.333) / 0.666).clamp(
+                      0.0,
+                      1.0,
+                    );
+
+                    Color? flashColor;
+                    if (flashInput > 0) {
+                      // Parabola for smooth flash: 0 -> 1 -> 0
+                      // Simulates a single breath/flash
+                      final double flashIntensity =
+                          4 * flashInput * (1 - flashInput);
+                      flashColor = Color.lerp(
+                        Colors.white,
+                        Theme.of(context).primaryColor.withOpacity(0.3),
+                        flashIntensity,
+                      );
+                    }
+
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      heightFactor: slideValue,
+                      child: Transform.translate(
+                        offset: Offset(0, 40 * (1 - slideValue)),
+                        child: Opacity(
+                          opacity: slideValue.clamp(0.0, 1.0),
+                          child: _buildScheduleCard(
+                            context,
+                            isCurrent: schedule.id == _currentScheduleId,
+                            name: schedule.name,
+                            id: schedule.id,
+                            index: index,
+                            backgroundColor: flashColor,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }
+
               return Container(
                 key: ValueKey(schedule.id),
                 child: _buildScheduleCard(
@@ -444,13 +576,14 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     required String name,
     required String id,
     required int index,
+    Color? backgroundColor,
   }) {
     final bool isSelected = _selectedIds.contains(id);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: backgroundColor ?? Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
