@@ -84,6 +84,9 @@ class CourseScheduleTable extends StatefulWidget {
   /// 当此对象发生变化时，组件会强制退出编辑模式
   final Object? editModeResetToken;
 
+  /// 需要高亮显示的日期 (highlightDate)
+  final DateTime? highlightDate;
+
   const CourseScheduleTable({
     super.key,
     required this.courses,
@@ -111,6 +114,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.onCourseAdded,
     this.onEditModeChanged,
     this.editModeResetToken,
+    this.highlightDate,
   }) : assert(
          weekdays.length == weekdayIndexes.length,
          'weekdays 与 weekdayIndexes 长度必须一致',
@@ -594,24 +598,16 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     DateTime? date,
   }) {
     final bool isToday = date != null && _isSameDate(date, DateTime.now());
-    final TextTheme textTheme = Theme.of(context).textTheme;
-    final Color primary = Theme.of(context).colorScheme.primary;
-    final HSLColor hsl = HSLColor.fromColor(primary);
-    final Color activeColor = hsl
-        .withLightness((hsl.lightness + 0.2).clamp(0.0, 1.0))
-        .toColor();
+    final bool isHighlighted =
+        date != null &&
+        widget.highlightDate != null &&
+        _isSameDate(date, widget.highlightDate!);
 
-    final TextStyle labelStyle = textTheme.bodyMedium!.copyWith(
-      fontWeight: FontWeight.w600,
-      color: isToday ? activeColor : const Color(0xFF3D4555),
-    );
-    final TextStyle dateStyle = textTheme.bodySmall!.copyWith(
-      color: isToday ? activeColor : const Color(0xFF6C768A),
-      letterSpacing: 0.4,
-      fontWeight: isToday ? FontWeight.w600 : null,
-    );
-
-    return GestureDetector(
+    return _AnimatedHeaderCell(
+      label: label,
+      date: date,
+      isToday: isToday,
+      isHighlighted: isHighlighted,
       onTap: () {
         if (_selectedBlock != null) {
           setState(() {
@@ -628,17 +624,6 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         }
         widget.onHeaderDateTap?.call();
       },
-      behavior: HitTestBehavior.translucent,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          Text(label, style: labelStyle),
-          if (date != null) ...<Widget>[
-            const SizedBox(height: 4),
-            Text(_formatDate(date), style: dateStyle),
-          ],
-        ],
-      ),
     );
   }
 
@@ -2207,6 +2192,109 @@ String _formatDate(DateTime date) {
   final String month = date.month.toString();
   final String day = date.day.toString().padLeft(2, '0');
   return '$month/$day';
+}
+
+class _AnimatedHeaderCell extends StatefulWidget {
+  final String label;
+  final DateTime? date;
+  final bool isToday;
+  final bool isHighlighted;
+  final VoidCallback onTap;
+
+  const _AnimatedHeaderCell({
+    required this.label,
+    required this.date,
+    required this.isToday,
+    required this.isHighlighted,
+    required this.onTap,
+  });
+
+  @override
+  State<_AnimatedHeaderCell> createState() => _AnimatedHeaderCellState();
+}
+
+class _AnimatedHeaderCellState extends State<_AnimatedHeaderCell>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Color?> _colorAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    if (widget.isHighlighted) {
+      _controller.repeat(reverse: true, count: 2);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedHeaderCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isHighlighted && !oldWidget.isHighlighted) {
+      _controller.repeat(reverse: true, count: 2);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
+    final Color primary = Theme.of(context).colorScheme.primary;
+    final HSLColor hsl = HSLColor.fromColor(primary);
+    final Color activeColor = hsl
+        .withLightness((hsl.lightness + 0.2).clamp(0.0, 1.0))
+        .toColor();
+
+    final TextStyle labelStyle = textTheme.bodyMedium!.copyWith(
+      fontWeight: FontWeight.w600,
+      color: widget.isToday ? activeColor : const Color(0xFF3D4555),
+    );
+    final TextStyle dateStyle = textTheme.bodySmall!.copyWith(
+      color: widget.isToday ? activeColor : const Color(0xFF6C768A),
+      letterSpacing: 0.4,
+      fontWeight: widget.isToday ? FontWeight.w600 : null,
+    );
+
+    _colorAnimation = ColorTween(
+      begin: Colors.transparent,
+      end: primary.withValues(alpha: 0.15),
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.translucent,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Container(
+            decoration: BoxDecoration(
+              color: _colorAnimation.value,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: child,
+          );
+        },
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Text(widget.label, style: labelStyle),
+            if (widget.date != null) ...<Widget>[
+              const SizedBox(height: 4),
+              Text(_formatDate(widget.date!), style: dateStyle),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// 判断两个日期是否属于同一天。

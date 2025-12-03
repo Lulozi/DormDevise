@@ -60,6 +60,7 @@ class _TablePageState extends State<TablePage> {
   bool _isLoading = true;
   bool _isEditing = false;
   Object _editModeResetToken = Object();
+  DateTime? _highlightDate;
 
   List<int> get _visibleWeekdays =>
       _showWeekend ? <int>[1, 2, 3, 4, 5, 6, 7] : <int>[1, 2, 3, 4, 5];
@@ -228,7 +229,19 @@ class _TablePageState extends State<TablePage> {
     final int days = picked.difference(_firstWeekStart).inDays;
     final int computedWeek = (days ~/ 7) + 1;
     if (computedWeek >= 1 && computedWeek <= _maxWeek) {
+      setState(() {
+        _highlightDate = picked;
+      });
       _updateWeek(computedWeek);
+
+      // 2秒后清除高亮状态
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && _highlightDate == picked) {
+          setState(() {
+            _highlightDate = null;
+          });
+        }
+      });
     }
   }
 
@@ -524,6 +537,7 @@ class _TablePageState extends State<TablePage> {
                       _exitEditMode();
                       _pickDate(context);
                     },
+                    highlightDate: _highlightDate,
                     includeTimeColumn: false,
                     timeColumnWidth: timeColumnWidth,
                     leadingInset: 0,
