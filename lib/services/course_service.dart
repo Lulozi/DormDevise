@@ -83,6 +83,11 @@ class CourseService {
     return newId;
   }
 
+  /// 更新课程表顺序
+  Future<void> updateScheduleOrder(List<ScheduleMetadata> schedules) async {
+    await _saveSchedules(schedules);
+  }
+
   /// 切换当前课程表
   Future<void> switchSchedule(String id) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();

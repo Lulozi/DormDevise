@@ -350,27 +350,41 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       ),
       body: Stack(
         children: [
-          ListView.builder(
+          ReorderableListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-            itemCount: _schedules.length + 1,
+            header: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _isSelectionMode ? '删除全部课程表将自动生成默认课程表' : '点击课程表卡片可切换当前并查看课程',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
+            itemCount: _schedules.length,
+            onReorder: (int oldIndex, int newIndex) {
+              setState(() {
+                if (oldIndex < newIndex) {
+                  newIndex -= 1;
+                }
+                final item = _schedules.removeAt(oldIndex);
+                _schedules.insert(newIndex, item);
+              });
+              CourseService.instance.updateScheduleOrder(_schedules);
+            },
+            proxyDecorator: (child, index, animation) {
+              return Material(color: Colors.transparent, child: child);
+            },
+            buildDefaultDragHandles: false,
             itemBuilder: (context, index) {
-              if (index == 0) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _isSelectionMode
-                        ? '删除全部课程表将自动生成默认课程表'
-                        : '点击课程表卡片可切换当前并查看课程',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                );
-              }
-              final schedule = _schedules[index - 1];
-              return _buildScheduleCard(
-                context,
-                isCurrent: schedule.id == _currentScheduleId,
-                name: schedule.name,
-                id: schedule.id,
+              final schedule = _schedules[index];
+              return Container(
+                key: ValueKey(schedule.id),
+                child: _buildScheduleCard(
+                  context,
+                  isCurrent: schedule.id == _currentScheduleId,
+                  name: schedule.name,
+                  id: schedule.id,
+                  index: index,
+                ),
               );
             },
           ),
@@ -432,6 +446,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     required bool isCurrent,
     required String name,
     required String id,
+    required int index,
   }) {
     final bool isSelected = _selectedIds.contains(id);
 
@@ -514,7 +529,16 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                   ),
                 ],
                 const Spacer(),
-                if (!_isSelectionMode)
+                if (_isSelectionMode)
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Container(
+                      padding: const EdgeInsets.only(left: 16),
+                      color: Colors.transparent,
+                      child: const Icon(Icons.drag_handle, color: Colors.grey),
+                    ),
+                  )
+                else
                   Material(
                     color: const Color(0xFFF2F2F2),
                     borderRadius: BorderRadius.circular(16),
