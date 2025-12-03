@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:dormdevise/services/update/update_installer.dart';
 
 /// 描述下载任务实时进度的模型。
 class DownloadProgress {
@@ -151,6 +153,199 @@ class UpdateDownloadService {
 
   final UpdateDownloadCoordinator coordinator =
       UpdateDownloadCoordinator.instance;
+
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+  bool _isNotificationsInitialized = false;
+  static const int _notificationId = 888;
+  static const String _channelId = 'dormdevise_download_channel_v2';
+  static const String _channelName = '更新下载';
+  static const String _channelDescription = '显示应用更新下载进度';
+
+  // 全局下载状态管理
+  final ValueNotifier<DownloadProgress?> progressNotifier =
+      ValueNotifier<DownloadProgress?>(null);
+  final ValueNotifier<DownloadResult?> resultNotifier =
+      ValueNotifier<DownloadResult?>(null);
+  bool _cancelRequested = false;
+
+  /// 初始化通知插件并请求权限
+  Future<void> initializeNotifications() async {
+    if (_isNotificationsInitialized) return;
+
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    const DarwinInitializationSettings initializationSettingsDarwin =
+        DarwinInitializationSettings();
+
+    const InitializationSettings initializationSettings =
+        InitializationSettings(
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsDarwin,
+          macOS: initializationSettingsDarwin,
+        );
+
+    await _notificationsPlugin.initialize(initializationSettings);
+
+    if (Platform.isAndroid) {
+      final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+          _notificationsPlugin
+              .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin
+              >();
+
+      await androidImplementation?.requestNotificationsPermission();
+    }
+
+    _isNotificationsInitialized = true;
+  }
+
+  /// 显示或更新进度通知
+  Future<void> _showNotification({
+    required String title,
+    String? body,
+    double? progress,
+    bool indeterminate = false,
+  }) async {
+    if (!_isNotificationsInitialized) return;
+
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+          playSound: false,
+          enableVibration: false,
+          onlyAlertOnce: true,
+          showProgress: true,
+          maxProgress: 100,
+          progress: progress != null ? (progress * 100).toInt() : 0,
+          indeterminate: indeterminate,
+          autoCancel: false,
+          ongoing: true,
+        );
+
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
+      android: androidPlatformChannelSpecifics,
+    );
+
+    await _notificationsPlugin.show(
+      _notificationId,
+      title,
+      body,
+      platformChannelSpecifics,
+    );
+  }
+
+  /// 显示完成或失败通知
+  Future<void> _showResultNotification(String title, String body) async {
+    if (!_isNotificationsInitialized) return;
+
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          autoCancel: true,
+          ongoing: false,
+        );
+
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
+      android: androidPlatformChannelSpecifics,
+    );
+
+    await _notificationsPlugin.show(
+      _notificationId,
+      title,
+      body,
+      platformChannelSpecifics,
+    );
+  }
+
+  /// 取消通知
+  Future<void> _cancelNotification() async {
+    if (!_isNotificationsInitialized) return;
+    await _notificationsPlugin.cancel(_notificationId);
+  }
+
+  /// 启动后台下载任务
+  Future<void> startBackgroundDownload({
+    required DownloadRequest request,
+  }) async {
+    if (coordinator.isDownloading) {
+      debugPrint('Download already in progress');
+      return;
+    }
+
+    await initializeNotifications();
+    _cancelRequested = false;
+    progressNotifier.value = DownloadProgress(
+      receivedBytes: 0,
+      totalBytes: request.totalBytesHint,
+    );
+    resultNotifier.value = null;
+
+    // 初始通知
+    await _showNotification(title: '准备下载...', indeterminate: true);
+
+    final result = await downloadToTempFile(
+      request: request,
+      onProgress: (progress) {
+        progressNotifier.value = progress;
+        _showNotification(
+          title: '正在下载更新...',
+          body: _formatProgress(progress),
+          progress: progress.fraction,
+        );
+      },
+      shouldCancel: () => _cancelRequested,
+    );
+
+    resultNotifier.value = result;
+
+    if (result.isSuccess) {
+      await _showResultNotification('下载完成', '正在尝试安装更新...');
+      try {
+        await UpdateInstaller.openAndCleanup(result.file!);
+      } catch (e) {
+        debugPrint('自动安装失败: $e');
+      }
+    } else if (result.isCancelled) {
+      await _cancelNotification();
+    } else {
+      await _showResultNotification('下载失败', result.error.toString());
+    }
+  }
+
+  /// 请求取消当前下载
+  void cancelDownload() {
+    if (coordinator.isDownloading) {
+      _cancelRequested = true;
+    }
+  }
+
+  String _formatProgress(DownloadProgress progress) {
+    final fraction = progress.fraction;
+    if (fraction == null) return _formatFileSize(progress.receivedBytes);
+    return '${(fraction * 100).toStringAsFixed(0)}%';
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    double size = bytes.toDouble();
+    var unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    return '${size.toStringAsFixed(1)} ${units[unitIndex]}';
+  }
 
   /// 根据下载请求推导出最终写入的目标文件。
   Future<File> resolveTargetFile({required DownloadRequest request}) async {

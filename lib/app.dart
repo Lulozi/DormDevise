@@ -7,6 +7,7 @@ import 'package:dormdevise/widgets/door_widget_dialog.dart';
 import 'package:dormdevise/views/screens/person/person_page.dart';
 import 'package:dormdevise/views/screens/table/table_page.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
+import 'package:dormdevise/services/update/update_download_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -144,6 +145,8 @@ class ManagementScreenState extends State<ManagementScreen>
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: selectedIndex);
     _bindWidgetLaunchEvents();
+    // 提前请求通知权限
+    UpdateDownloadService.instance.initializeNotifications();
   }
 
   /// 移除绑定并释放控制器资源。
