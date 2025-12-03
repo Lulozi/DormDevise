@@ -9,6 +9,7 @@ import 'package:dormdevise/utils/course_utils.dart';
 import '../../../../models/course.dart';
 import '../../../../models/course_schedule_config.dart';
 import '../../../../services/course_service.dart';
+import '../../widgets/bottom_sheet_confirm.dart';
 import 'widgets/expandable_item.dart';
 
 class CourseEditPage extends StatefulWidget {
@@ -1003,27 +1004,15 @@ class _CourseEditPageState extends State<CourseEditPage> {
     );
   }
 
-  void _deleteCourse() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除课程'),
-        content: const Text('确定要删除这门课程吗？此操作无法撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // 关闭对话框
-              Navigator.pop(context, 'delete'); // 返回删除信号
-            },
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+  Future<void> _deleteCourse() async {
+    final bool? confirm = await BottomSheetConfirm.show(
+      context,
+      title: '确定删除此课程及日程？',
     );
+
+    if (confirm == true && mounted) {
+      Navigator.pop(context, 'delete'); // 返回删除信号
+    }
   }
 
   Widget _buildSuggestionItem(Course course) {

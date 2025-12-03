@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 
-import '../../../models/course_schedule_config.dart';
-import '../../../models/schedule_metadata.dart';
-import '../../../services/course_service.dart';
+import '../../../../models/course_schedule_config.dart';
+import '../../../../models/schedule_metadata.dart';
+import '../../../../services/course_service.dart';
+import '../../widgets/bottom_sheet_confirm.dart';
 import '../../widgets/bubble_popup.dart';
 import 'widgets/schedule_settings_sheet.dart';
 import 'create_schedule_settings_page.dart';
@@ -126,23 +127,19 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   Future<void> _deleteSelected() async {
     if (_selectedIds.isEmpty) return;
 
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认删除'),
-        content: Text('确定要删除选中的 ${_selectedIds.length} 个课程表吗？此操作不可恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
+    String title;
+    if (_selectedIds.length == 1) {
+      final id = _selectedIds.first;
+      final schedule = _schedules.firstWhere(
+        (s) => s.id == id,
+        orElse: () => ScheduleMetadata(id: '', name: ''),
+      );
+      title = '确定删除“${schedule.name}”课程表吗？';
+    } else {
+      title = '确定删除${_selectedIds.length}个课程表吗？';
+    }
+
+    final bool? confirm = await BottomSheetConfirm.show(context, title: title);
 
     if (confirm == true) {
       await CourseService.instance.deleteSchedules(_selectedIds.toList());
