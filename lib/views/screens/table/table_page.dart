@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:linked_scroll_controller/linked_scroll_controller.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 
 import '../../../models/course.dart';
@@ -187,12 +188,36 @@ class _TablePageState extends State<TablePage> {
         ),
         const SizedBox(width: 16),
         _ToolbarIconButton(
-          icon: Icons.settings_outlined,
+          icon: FontAwesomeIcons.calendarPlus,
+          tooltip: '导入课表',
+          onPressed: () {
+            _exitEditMode();
+            AppToast.show(context, '功能开发中');
+          },
+          useFaIcon: true,
+          iconSize: 20,
+        ),
+        const SizedBox(width: 10),
+        _ToolbarIconButton(
+          icon: FontAwesomeIcons.shareFromSquare,
+          tooltip: '分享课表',
+          onPressed: () {
+            _exitEditMode();
+            AppToast.show(context, '功能开发中');
+          },
+          useFaIcon: true,
+          iconSize: 20,
+        ),
+        const SizedBox(width: 10),
+        _ToolbarIconButton(
+          icon: FontAwesomeIcons.listUl,
           tooltip: '课程表设置',
           onPressed: () {
             _exitEditMode();
             _openScheduleSettings();
           },
+          useFaIcon: true,
+          iconSize: 20,
         ),
       ],
     );
@@ -668,10 +693,18 @@ class _ToolbarIconButton extends StatelessWidget {
   /// 按钮点击回调。
   final VoidCallback? onPressed;
 
+  /// 是否使用 FontAwesome 图标。
+  final bool useFaIcon;
+
+  /// 图标大小。
+  final double? iconSize;
+
   const _ToolbarIconButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
+    this.useFaIcon = false,
+    this.iconSize,
   });
 
   /// 渲染带阴影的圆角图标按钮。
@@ -679,6 +712,7 @@ class _ToolbarIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isEnabled = onPressed != null;
     final Color iconColor = isEnabled ? Colors.black87 : Colors.black26;
+    final double size = iconSize ?? (useFaIcon ? 20 : 24);
 
     return Tooltip(
       message: tooltip,
@@ -702,7 +736,11 @@ class _ToolbarIconButton extends StatelessWidget {
             child: SizedBox(
               width: 44,
               height: 44,
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Center(
+                child: useFaIcon
+                    ? FaIcon(icon, color: iconColor, size: size)
+                    : Icon(icon, color: iconColor, size: size),
+              ),
             ),
           ),
         ),
