@@ -61,6 +61,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   late int _maxWeek;
   late bool _showWeekend;
   late bool _showNonCurrentWeek;
+  late String _tableName;
   String? _colorAllocationAction;
 
   @override
@@ -71,6 +72,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     _maxWeek = widget.maxWeek;
     _showWeekend = widget.showWeekend;
     _showNonCurrentWeek = widget.showNonCurrentWeek;
+    _tableName = widget.tableName;
     _loadColorAllocationAction();
   }
 
@@ -91,6 +93,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     }
     if (oldWidget.showNonCurrentWeek != widget.showNonCurrentWeek) {
       _showNonCurrentWeek = widget.showNonCurrentWeek;
+    }
+    if (oldWidget.tableName != widget.tableName) {
+      _tableName = widget.tableName;
     }
   }
 
@@ -151,7 +156,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             children: [
               _buildTile(
                 title: '课程表名称',
-                trailing: _buildTrailingText(widget.tableName),
+                trailing: _buildTrailingText(_tableName),
                 onTap: () => _showEditNameDialog(context),
               ),
               _buildDivider(),
@@ -549,7 +554,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   /// 显示修改课程表名称的对话框
   void _showEditNameDialog(BuildContext context) {
     final TextEditingController controller = TextEditingController(
-      text: widget.tableName,
+      text: _tableName,
     );
     showDialog(
       context: context,
@@ -599,6 +604,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               child: const Text('确定'),
               onPressed: () {
                 widget.onTableNameChanged(controller.text);
+                setState(() {
+                  _tableName = controller.text;
+                });
                 Navigator.pop(context);
               },
             ),

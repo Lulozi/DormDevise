@@ -6,7 +6,7 @@ import 'package:dormdevise/utils/app_toast.dart';
 import '../../../models/course_schedule_config.dart';
 import 'widgets/schedule_settings_sheet.dart';
 
-class AllSchedulesPage extends StatelessWidget {
+class AllSchedulesPage extends StatefulWidget {
   final CourseScheduleConfig scheduleConfig;
   final DateTime semesterStart;
   final int currentWeek;
@@ -41,6 +41,27 @@ class AllSchedulesPage extends StatelessWidget {
     required this.onShowNonCurrentWeekChanged,
     required this.onOpenSectionSettings,
   });
+
+  @override
+  State<AllSchedulesPage> createState() => _AllSchedulesPageState();
+}
+
+class _AllSchedulesPageState extends State<AllSchedulesPage> {
+  late String _tableName;
+
+  @override
+  void initState() {
+    super.initState();
+    _tableName = widget.tableName;
+  }
+
+  @override
+  void didUpdateWidget(covariant AllSchedulesPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tableName != widget.tableName) {
+      _tableName = widget.tableName;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +140,7 @@ class AllSchedulesPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -139,7 +160,7 @@ class AllSchedulesPage extends StatelessWidget {
             child: Row(
               children: [
                 Text(
-                  name ?? tableName,
+                  name ?? _tableName,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
@@ -154,7 +175,7 @@ class AllSchedulesPage extends StatelessWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.15),
+                      color: Colors.blue.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: const Text(
@@ -205,21 +226,26 @@ class AllSchedulesPage extends StatelessWidget {
       CupertinoPageRoute(
         builder: (BuildContext context) {
           return ScheduleSettingsPage(
-            scheduleConfig: scheduleConfig,
-            semesterStart: semesterStart,
-            currentWeek: currentWeek,
-            maxWeek: maxWeek,
-            tableName: tableName,
-            showWeekend: showWeekend,
-            showNonCurrentWeek: showNonCurrentWeek,
-            onConfigChanged: onConfigChanged,
-            onSemesterStartChanged: onSemesterStartChanged,
-            onCurrentWeekChanged: onCurrentWeekChanged,
-            onMaxWeekChanged: onMaxWeekChanged,
-            onTableNameChanged: onTableNameChanged,
-            onShowWeekendChanged: onShowWeekendChanged,
-            onShowNonCurrentWeekChanged: onShowNonCurrentWeekChanged,
-            onOpenSectionSettings: onOpenSectionSettings,
+            scheduleConfig: widget.scheduleConfig,
+            semesterStart: widget.semesterStart,
+            currentWeek: widget.currentWeek,
+            maxWeek: widget.maxWeek,
+            tableName: _tableName,
+            showWeekend: widget.showWeekend,
+            showNonCurrentWeek: widget.showNonCurrentWeek,
+            onConfigChanged: widget.onConfigChanged,
+            onSemesterStartChanged: widget.onSemesterStartChanged,
+            onCurrentWeekChanged: widget.onCurrentWeekChanged,
+            onMaxWeekChanged: widget.onMaxWeekChanged,
+            onTableNameChanged: (newName) {
+              widget.onTableNameChanged(newName);
+              setState(() {
+                _tableName = newName;
+              });
+            },
+            onShowWeekendChanged: widget.onShowWeekendChanged,
+            onShowNonCurrentWeekChanged: widget.onShowNonCurrentWeekChanged,
+            onOpenSectionSettings: widget.onOpenSectionSettings,
           );
         },
       ),
