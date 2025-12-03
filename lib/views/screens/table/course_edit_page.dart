@@ -17,6 +17,7 @@ class CourseEditPage extends StatefulWidget {
   final int? initialSection;
   final int maxWeek;
   final List<Course> existingCourses;
+  final CourseScheduleConfig? scheduleConfig;
 
   const CourseEditPage({
     super.key,
@@ -25,6 +26,7 @@ class CourseEditPage extends StatefulWidget {
     this.initialSection,
     this.maxWeek = 20,
     this.existingCourses = const [],
+    this.scheduleConfig,
   });
 
   @override
@@ -83,6 +85,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.scheduleConfig != null) {
+      _scheduleConfig = widget.scheduleConfig;
+    }
     _loadConfig();
     _loadCustomColors();
     _endWeek = widget.maxWeek;
@@ -146,7 +151,24 @@ class _CourseEditPageState extends State<CourseEditPage> {
           });
         });
 
-        if (nextSectionOccupied) {
+        // Check if the default 2-section session would cross a segment
+        bool isCrossSegment = false;
+        if (_scheduleConfig != null) {
+          final tempSession = CourseSession(
+            weekday: widget.initialWeekday!,
+            startSection: widget.initialSection!,
+            sectionCount: 2,
+            location: '',
+            startWeek: 1,
+            endWeek: widget.maxWeek,
+            weekType: CourseWeekType.all,
+          );
+          if (_isCrossSegment(tempSession)) {
+            isCrossSegment = true;
+          }
+        }
+
+        if (nextSectionOccupied || isCrossSegment) {
           initialCount = 1;
         }
 
@@ -224,6 +246,19 @@ class _CourseEditPageState extends State<CourseEditPage> {
     });
   }
 
+  ({int start, int end})? _getSegmentRange(int section) {
+    if (_scheduleConfig == null) return null;
+    int segStart = 1;
+    for (var segment in _scheduleConfig!.segments) {
+      int segEnd = segStart + segment.classCount - 1;
+      if (section >= segStart && section <= segEnd) {
+        return (start: segStart, end: segEnd);
+      }
+      segStart += segment.classCount;
+    }
+    return null;
+  }
+
   bool _isCrossSegment(CourseSession session) {
     if (_scheduleConfig == null) return false;
 
@@ -245,7 +280,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
   }
 
   Future<void> _loadConfig() async {
-    final config = await CourseService.instance.loadConfig();
+    final config =
+        widget.scheduleConfig ?? await CourseService.instance.loadConfig();
     if (mounted) {
       setState(() {
         _scheduleConfig = config;
@@ -1239,12 +1275,40 @@ class _CourseEditPageState extends State<CourseEditPage> {
                     // 计算当前的结束时间
                     final currentEnd =
                         session.startSection + session.sectionCount - 1;
-                    // 允许结束时间小于开始时间（负数 sectionCount），在停止滚动后由 _smartSplitAndMerge 处理
-                    final newCount = currentEnd - newStart + 1;
+
+                    // 验证跨段
+                    int validatedStart = newStart;
+
+                    // 情况1: newStart > currentEnd (发生交换)
+                    // 实际区间变为 [currentEnd, newStart]
+                    if (newStart > currentEnd) {
+                      final range = _getSegmentRange(currentEnd);
+                      if (range != null && newStart > range.end) {
+                        validatedStart = range.end;
+                        // 强制刷新 UI
+                        setState(() {
+                          _pickerResetVersion++;
+                        });
+                      }
+                    }
+                    // 情况2: newStart <= currentEnd (正常)
+                    // 实际区间变为 [newStart, currentEnd]
+                    else {
+                      final range = _getSegmentRange(currentEnd);
+                      if (range != null && newStart < range.start) {
+                        validatedStart = range.start;
+                        // 强制刷新 UI
+                        setState(() {
+                          _pickerResetVersion++;
+                        });
+                      }
+                    }
+
+                    final newCount = currentEnd - validatedStart + 1;
 
                     final newSession = CourseSession(
                       weekday: session.weekday,
-                      startSection: newStart,
+                      startSection: validatedStart,
                       sectionCount: newCount,
                       location: session.location,
                       startWeek: session.startWeek,
@@ -1279,9 +1343,31 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   ),
                   onSelectedItemChanged: (newIndex) {
                     final newEnd = newIndex + 1;
-                    // 允许结束时间小于开始时间，在停止滚动后由 _smartSplitAndMerge 处理
-                    final newCount = newEnd - session.startSection + 1;
 
+                    // 验证跨段
+                    int validatedEnd = newEnd;
+                    final range = _getSegmentRange(session.startSection);
+
+                    if (range != null) {
+                      // 如果结束时间超过了当前段的结束时间
+                      if (newEnd > range.end) {
+                        validatedEnd = range.end;
+                        setState(() {
+                          _pickerResetVersion++;
+                        });
+                      }
+                    }
+
+                    // 限制结束节次不能小于开始节次
+                    if (validatedEnd < session.startSection) {
+                      // 采用修正策略：如果结束 < 开始，则结束 = 开始
+                      validatedEnd = session.startSection;
+                      setState(() {
+                        _pickerResetVersion++;
+                      });
+                    }
+
+                    final newCount = validatedEnd - session.startSection + 1;
                     final newSession = CourseSession(
                       weekday: session.weekday,
                       startSection: session.startSection,

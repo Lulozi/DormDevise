@@ -480,8 +480,8 @@ class _TablePageState extends State<TablePage> {
   }
 
   /// 打开课程表设置页面。
-  void _openScheduleSettings() {
-    Navigator.of(context).push(
+  Future<void> _openScheduleSettings() async {
+    final result = await Navigator.of(context).push(
       CupertinoPageRoute(
         builder: (BuildContext context) {
           return AllSchedulesPage(
@@ -556,6 +556,13 @@ class _TablePageState extends State<TablePage> {
         },
       ),
     );
+    if (result == true) {
+      _loadData();
+    } else {
+      // 即使没有返回 true，也重新加载数据，以防是从创建页面直接返回（popUntil）
+      // 或者在设置页面切换了课表但没有通过正常返回传递结果
+      _loadData();
+    }
   }
 
   /// 构建带有固定左列的分页课表视图。
