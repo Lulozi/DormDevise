@@ -251,6 +251,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                   itemBuilder: (context, index) {
                     final int week = index + 1;
                     return CourseScheduleTable(
+                      applySurface: false,
                       courses: _courses,
                       currentWeek: week,
                       sections: _sections,
