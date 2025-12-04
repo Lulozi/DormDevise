@@ -633,8 +633,11 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                   curve: Curves.easeInOut,
                   child: _isSelectionMode
                       ? Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: _buildAnimatedCheckbox(isSelected),
+                          // 缩小右侧间距，让选择框更紧凑，并垂直居中对齐文本
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Center(
+                            child: _buildAnimatedCheckbox(isSelected),
+                          ),
                         )
                       : const SizedBox.shrink(),
                 ),
@@ -714,18 +717,20 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
-      width: 24,
-      height: 24,
+      // 尺寸调整（与文字高度更接近，用于对齐）
+      width: 16,
+      height: 16,
       decoration: BoxDecoration(
         color: isSelected ? Colors.blue : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(
           color: isSelected ? Colors.blue : Colors.grey.shade300,
-          width: 2,
+          width: 1.2,
         ),
       ),
+      // 把勾选图标的大小缩成与文字更协同的尺寸
       child: isSelected
-          ? const Icon(Icons.check, size: 16, color: Colors.white)
+          ? const Icon(Icons.check, size: 12, color: Colors.white)
           : null,
     );
   }
