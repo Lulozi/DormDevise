@@ -308,131 +308,218 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC), // 浅灰背景色
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FC),
-        elevation: 0,
-        leading: _isSelectionMode
-            ? TextButton(
-                onPressed: _selectAll,
-                child: Text(
-                  _selectedIds.length == _schedules.length ? '全不选' : '全选',
-                  style: const TextStyle(
+    return PopScope(
+      canPop: !_isSelectionMode,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isSelectionMode) {
+          _toggleSelectionMode();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7F8FC), // 浅灰背景色
+        appBar: AppBar(
+          backgroundColor: const Color(0xFFF7F8FC),
+          elevation: 0,
+          leading: _isSelectionMode
+              ? TextButton(
+                  onPressed: _selectAll,
+                  child: Text(
+                    _selectedIds.length == _schedules.length ? '全不选' : '全选',
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.black,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+          leadingWidth: _isSelectionMode ? 80 : null,
+          title: Text(
+            _isSelectionMode ? '已选择${_selectedIds.length}项' : '全部课程表',
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          centerTitle: true,
+          actions: [
+            if (_isSelectionMode)
+              TextButton(
+                onPressed: _toggleSelectionMode,
+                child: const Text(
+                  '取消',
+                  style: TextStyle(
                     color: Colors.blue,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               )
-            : IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
-                onPressed: () => Navigator.of(context).pop(),
+            else ...[
+              IconButton(
+                icon: const FaIcon(
+                  FontAwesomeIcons.squareCheck,
+                  color: Colors.black87,
+                  size: 22,
+                ),
+                onPressed: _toggleSelectionMode,
               ),
-        leadingWidth: _isSelectionMode ? 80 : null,
-        title: Text(
-          _isSelectionMode ? '已选择${_selectedIds.length}项' : '全部课程表',
-          style: const TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+              IconButton(
+                key: _addBtnKey,
+                icon: Icon(
+                  Icons.add,
+                  color: _isAddMenuOpen ? Colors.grey : Colors.black87,
+                  size: 28,
+                ),
+                onPressed: () async {
+                  setState(() {
+                    _isAddMenuOpen = true;
+                  });
+                  await _showAddMenu(context);
+                  if (mounted) {
+                    setState(() {
+                      _isAddMenuOpen = false;
+                    });
+                  }
+                },
+              ),
+            ],
+            const SizedBox(width: 8),
+          ],
         ),
-        centerTitle: true,
-        actions: [
-          if (_isSelectionMode)
-            TextButton(
-              onPressed: _toggleSelectionMode,
-              child: const Text(
-                '取消',
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+        body: Stack(
+          children: [
+            ReorderableListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+              header: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  _isSelectionMode ? '删除全部课程表将自动生成默认课程表' : '点击课程表卡片可切换当前并查看课程',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
               ),
-            )
-          else ...[
-            IconButton(
-              icon: const FaIcon(
-                FontAwesomeIcons.squareCheck,
-                color: Colors.black87,
-                size: 22,
-              ),
-              onPressed: _toggleSelectionMode,
-            ),
-            IconButton(
-              key: _addBtnKey,
-              icon: Icon(
-                Icons.add,
-                color: _isAddMenuOpen ? Colors.grey : Colors.black87,
-                size: 28,
-              ),
-              onPressed: () async {
+              itemCount: _schedules.length,
+              onReorder: (int oldIndex, int newIndex) {
                 setState(() {
-                  _isAddMenuOpen = true;
+                  if (oldIndex < newIndex) {
+                    newIndex -= 1;
+                  }
+                  final item = _schedules.removeAt(oldIndex);
+                  _schedules.insert(newIndex, item);
                 });
-                await _showAddMenu(context);
-                if (mounted) {
-                  setState(() {
-                    _isAddMenuOpen = false;
-                  });
-                }
+                CourseService.instance.updateScheduleOrder(_schedules);
               },
-            ),
-          ],
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Stack(
-        children: [
-          ReorderableListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-            header: Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                _isSelectionMode ? '删除全部课程表将自动生成默认课程表' : '点击课程表卡片可切换当前并查看课程',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-            ),
-            itemCount: _schedules.length,
-            onReorder: (int oldIndex, int newIndex) {
-              setState(() {
-                if (oldIndex < newIndex) {
-                  newIndex -= 1;
-                }
-                final item = _schedules.removeAt(oldIndex);
-                _schedules.insert(newIndex, item);
-              });
-              CourseService.instance.updateScheduleOrder(_schedules);
-            },
-            proxyDecorator: (child, index, animation) {
-              return Material(color: Colors.transparent, child: child);
-            },
-            buildDefaultDragHandles: false,
-            itemBuilder: (context, index) {
-              final schedule = _schedules[index];
-              final isNew = schedule.id == _newlyAddedId;
-              final isDeleting = _deletingIds.contains(schedule.id);
+              proxyDecorator: (child, index, animation) {
+                return Material(color: Colors.transparent, child: child);
+              },
+              buildDefaultDragHandles: false,
+              itemBuilder: (context, index) {
+                final schedule = _schedules[index];
+                final isNew = schedule.id == _newlyAddedId;
+                final isDeleting = _deletingIds.contains(schedule.id);
 
-              if (isDeleting) {
-                return TweenAnimationBuilder<double>(
-                  key: ValueKey(schedule.id),
-                  tween: Tween(begin: 1.0, end: 0.0),
-                  duration: const Duration(milliseconds: 400),
-                  curve: Curves.easeInQuart,
-                  builder: (context, value, child) {
-                    return ClipRect(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        heightFactor: value,
-                        child: Opacity(
-                          opacity: value.clamp(0.0, 1.0),
-                          child: child,
+                if (isDeleting) {
+                  return TweenAnimationBuilder<double>(
+                    key: ValueKey(schedule.id),
+                    tween: Tween(begin: 1.0, end: 0.0),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeInQuart,
+                    builder: (context, value, child) {
+                      return ClipRect(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          heightFactor: value,
+                          child: Opacity(
+                            opacity: value.clamp(0.0, 1.0),
+                            child: child,
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                    child: _buildScheduleCard(
+                      context,
+                      isCurrent: schedule.id == _currentScheduleId,
+                      name: schedule.name,
+                      id: schedule.id,
+                      index: index,
+                    ),
+                  );
+                }
+
+                if (isNew) {
+                  return TweenAnimationBuilder<double>(
+                    key: ValueKey(schedule.id),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 1200),
+                    curve: Curves.linear,
+                    onEnd: () {
+                      if (mounted) {
+                        setState(() {
+                          _newlyAddedId = null;
+                        });
+                      }
+                    },
+                    builder: (context, value, child) {
+                      // 1. 滑动动画 (0ms - 800ms)
+                      // 动画滑动阶段：value 0.0 -> 0.666
+                      final double slideInput = (value / 0.666).clamp(0.0, 1.0);
+                      final double slideValue = Curves.easeOutQuart.transform(
+                        slideInput,
+                      );
+
+                      // 2. 闪烁动画 (400ms - 1200ms)
+                      // 闪烁阶段：value 0.333 -> 1.0
+                      // 在滑动动画进行到一半时开始触发（时间上）
+                      final double flashInput = ((value - 0.333) / 0.666).clamp(
+                        0.0,
+                        1.0,
+                      );
+
+                      Color? flashColor;
+                      if (_shouldFlashNewlyAdded && flashInput > 0) {
+                        // 使用抛物线形曲线实现单次平滑闪烁：0 -> 1 -> 0
+                        // 模拟一次呼吸/闪烁效果
+                        final double flashIntensity =
+                            4 * flashInput * (1 - flashInput);
+                        flashColor = Color.lerp(
+                          Colors.white,
+                          Theme.of(context).primaryColor.withOpacity(0.3),
+                          flashIntensity,
+                        );
+                      }
+
+                      return Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: slideValue,
+                        child: Transform.translate(
+                          offset: Offset(0, 40 * (1 - slideValue)),
+                          child: Opacity(
+                            opacity: slideValue.clamp(0.0, 1.0),
+                            child: _buildScheduleCard(
+                              context,
+                              isCurrent: schedule.id == _currentScheduleId,
+                              name: schedule.name,
+                              id: schedule.id,
+                              index: index,
+                              backgroundColor: flashColor,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }
+
+                return Container(
+                  key: ValueKey(schedule.id),
                   child: _buildScheduleCard(
                     context,
                     isCurrent: schedule.id == _currentScheduleId,
@@ -441,140 +528,65 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                     index: index,
                   ),
                 );
-              }
-
-              if (isNew) {
-                return TweenAnimationBuilder<double>(
-                  key: ValueKey(schedule.id),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: const Duration(milliseconds: 1200),
-                  curve: Curves.linear,
-                  onEnd: () {
-                    if (mounted) {
-                      setState(() {
-                        _newlyAddedId = null;
-                      });
-                    }
-                  },
-                  builder: (context, value, child) {
-                    // 1. 滑动动画 (0ms - 800ms)
-                    // 动画滑动阶段：value 0.0 -> 0.666
-                    final double slideInput = (value / 0.666).clamp(0.0, 1.0);
-                    final double slideValue = Curves.easeOutQuart.transform(
-                      slideInput,
-                    );
-
-                    // 2. 闪烁动画 (400ms - 1200ms)
-                    // 闪烁阶段：value 0.333 -> 1.0
-                    // 在滑动动画进行到一半时开始触发（时间上）
-                    final double flashInput = ((value - 0.333) / 0.666).clamp(
-                      0.0,
-                      1.0,
-                    );
-
-                    Color? flashColor;
-                    if (_shouldFlashNewlyAdded && flashInput > 0) {
-                      // 使用抛物线形曲线实现单次平滑闪烁：0 -> 1 -> 0
-                      // 模拟一次呼吸/闪烁效果
-                      final double flashIntensity =
-                          4 * flashInput * (1 - flashInput);
-                      flashColor = Color.lerp(
-                        Colors.white,
-                        Theme.of(context).primaryColor.withOpacity(0.3),
-                        flashIntensity,
-                      );
-                    }
-
-                    return Align(
-                      alignment: Alignment.topCenter,
-                      heightFactor: slideValue,
-                      child: Transform.translate(
-                        offset: Offset(0, 40 * (1 - slideValue)),
-                        child: Opacity(
-                          opacity: slideValue.clamp(0.0, 1.0),
-                          child: _buildScheduleCard(
-                            context,
-                            isCurrent: schedule.id == _currentScheduleId,
-                            name: schedule.name,
-                            id: schedule.id,
-                            index: index,
-                            backgroundColor: flashColor,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              }
-
-              return Container(
-                key: ValueKey(schedule.id),
-                child: _buildScheduleCard(
-                  context,
-                  isCurrent: schedule.id == _currentScheduleId,
-                  name: schedule.name,
-                  id: schedule.id,
-                  index: index,
-                ),
-              );
-            },
-          ),
-          if (_isLoading)
-            Positioned.fill(
-              child: Container(
-                color: Colors.white.withOpacity(0.6),
-                child: const Center(child: CircularProgressIndicator()),
-              ),
+              },
             ),
-          if (_isSelectionMode)
-            Positioned(
-              left: 48,
-              right: 48,
-              bottom: 32,
-              child: SafeArea(
-                child: GestureDetector(
-                  onTap: _selectedIds.isEmpty ? null : _deleteSelected,
-                  child: Container(
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color.fromRGBO(0, 0, 0, 0.08),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.delete_outline,
-                          color: _selectedIds.isEmpty
-                              ? Colors.grey
-                              : const Color(0xFF333333),
-                          size: 26,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '删除',
-                          style: TextStyle(
+            if (_isLoading)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.white.withOpacity(0.6),
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+              ),
+            if (_isSelectionMode)
+              Positioned(
+                left: 48,
+                right: 48,
+                bottom: 32,
+                child: SafeArea(
+                  child: GestureDetector(
+                    onTap: _selectedIds.isEmpty ? null : _deleteSelected,
+                    child: Container(
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color.fromRGBO(0, 0, 0, 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
                             color: _selectedIds.isEmpty
                                 ? Colors.grey
                                 : const Color(0xFF333333),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                            size: 26,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 2),
+                          Text(
+                            '删除',
+                            style: TextStyle(
+                              color: _selectedIds.isEmpty
+                                  ? Colors.grey
+                                  : const Color(0xFF333333),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
