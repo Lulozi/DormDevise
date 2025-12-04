@@ -1172,15 +1172,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   final targetSection = _dragTargetSection;
                   final hasConflict = _hasConflict;
 
-                  setState(() {
-                    _draggingBlock = null;
-                    _dragOffset = Offset.zero;
-                    _dragTargetWeekday = null;
-                    _dragTargetSection = null;
-                    _dragTargetSectionCount = null;
-                    _hasConflict = false;
-                  });
-                  _updateEditMode();
+                  _resetDragInteraction();
 
                   if (hasConflict) return;
 
@@ -1204,6 +1196,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                       });
                     }
                   }
+                },
+                onPanCancel: () {
+                  if (_draggingBlock == null || _isResizing) return;
+                  _resetDragInteraction();
                 },
                 child: cardContent,
               ),
@@ -1376,6 +1372,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 });
               }
             }
+          },
+          onLongPressCancel: () {
+            if (_draggingBlock == null) return;
+            _resetDragInteraction();
           },
           child: cardContent,
         ),
@@ -1838,6 +1838,19 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       return (newCourse, targetSession!);
     }
     return null;
+  }
+
+  void _resetDragInteraction() {
+    setState(() {
+      _draggingBlock = null;
+      _isResizing = false;
+      _dragOffset = Offset.zero;
+      _dragTargetWeekday = null;
+      _dragTargetSection = null;
+      _dragTargetSectionCount = null;
+      _hasConflict = false;
+    });
+    _updateEditMode();
   }
 
   _CourseBlock _createUpdatedBlock(Course newCourse, CourseSession newSession) {
