@@ -162,12 +162,12 @@ class CourseScheduleConfig {
       segments: <ScheduleSegmentConfig>[
         const ScheduleSegmentConfig(
           name: '上午',
-          startTime: TimeOfDay(hour: 8, minute: 0),
+          startTime: TimeOfDay(hour: 8, minute: 30),
           classCount: 4,
         ),
         const ScheduleSegmentConfig(
           name: '下午',
-          startTime: TimeOfDay(hour: 13, minute: 30),
+          startTime: TimeOfDay(hour: 14, minute: 0),
           classCount: 4,
         ),
         const ScheduleSegmentConfig(
