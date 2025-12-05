@@ -44,7 +44,14 @@ class BottomSheetConfirm extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: const Color(0xFFE8EDF8)),
           boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 6,
+              spreadRadius: 0.5,
+              offset: const Offset(0, 3),
+            ),
             BoxShadow(
               color: const Color.fromRGBO(0, 0, 0, 0.08),
               blurRadius: 16,

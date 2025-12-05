@@ -831,11 +831,19 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           isScrollControlled: true,
           builder: (context) => SafeArea(
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: const Color(0xFFE8EDF8)),
                 boxShadow: [
+                  // 轻微边缘阴影，帮助边框更清晰
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 6,
+                    spreadRadius: 0.5,
+                    offset: const Offset(0, 3),
+                  ),
                   BoxShadow(
                     color: const Color.fromRGBO(0, 0, 0, 0.08),
                     blurRadius: 16,
@@ -1861,14 +1869,24 @@ class _WheelSheet extends StatelessWidget {
     final String? subtitle = subtitleBuilder?.call();
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFFE8EDF8)),
+            // 添加一个较轻微的边缘阴影以突出卡片边框，同时保留现有的大阴影用于深度感
             boxShadow: <BoxShadow>[
+              // 轻微的边缘阴影，便于边框突出
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
+                spreadRadius: 0.5,
+                offset: const Offset(0, 3),
+              ),
+              // 现有较大的背景阴影，保留以模拟浮起感
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 16),
               ),
