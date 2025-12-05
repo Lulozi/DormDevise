@@ -20,7 +20,13 @@ class _CreateScheduleSettingsPageState
 
   // 初始设置
   CourseScheduleConfig _scheduleConfig = CourseScheduleConfig.njuDefaults();
-  late DateTime _semesterStart = DateTime(DateTime.now().year, 9, 1);
+  late DateTime _semesterStart = (() {
+    final now = DateTime.now();
+    if (now.month >= 1 && now.month <= 7) {
+      return DateTime(now.year, 2, 20);
+    }
+    return DateTime(now.year, 9, 1);
+  })();
   int _currentWeek = 1;
   int _maxWeek = 20;
   String _tableName = '我的课表';
