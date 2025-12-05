@@ -76,6 +76,8 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   String? _newlyAddedId;
   bool _shouldFlashNewlyAdded = true;
 
+  String? _initialScheduleId;
+
   @override
   void initState() {
     super.initState();
@@ -97,6 +99,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       setState(() {
         _schedules = schedules;
         _currentScheduleId = currentId;
+        if (_initialScheduleId == null) {
+          _initialScheduleId = currentId;
+        }
         _isLoading = false;
       });
     }
@@ -163,6 +168,32 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       final service = CourseService.instance;
       final schedules = await service.loadSchedules();
       final currentId = await service.getCurrentScheduleId();
+
+      // 如果删除了全部课程表（导致自动创建了新表），或者当前课表ID发生了变化
+      // 我们需要重新加载当前课表的配置，以确保 _openSettings 使用的是最新数据
+      if (deletingAll || currentId != _currentScheduleId) {
+        final newConfig = await service.loadConfig(currentId);
+        final newSemesterStart =
+            await service.loadSemesterStart(currentId) ??
+            DateTime(DateTime.now().year, 9, 1);
+        final newMaxWeek = await service.loadMaxWeek(currentId);
+        final newTableName = await service.loadTableName(currentId);
+        final newShowWeekend = await service.loadShowWeekend(currentId);
+        final newShowNonCurrentWeek = await service.loadShowNonCurrentWeek(
+          currentId,
+        );
+
+        if (mounted) {
+          setState(() {
+            _scheduleConfig = newConfig;
+            _semesterStart = newSemesterStart;
+            _maxWeek = newMaxWeek;
+            _tableName = newTableName;
+            _showWeekend = newShowWeekend;
+            _showNonCurrentWeek = newShowNonCurrentWeek;
+          });
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -314,6 +345,14 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         if (didPop) return;
         if (_isSelectionMode) {
           _toggleSelectionMode();
+        } else {
+          // 正常返回时，如果当前课表ID变了，也应该返回true
+          if (_initialScheduleId != null &&
+              _currentScheduleId != _initialScheduleId) {
+            Navigator.of(context).pop(true);
+          } else {
+            Navigator.of(context).pop();
+          }
         }
       },
       child: Scaffold(
@@ -632,6 +671,13 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 await CourseService.instance.switchSchedule(id);
                 if (context.mounted) {
                   Navigator.of(context).pop(true);
+                }
+              } else {
+                // 如果点击的是当前课表，且当前课表ID与进入页面时的ID不同（说明发生了切换或重建），则返回true刷新
+                if (_initialScheduleId != null && id != _initialScheduleId) {
+                  Navigator.of(context).pop(true);
+                } else {
+                  Navigator.of(context).pop();
                 }
               }
             }
