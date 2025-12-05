@@ -206,6 +206,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                 value: _maxWeek,
                 min: 1,
                 max: 30,
+                looping: true,
                 onChanged: (int value) {
                   setState(() {
                     _maxWeek = value;
@@ -716,15 +717,29 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     required int max,
     required ValueChanged<int> onChanged,
     String unit = '',
+    bool looping = false,
   }) {
     return Container(
       height: 150,
       color: Colors.white,
       child: CupertinoPicker(
+        looping: looping,
         selectionOverlay: Container(),
         itemExtent: 44,
-        scrollController: FixedExtentScrollController(initialItem: value - min),
-        onSelectedItemChanged: (index) => onChanged(min + index),
+        scrollController: FixedExtentScrollController(
+          initialItem: (() {
+            final int itemCount = max - min + 1;
+            final int baseIndex = value - min;
+            if (looping) {
+              // 将初始位置设置到中央偏移，避免用户滑到起始边界
+              final int centerOffset = itemCount * 100;
+              return centerOffset + baseIndex;
+            }
+            return baseIndex;
+          })(),
+        ),
+        onSelectedItemChanged: (index) =>
+            onChanged(min + (index % (max - min + 1))),
         children: List.generate(max - min + 1, (index) {
           return Center(
             child: Text(
@@ -838,8 +853,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     required DateTime initialDate,
     required ValueChanged<DateTime> onChanged,
   }) {
-    final int minYear = DateTime.now().year - 5;
-    final int maxYear = DateTime.now().year + 5;
+    final int currentYear = DateTime.now().year;
+    final int minYear = currentYear - 5;
+    final int maxYear = currentYear + 5;
     final List<int> years = List.generate(
       maxYear - minYear + 1,
       (i) => minYear + i,
@@ -894,6 +910,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   child: CupertinoPicker(
                     selectionOverlay: Container(),
                     itemExtent: kPickerItemExtent,
+                    looping: true,
                     scrollController: FixedExtentScrollController(
                       initialItem: (() {
                         final idx = years.indexWhere(
@@ -903,7 +920,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                       })(),
                     ),
                     onSelectedItemChanged: (index) {
-                      final newYear = years[index];
+                      final newYear = years[index % years.length];
                       final daysInNewMonth = DateTime(
                         newYear,
                         initialDate.month + 1,
@@ -940,11 +957,12 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   child: CupertinoPicker(
                     selectionOverlay: Container(),
                     itemExtent: kPickerItemExtent,
+                    looping: true,
                     scrollController: FixedExtentScrollController(
                       initialItem: initialDate.month - 1,
                     ),
                     onSelectedItemChanged: (index) {
-                      final newMonth = index + 1;
+                      final newMonth = (index % 12) + 1;
                       final daysInNewMonth = DateTime(
                         initialDate.year,
                         newMonth + 1,
@@ -981,16 +999,14 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   child: CupertinoPicker(
                     selectionOverlay: Container(),
                     itemExtent: kPickerItemExtent,
+                    looping: true,
                     scrollController: FixedExtentScrollController(
                       initialItem: initialDate.day - 1,
                     ),
                     onSelectedItemChanged: (index) {
+                      final newDay = (index % daysInMonth) + 1;
                       onChanged(
-                        DateTime(
-                          initialDate.year,
-                          initialDate.month,
-                          index + 1,
-                        ),
+                        DateTime(initialDate.year, initialDate.month, newDay),
                       );
                     },
                     children: days
