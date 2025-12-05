@@ -61,6 +61,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   bool _isStartDateExpanded = false;
   bool _isMaxWeekExpanded = false;
   bool _isColorAllocationExpanded = false;
+  bool _isReminderTimeExpanded = false;
 
   // 用于实时更新的本地状态
   late DateTime _semesterStart;
@@ -70,6 +71,11 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   late bool _showNonCurrentWeek;
   late String _tableName;
   String? _colorAllocationAction;
+
+  // 课程提醒相关状态
+  int _reminderTime = 15;
+  bool _isReminderMethodEnabled = false;
+  String _reminderMethod = 'notification';
 
   @override
   void initState() {
@@ -160,7 +166,11 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               onTap: () {
                 setState(() {
                   _isStartDateExpanded = !_isStartDateExpanded;
-                  _isMaxWeekExpanded = false;
+                  if (_isStartDateExpanded) {
+                    _isMaxWeekExpanded = false;
+                    _isColorAllocationExpanded = false;
+                    _isReminderTimeExpanded = false;
+                  }
                 });
               },
               content: _buildCustomDatePicker(
@@ -185,7 +195,11 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               onTap: () {
                 setState(() {
                   _isMaxWeekExpanded = !_isMaxWeekExpanded;
-                  _isStartDateExpanded = false;
+                  if (_isMaxWeekExpanded) {
+                    _isStartDateExpanded = false;
+                    _isColorAllocationExpanded = false;
+                    _isReminderTimeExpanded = false;
+                  }
                 });
               },
               content: _buildNumberPicker(
@@ -245,16 +259,50 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         const SizedBox(height: 20),
         _buildGroup(
           children: [
-            _buildTile(
-              title: '课程提醒时间',
-              trailing: _buildTrailingText('15分钟前'),
-              onTap: () {},
+            Column(
+              children: [
+                _buildSwitchTile(
+                  title: '课程提醒方式',
+                  value: _isReminderMethodEnabled,
+                  onChanged: (bool value) {
+                    setState(() {
+                      _isReminderMethodEnabled = value;
+                      if (!value) {
+                        _isReminderTimeExpanded = false;
+                      }
+                    });
+                  },
+                ),
+                AnimatedCrossFade(
+                  firstChild: Container(),
+                  secondChild: _buildReminderMethodSelector(),
+                  crossFadeState: _isReminderMethodEnabled
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  duration: const Duration(milliseconds: 300),
+                ),
+              ],
             ),
             _buildDivider(),
-            _buildTile(
-              title: '课程提醒方式',
-              trailing: _buildTrailingText('通知提醒'),
-              onTap: () {},
+            ExpandableItem(
+              title: '课程提醒时间',
+              value: Text(
+                '$_reminderTime分钟前',
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+              isExpanded: _isReminderTimeExpanded,
+              onTap: () {
+                setState(() {
+                  _isReminderTimeExpanded = !_isReminderTimeExpanded;
+                  if (_isReminderTimeExpanded) {
+                    _isStartDateExpanded = false;
+                    _isMaxWeekExpanded = false;
+                    _isColorAllocationExpanded = false;
+                  }
+                });
+              },
+              content: _buildReminderTimePicker(),
+              showDivider: false,
             ),
           ],
         ),
@@ -322,6 +370,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           if (_isColorAllocationExpanded) {
             _isStartDateExpanded = false;
             _isMaxWeekExpanded = false;
+            _isReminderTimeExpanded = false;
           }
         });
       },
@@ -413,6 +462,124 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             child: Text(label),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildReminderMethodSelector() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final double totalWidth = constraints.maxWidth;
+            final double indicatorWidth = (totalWidth - 4) / 2;
+
+            Alignment alignment = Alignment.centerLeft;
+            if (_reminderMethod == 'alarm') {
+              alignment = Alignment.centerRight;
+            }
+
+            return Stack(
+              children: [
+                AnimatedAlign(
+                  alignment: alignment,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.fastOutSlowIn,
+                  child: Container(
+                    width: indicatorWidth,
+                    height: 32,
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 1,
+                          offset: const Offset(0, 1),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    _buildReminderMethodOption('通知提醒', 'notification'),
+                    _buildReminderMethodOption('闹钟提醒', 'alarm'),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReminderMethodOption(String label, String value) {
+    final bool isSelected = _reminderMethod == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _reminderMethod = value;
+          });
+        },
+        behavior: HitTestBehavior.translucent,
+        child: Container(
+          alignment: Alignment.center,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: Colors.black,
+            ),
+            child: Text(label),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReminderTimePicker() {
+    final List<int> options = [5, 10, 15, 20, 25, 30, 40, 50, 60];
+    return Container(
+      height: 150,
+      color: Colors.white,
+      child: CupertinoPicker(
+        selectionOverlay: Container(),
+        itemExtent: 44,
+        looping: true,
+        scrollController: FixedExtentScrollController(
+          initialItem: options.indexOf(_reminderTime) != -1
+              ? options.indexOf(_reminderTime)
+              : 2,
+        ),
+        onSelectedItemChanged: (index) {
+          setState(() {
+            _reminderTime = options[index % options.length];
+          });
+        },
+        children: options
+            .map(
+              (e) => Center(
+                child: Text('$e 分钟', style: const TextStyle(fontSize: 20)),
+              ),
+            )
+            .toList(),
       ),
     );
   }
