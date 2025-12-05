@@ -269,6 +269,22 @@ class CourseService {
         final newId = const Uuid().v4();
         schedules.add(ScheduleMetadata(id: newId, name: '我的课表'));
         await switchSchedule(newId);
+
+        // 初始化默认配置
+        final now = DateTime.now();
+        DateTime defaultStart;
+        if (now.month >= 1 && now.month <= 7) {
+          // 上半年，默认2月开学
+          defaultStart = DateTime(now.year, 2, 20);
+        } else {
+          // 下半年，默认9月开学
+          defaultStart = DateTime(now.year, 9, 1);
+        }
+        await saveSemesterStart(defaultStart, newId);
+        await saveConfig(CourseScheduleConfig.njuDefaults(), newId);
+        await saveMaxWeek(20, newId);
+        await saveShowWeekend(false, newId);
+        await saveShowNonCurrentWeek(true, newId);
       }
     }
 
