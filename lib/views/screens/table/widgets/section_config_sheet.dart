@@ -421,6 +421,11 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                 preview: previews[i],
                 isLast: i == previews.length - 1,
                 classDuration: segment.classDurations[i],
+                hasConflict: _checkConflict(
+                  index,
+                  previews[i].start,
+                  previews[i].end,
+                ),
               ),
             ],
           ],
@@ -437,6 +442,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     required _SectionPreview preview,
     required bool isLast,
     required Duration classDuration,
+    bool hasConflict = false,
   }) {
     final ThemeData theme = Theme.of(context);
     return Column(
@@ -459,10 +465,33 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                   style: theme.textTheme.bodyMedium,
                 ),
                 const Spacer(),
+                if (hasConflict) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFECEC),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      '时间冲突',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFFFF4D4F),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Text(
                   '${_formatTime(preview.start)} - ${_formatTime(preview.end)}',
                   style: theme.textTheme.bodyMedium!.copyWith(
-                    color: Colors.black54,
+                    color: hasConflict
+                        ? const Color(0xFFFF4D4F)
+                        : Colors.black54,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -479,6 +508,31 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           Divider(height: 1, color: Colors.black.withValues(alpha: 0.05)),
       ],
     );
+  }
+
+  /// 检查指定的时间段是否与其他时段冲突
+  bool _checkConflict(int currentSegmentIndex, TimeOfDay start, TimeOfDay end) {
+    final int startMin = start.hour * 60 + start.minute;
+    final int endMin = end.hour * 60 + end.minute;
+
+    for (int i = 0; i < _segments.length; i++) {
+      if (i == currentSegmentIndex) continue;
+
+      final _MutableSegment other = _segments[i];
+      final List<_SectionPreview> previews = _buildSectionPreviews(other, 0);
+      if (previews.isEmpty) continue;
+
+      final int otherStartMin =
+          previews.first.start.hour * 60 + previews.first.start.minute;
+      final int otherEndMin =
+          previews.last.end.hour * 60 + previews.last.end.minute;
+
+      // 判断是否有重叠: max(startA, startB) < min(endA, endB)
+      if (max(startMin, otherStartMin) < min(endMin, otherEndMin)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// 生成指定时段内的节次预览列表。
@@ -636,6 +690,42 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     });
   }
 
+  /// 递归调整后续时段的开始时间以消除冲突
+  void _shiftSegmentsFrom(int index, TimeOfDay previousSegmentEnd) {
+    if (index >= _segments.length) return;
+
+    final _MutableSegment segment = _segments[index];
+
+    // 新的开始时间 = 上一时段结束时间 + 默认课间休息时长
+    final TimeOfDay newStart = _addDuration(
+      previousSegmentEnd,
+      _defaultBreakDuration,
+    );
+
+    segment.startTime = newStart;
+
+    // 计算当前时段的新结束时间
+    TimeOfDay cursor = newStart;
+    for (int i = 0; i < segment.classCount; i++) {
+      cursor = _addDuration(cursor, segment.classDurations[i]);
+      if (i < segment.classCount - 1) {
+        final Duration b = _resolveBreakDuration(
+          segment: segment,
+          breakIndex: i,
+        );
+        cursor = _addDuration(cursor, b);
+      }
+    }
+
+    // 检查是否与下一时段冲突
+    if (index < _segments.length - 1) {
+      final TimeOfDay nextStart = _segments[index + 1].startTime;
+      if (_compareTimeOfDay(cursor, nextStart) > 0) {
+        _shiftSegmentsFrom(index + 1, cursor);
+      }
+    }
+  }
+
   /// 弹出底部弹窗以调整节次的起止时间。
   Future<void> _editSectionTimeRange({
     required int segmentIndex,
@@ -728,13 +818,105 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
       }
     }
 
+    bool shouldAutoAdjust = false;
+
     // 3. 验证是否超过下一时段开始时间
     if (segmentIndex < _segments.length - 1) {
       final TimeOfDay nextSegmentStart = _segments[segmentIndex + 1].startTime;
       // cursor 此时是当前时段最后一节课的结束时间
       if (_compareTimeOfDay(cursor, nextSegmentStart) > 0) {
-        _showToast('调整后时间将超过下一时段开始时间');
-        return;
+        final bool? autoAdjust = await showModalBottomSheet<bool>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => SafeArea(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color.fromRGBO(0, 0, 0, 0.08),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 32),
+                  const Text(
+                    '课程时间异常',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF333333),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      '是否根据已设定的休息时长及课程时长，自动调整${segment.name}时间段中，第${preview.number}节课后的其他课程？',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Color(0xFF666666),
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context, true),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 32),
+                      height: 50,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(25),
+                        border: Border.all(
+                          color: const Color(0xFF1E69FF),
+                          width: 2,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        '自动调整',
+                        style: TextStyle(
+                          color: Color(0xFF1E69FF),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context, false),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      child: const Text(
+                        '不自动调整',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+        );
+
+        if (autoAdjust == null) return; // 用户取消
+        shouldAutoAdjust = autoAdjust;
       }
     }
 
@@ -759,6 +941,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             newBreakMin != _defaultBreakDuration.inMinutes) {
           _breakMode = _BreakDurationMode.segmented;
         }
+      }
+
+      if (shouldAutoAdjust) {
+        _shiftSegmentsFrom(segmentIndex + 1, cursor);
       }
     });
   }
