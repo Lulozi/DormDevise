@@ -92,6 +92,14 @@
                 <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".AlarmNotificationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.lulo.dormdevise.ALARM_SHOW" />
+                <action android:name="com.lulo.dormdevise.ALARM_DISMISS" />
+            </intent-filter>
+        </receiver>
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
             <intent-filter>
