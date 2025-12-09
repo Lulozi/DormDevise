@@ -39,7 +39,7 @@ Future<void> main() async {
 
       try {
         await NotificationService.instance.initialize();
-        // 初始化课程提醒（重新调度）
+        // 初始化课程提醒（应用启动时不强制重新调度闹钟，避免重复设置）
         await CourseService.instance.initializeReminders();
       } catch (e, stack) {
         debugPrint('NotificationService initialization failed: $e\n$stack');
