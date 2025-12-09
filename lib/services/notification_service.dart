@@ -1,0 +1,488 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import '../models/course.dart';
+import '../models/course_schedule_config.dart';
+
+class NotificationService {
+  NotificationService._();
+  static final NotificationService instance = NotificationService._();
+
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  // 原生闹钟通知通道：用于调用 Android 侧自定义 RemoteViews
+  static const MethodChannel _alarmChannel = MethodChannel(
+    'dormdevise/alarm_notifications',
+  );
+
+  bool _isInitialized = false;
+
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+
+    try {
+      tz.initializeTimeZones();
+      final dynamic timeZoneName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timeZoneName.toString()));
+    } catch (e) {
+      debugPrint('Error initializing timezone: $e');
+      // Fallback to UTC or a default if needed, but usually we just continue
+      // If setLocalLocation fails, tz.local might be uninitialized or default to UTC.
+      try {
+        tz.setLocalLocation(tz.getLocation('UTC'));
+      } catch (_) {}
+    }
+
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    final DarwinInitializationSettings initializationSettingsDarwin =
+        DarwinInitializationSettings(
+          requestSoundPermission: false,
+          requestBadgePermission: false,
+          requestAlertPermission: false,
+        );
+
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsDarwin,
+        );
+
+    await _notificationsPlugin.initialize(initializationSettings);
+    _isInitialized = true;
+  }
+
+  Future<void> requestPermissions() async {
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
+
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestNotificationsPermission();
+
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestExactAlarmsPermission();
+  }
+
+  Future<void> cancelAllReminders() async {
+    await _notificationsPlugin.cancelAll();
+    await _cancelNativeAlarms();
+  }
+
+  /// 重新调度所有课程提醒
+  /// [courses] 所有课程列表
+  /// [config] 课程表时间配置
+  /// [semesterStart] 学期开始日期
+  /// [reminderMinutes] 提前多少分钟提醒
+  /// [method] 提醒方式 (目前仅支持 'notification')
+  Future<void> scheduleReminders({
+    required List<Course> courses,
+    required CourseScheduleConfig config,
+    required DateTime semesterStart,
+    required int reminderMinutes,
+    required String method,
+  }) async {
+    if (!_isInitialized) await initialize();
+    await cancelAllReminders();
+    // 同时取消所有系统闹钟（简单起见，这里假设 ID 范围重叠，实际可能需要更复杂的 ID 管理）
+    // 由于 AlarmService 没有 cancelAll，我们只能依赖 ID 覆盖或手动管理
+    // 但为了防止旧闹钟残留，最好能取消。
+    // 暂时我们只负责调度新的。
+
+    if (reminderMinutes < 0) return;
+
+    // 获取当前时间
+    final now = DateTime.now();
+    // 预调度未来 7 天的课程
+    // 如果是闹钟模式，仅调度当天的课程（不设置隔天闹钟）
+    final endSchedule = method == 'alarm'
+        ? DateTime(now.year, now.month, now.day, 23, 59, 59)
+        : now.add(const Duration(days: 7));
+
+    // 生成所有节次的时间表
+    final sections = config.generateSections();
+    final sectionMap = {for (var s in sections) s.index: s.start};
+
+    int notificationId = 0;
+    int scheduledCount = 0;
+
+    debugPrint(
+      'Scheduling reminders: ${courses.length} courses, method: $method, minutes: $reminderMinutes',
+    );
+
+    for (final course in courses) {
+      for (final session in course.sessions) {
+        // 计算该 session 在未来一周内的所有上课时间点
+        final classTimes = _calculateClassTimes(
+          session,
+          sectionMap,
+          semesterStart,
+          now,
+          endSchedule,
+        );
+
+        for (final classTime in classTimes) {
+          final reminderTime = classTime.subtract(
+            Duration(minutes: reminderMinutes),
+          );
+
+          // 如果提醒时间在当前时间之后，则进行调度
+          // 或者如果是“立即”提醒且时间就在刚刚（2分钟内），则立即发送
+          if (reminderTime.isAfter(now)) {
+            if (method == 'alarm') {
+              // 闹钟模式：仅允许课程尚未开始，且提醒时间<=90分钟
+              if (!classTime.isAfter(now)) {
+                continue;
+              }
+              if (reminderTime.difference(now).inMinutes > 90) {
+                continue;
+              }
+
+              await _scheduleNativeAlarm(
+                id: notificationId++,
+                course: course.name,
+                location: session.location,
+                minutes: reminderMinutes,
+                scheduledDate: reminderTime,
+              );
+              scheduledCount++;
+            } else {
+              // 使用普通通知
+              await _scheduleNotification(
+                id: notificationId++,
+                title: '上课提醒: ${course.name}',
+                body: reminderMinutes == 0
+                    ? '现在开始上课\n地点: ${session.location}'
+                    : '还有 $reminderMinutes 分钟上课\n地点: ${session.location}',
+                scheduledDate: reminderTime,
+                method: method,
+              );
+              scheduledCount++;
+            }
+          } else if (reminderMinutes == 0 &&
+              reminderTime.isAfter(now.subtract(const Duration(minutes: 2)))) {
+            debugPrint('Showing immediate notification for ${course.name}');
+
+            if (method == 'alarm') {
+              // 立即闹钟：只要课程未开始且同一天
+              if (classTime.day != now.day || !classTime.isAfter(now)) {
+                continue;
+              }
+
+              await _showNativeAlarm(
+                id: notificationId++,
+                course: course.name,
+                location: session.location,
+                minutes: 0,
+              );
+              scheduledCount++;
+            } else {
+              await _showNotification(
+                id: notificationId++,
+                title: '上课提醒: ${course.name}',
+                body: '现在开始上课\n地点: ${session.location}',
+                method: method,
+              );
+              scheduledCount++;
+            }
+          }
+        }
+      }
+    }
+
+    debugPrint('Scheduled $scheduledCount reminders.');
+  }
+
+  Future<void> _showNotification({
+    required int id,
+    required String title,
+    required String body,
+    required String method,
+  }) async {
+    final isAlarm = method == 'alarm';
+    await _notificationsPlugin.show(
+      id,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          isAlarm
+              ? 'course_alarm_channel_v4'
+              : 'course_notification_channel_v4',
+          isAlarm ? '课程闹钟' : '课程提醒',
+          channelDescription: isAlarm ? '用于发送上课前的强提醒' : '用于发送上课前的提醒通知',
+          importance: Importance.max,
+          priority: Priority.high,
+          ticker: '课程提醒',
+          visibility: NotificationVisibility.public,
+          category: isAlarm
+              ? AndroidNotificationCategory.alarm
+              : AndroidNotificationCategory.reminder,
+          audioAttributesUsage: isAlarm
+              ? AudioAttributesUsage.alarm
+              : AudioAttributesUsage.notification,
+          // 闹钟模式下启用全屏通知（如果权限允许）
+          fullScreenIntent: isAlarm,
+          // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
+          additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
+          actions: <AndroidNotificationAction>[
+            AndroidNotificationAction(
+              'dismiss_$id',
+              '关闭',
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+          ],
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentSound: true,
+          presentBanner: true,
+          presentList: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _scheduleNotification({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+    required String method,
+  }) async {
+    final isAlarm = method == 'alarm';
+
+    // 检查是否具有精确闹钟权限 (Android 12+)
+    // 如果没有权限，zonedSchedule 可能会失败或不准确
+    // 只有当时间确实已经过去时，才直接显示，否则即使只有 1 秒也进行调度，确保整点触发
+    if (scheduledDate.isBefore(DateTime.now())) {
+      await _showNotification(id: id, title: title, body: body, method: method);
+      return;
+    }
+
+    await _notificationsPlugin.zonedSchedule(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledDate, tz.local),
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          isAlarm
+              ? 'course_alarm_channel_v4'
+              : 'course_notification_channel_v4',
+          isAlarm ? '课程闹钟' : '课程提醒',
+          channelDescription: isAlarm ? '用于发送上课前的强提醒' : '用于发送上课前的提醒通知',
+          importance: Importance.max,
+          priority: Priority.high,
+          ticker: '课程提醒',
+          visibility: NotificationVisibility.public,
+          category: isAlarm
+              ? AndroidNotificationCategory.alarm
+              : AndroidNotificationCategory.reminder,
+          audioAttributesUsage: isAlarm
+              ? AudioAttributesUsage.alarm
+              : AudioAttributesUsage.notification,
+          fullScreenIntent: isAlarm,
+          // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
+          additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
+          actions: <AndroidNotificationAction>[
+            AndroidNotificationAction(
+              'dismiss_$id',
+              '关闭',
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+          ],
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentSound: true,
+          presentBanner: true,
+          presentList: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+      androidScheduleMode: isAlarm
+          ? AndroidScheduleMode.alarmClock
+          : AndroidScheduleMode.exactAllowWhileIdle,
+    );
+  }
+
+  /// 使用原生自定义 RemoteViews 的闹钟调度（让“关闭”按钮出现在右侧）。
+  Future<void> _scheduleNativeAlarm({
+    required int id,
+    required String course,
+    required String location,
+    required int minutes,
+    required DateTime scheduledDate,
+  }) async {
+    if (!Platform.isAndroid) {
+      // 非 Android 平台兜底为普通通知调度
+      await _scheduleNotification(
+        id: id,
+        title: course,
+        body: '教室: $location',
+        scheduledDate: scheduledDate,
+        method: 'notification',
+      );
+      return;
+    }
+
+    final triggerAtMillis = scheduledDate.millisecondsSinceEpoch;
+    try {
+      await _alarmChannel.invokeMethod('schedule', <String, dynamic>{
+        'id': id,
+        'triggerAtMillis': triggerAtMillis,
+        'course': course,
+        'location': location,
+        'minutes': minutes,
+      });
+    } catch (e) {
+      debugPrint('Native alarm schedule failed: $e');
+    }
+  }
+
+  /// 立即展示原生闹钟通知。
+  Future<void> _showNativeAlarm({
+    required int id,
+    required String course,
+    required String location,
+    required int minutes,
+  }) async {
+    if (!Platform.isAndroid) {
+      await _showNotification(
+        id: id,
+        title: course,
+        body: '教室: $location',
+        method: 'notification',
+      );
+      return;
+    }
+
+    try {
+      await _alarmChannel.invokeMethod('showNow', <String, dynamic>{
+        'id': id,
+        'course': course,
+        'location': location,
+        'minutes': minutes,
+      });
+    } catch (e) {
+      debugPrint('Native alarm show failed: $e');
+    }
+  }
+
+  /// 清理所有原生闹钟，避免旧 PendingIntent 残留。
+  Future<void> _cancelNativeAlarms() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _alarmChannel.invokeMethod('cancelAll');
+    } catch (e) {
+      debugPrint('Native alarm cancel failed: $e');
+    }
+  }
+
+  /// 获取原生已注册闹钟的 ID 列表
+  Future<Set<int>> getNativeAlarmIds() async {
+    if (!Platform.isAndroid) return <int>{};
+    try {
+      final List<dynamic>? result = await _alarmChannel.invokeMethod('list');
+      if (result == null) return <int>{};
+      return result.map((e) => e as int).toSet();
+    } catch (e) {
+      debugPrint('Failed to get native alarm IDs: $e');
+      return <int>{};
+    }
+  }
+
+  /// 计算某个 Session 在指定时间范围内的所有上课时间
+  List<DateTime> _calculateClassTimes(
+    CourseSession session,
+    Map<int, TimeOfDay> sectionMap,
+    DateTime semesterStart,
+    DateTime startRange,
+    DateTime endRange,
+  ) {
+    final List<DateTime> times = [];
+
+    // 规范化 semesterStart 到周一 00:00:00
+    // 保持与 TablePage 逻辑一致：将 semesterStart 视为第一周，并回退到该周周一
+    final startOfDay = DateTime(
+      semesterStart.year,
+      semesterStart.month,
+      semesterStart.day,
+    );
+    final baseDate = startOfDay.subtract(
+      Duration(days: startOfDay.weekday - 1),
+    );
+
+    // 遍历每一天
+    for (
+      var d = startRange;
+      !d.isAfter(endRange);
+      d = d.add(const Duration(days: 1))
+    ) {
+      // 检查星期几
+      if (d.weekday != session.weekday) continue;
+
+      // 计算周次
+      final diffDays = d.difference(baseDate).inDays;
+      if (diffDays < 0) continue; // 在学期开始前
+      final currentWeek = (diffDays / 7).floor() + 1;
+
+      // debugPrint('Checking ${course.name}: Date=$d, Week=$currentWeek, SessionWeeks=${session.startWeek}-${session.endWeek}');
+
+      // 检查周次是否符合 session 要求
+      if (currentWeek < session.startWeek || currentWeek > session.endWeek)
+        continue;
+
+      bool isWeekValid = false;
+      if (session.customWeeks.isNotEmpty) {
+        if (session.customWeeks.contains(currentWeek)) isWeekValid = true;
+      } else {
+        switch (session.weekType) {
+          case CourseWeekType.all:
+            isWeekValid = true;
+            break;
+          case CourseWeekType.single:
+            isWeekValid = currentWeek % 2 != 0;
+            break;
+          case CourseWeekType.double:
+            isWeekValid = currentWeek % 2 == 0;
+            break;
+        }
+      }
+
+      if (!isWeekValid) continue;
+
+      // 获取上课时间
+      final timeOfDay = sectionMap[session.startSection];
+      if (timeOfDay == null) continue;
+
+      final classDateTime = DateTime(
+        d.year,
+        d.month,
+        d.day,
+        timeOfDay.hour,
+        timeOfDay.minute,
+      );
+      times.add(classDateTime);
+    }
+
+    return times;
+  }
+}
