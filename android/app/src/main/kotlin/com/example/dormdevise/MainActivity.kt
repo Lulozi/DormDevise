@@ -6,6 +6,7 @@ import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 	private var receiver: PackageInstallReceiver? = null
@@ -56,6 +57,41 @@ class MainActivity : FlutterActivity() {
 				eventSink = null
 			}
 		})
+
+		// 原生闹钟通知渠道：用于自定义 RemoteViews 以将关闭按钮放到右侧
+		MethodChannel(
+			flutterEngine.dartExecutor.binaryMessenger,
+			"dormdevise/alarm_notifications"
+		).setMethodCallHandler { call, result ->
+			when (call.method) {
+				"schedule" -> {
+					val id = call.argument<Int>("id") ?: 0
+					val triggerAtMillis = call.argument<Long>("triggerAtMillis") ?: 0L
+					val course = call.argument<String>("course") ?: "课程"
+					val location = call.argument<String>("location") ?: "未知教室"
+					val minutes = call.argument<Int>("minutes") ?: 0
+					AlarmNotificationScheduler.schedule(applicationContext, id, triggerAtMillis, course, location, minutes)
+					result.success(null)
+				}
+				"showNow" -> {
+					val id = call.argument<Int>("id") ?: 0
+					val course = call.argument<String>("course") ?: "课程"
+					val location = call.argument<String>("location") ?: "未知教室"
+					val minutes = call.argument<Int>("minutes") ?: 0
+					AlarmNotificationScheduler.showNow(applicationContext, id, course, location, minutes)
+					result.success(null)
+				}
+				"cancelAll" -> {
+					AlarmNotificationScheduler.cancelAll(applicationContext)
+					result.success(null)
+				}
+                "list" -> {
+                    val ids = AlarmNotificationScheduler.getScheduledIds(applicationContext)
+                    result.success(ids)
+                }
+				else -> result.notImplemented()
+			}
+		}
 
 		handlePendingRoute(intent)
 	}
