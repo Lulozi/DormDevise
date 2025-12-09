@@ -15,12 +15,16 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 class DormDeviseApp extends StatelessWidget {
   const DormDeviseApp({super.key});
 
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   /// 构建顶层 MaterialApp 并指定首页及主题配置。
   @override
   Widget build(BuildContext context) {
     final String initialRoute =
         WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
