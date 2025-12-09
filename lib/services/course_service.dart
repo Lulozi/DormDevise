@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../models/course.dart';
 import '../models/course_schedule_config.dart';
 import '../models/schedule_metadata.dart';
+import 'notification_service.dart';
 
 /// 课程表数据服务，负责课程和配置的持久化。
 class CourseService {
@@ -22,6 +23,9 @@ class CourseService {
   static const String _showWeekendKey = 'course_service_show_weekend';
   static const String _showNonCurrentWeekKey =
       'course_service_show_non_current_week';
+  static const String _reminderEnabledKey = 'course_service_reminder_enabled';
+  static const String _reminderTimeKey = 'course_service_reminder_time';
+  static const String _reminderMethodKey = 'course_service_reminder_method';
 
   static const String _schedulesKey = 'course_service_schedules';
   static const String _currentScheduleIdKey =
@@ -120,6 +124,7 @@ class CourseService {
     final String key = await _getKey(_coursesKey, scheduleId);
     final String raw = jsonEncode(courses.map((c) => c.toJson()).toList());
     await prefs.setString(key, raw);
+    await _rescheduleReminders(scheduleId);
   }
 
   /// 加载课程表配置。
@@ -149,6 +154,7 @@ class CourseService {
     final String key = await _getKey(_configKey, scheduleId);
     final String raw = jsonEncode(config.toJson());
     await prefs.setString(key, raw);
+    await _rescheduleReminders(scheduleId);
   }
 
   /// 加载学期开始时间。
@@ -167,6 +173,7 @@ class CourseService {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String key = await _getKey(_semesterStartKey, scheduleId);
     await prefs.setInt(key, date.millisecondsSinceEpoch);
+    await _rescheduleReminders(scheduleId);
   }
 
   /// 加载最大周数。
@@ -299,6 +306,135 @@ class CourseService {
       await prefs.remove('${_tableNameKey}_$id');
       await prefs.remove('${_showWeekendKey}_$id');
       await prefs.remove('${_showNonCurrentWeekKey}_$id');
+      await prefs.remove('${_reminderEnabledKey}_$id');
+      await prefs.remove('${_reminderTimeKey}_$id');
+      await prefs.remove('${_reminderMethodKey}_$id');
     }
+  }
+
+  /// 加载是否启用课程提醒
+  Future<bool> loadReminderEnabled([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final String key = await _getKey(_reminderEnabledKey, scheduleId);
+    return prefs.getBool(key) ?? false;
+  }
+
+  /// 保存是否启用课程提醒
+  Future<void> saveReminderEnabled(bool enabled, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_reminderEnabledKey, scheduleId);
+    await prefs.setBool(key, enabled);
+    await _rescheduleReminders(scheduleId);
+  }
+
+  /// 加载课程提醒时间（分钟）
+  Future<int> loadReminderTime([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final String key = await _getKey(_reminderTimeKey, scheduleId);
+    return prefs.getInt(key) ?? 15;
+  }
+
+  /// 保存课程提醒时间
+  Future<void> saveReminderTime(int minutes, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_reminderTimeKey, scheduleId);
+    await prefs.setInt(key, minutes);
+    await _rescheduleReminders(scheduleId);
+  }
+
+  /// 加载课程提醒方式
+  Future<String> loadReminderMethod([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final String key = await _getKey(_reminderMethodKey, scheduleId);
+    return prefs.getString(key) ?? 'notification';
+  }
+
+  /// 保存课程提醒方式
+  Future<void> saveReminderMethod(String method, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_reminderMethodKey, scheduleId);
+    await prefs.setString(key, method);
+    await _rescheduleReminders(scheduleId);
+  }
+
+  /// 批量保存课程提醒设置
+  Future<void> saveAllReminderSettings({
+    required bool enabled,
+    required int time,
+    required String method,
+    String? scheduleId,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final enabledKey = await _getKey(_reminderEnabledKey, scheduleId);
+    final timeKey = await _getKey(_reminderTimeKey, scheduleId);
+    final methodKey = await _getKey(_reminderMethodKey, scheduleId);
+
+    await prefs.setBool(enabledKey, enabled);
+    await prefs.setInt(timeKey, time);
+    await prefs.setString(methodKey, method);
+
+    await _rescheduleReminders(scheduleId);
+  }
+
+  /// 初始化/刷新提醒（通常在应用启动时调用）
+  /// 初始化/刷新提醒（通常在应用启动时调用）
+  /// - 默认行为：如果方法为 `alarm` 且已存在原生闹钟 ID，则不在启动时重新调度，避免重复创建。
+  /// - 如果需要强制重调度（例如用户修改了课程或提醒设置），请传入 `force = true`。
+  Future<void> initializeReminders({bool force = false}) async {
+    if (!force) {
+      final method = await loadReminderMethod();
+      if (method == 'alarm') {
+        final nativeIds = await NotificationService.instance
+            .getNativeAlarmIds();
+        if (nativeIds.isNotEmpty) {
+          debugPrint(
+            'Native alarms already exist; skipping reschedule on startup.',
+          );
+          return;
+        }
+      }
+    }
+    await _rescheduleReminders();
+  }
+
+  /// 重新调度提醒
+  Future<void> _rescheduleReminders([String? scheduleId]) async {
+    final enabled = await loadReminderEnabled(scheduleId);
+    if (!enabled) {
+      await NotificationService.instance.cancelAllReminders();
+      return;
+    }
+
+    // 确保已请求通知权限
+    await NotificationService.instance.requestPermissions();
+
+    final courses = await loadCourses(scheduleId);
+    final config = await loadConfig(scheduleId);
+    final semesterStart = await loadSemesterStart(scheduleId);
+    final reminderTime = await loadReminderTime(scheduleId);
+    final reminderMethod = await loadReminderMethod(scheduleId);
+
+    // 如果未设置开学时间，使用默认策略（与 TablePage/deleteSchedules 逻辑尽量保持一致）
+    final DateTime effectiveStart =
+        semesterStart ??
+        (() {
+          final now = DateTime.now();
+          if (now.month >= 1 && now.month <= 7) {
+            return DateTime(now.year, 2, 20);
+          } else {
+            return DateTime(now.year, 9, 1);
+          }
+        })();
+
+    await NotificationService.instance.scheduleReminders(
+      courses: courses,
+      config: config,
+      semesterStart: effectiveStart,
+      reminderMinutes: reminderTime,
+      method: reminderMethod,
+    );
   }
 }

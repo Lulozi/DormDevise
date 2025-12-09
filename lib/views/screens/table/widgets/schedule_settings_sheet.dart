@@ -7,6 +7,7 @@ import 'package:dormdevise/utils/app_toast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../models/course_schedule_config.dart';
+import '../../../../services/course_service.dart';
 import 'expandable_item.dart';
 
 /// 课程表设置页面，用于配置学期开始时间、周数、周末显示等全局设置。
@@ -29,6 +30,8 @@ class ScheduleSettingsPage extends StatefulWidget {
   final bool isEmbedded;
   final Widget? header;
   final Future<String?> Function(String)? nameValidator;
+  final bool saveNotificationImmediately;
+  final String? scheduleId;
 
   const ScheduleSettingsPage({
     super.key,
@@ -50,6 +53,8 @@ class ScheduleSettingsPage extends StatefulWidget {
     this.isEmbedded = false,
     this.header,
     this.nameValidator,
+    this.saveNotificationImmediately = true,
+    this.scheduleId,
   });
 
   @override
@@ -72,10 +77,17 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   late String _tableName;
   String? _colorAllocationAction;
 
+  // 标记提醒设置是否有未保存的变更
+  bool _hasReminderChanged = false;
+
   // 课程提醒相关状态
   int _reminderTime = 15;
   bool _isReminderMethodEnabled = false;
   String _reminderMethod = 'notification';
+  bool _enableAnimation = false;
+
+  late FixedExtentScrollController _reminderTimeController;
+  final List<int> _reminderTimeOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 60];
 
   @override
   void initState() {
@@ -86,7 +98,67 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     _showWeekend = widget.showWeekend;
     _showNonCurrentWeek = widget.showNonCurrentWeek;
     _tableName = widget.tableName;
+
+    _initReminderController();
+
     _loadColorAllocationAction();
+    _loadReminderSettings();
+  }
+
+  void _initReminderController() {
+    int index = _reminderTimeOptions.indexOf(_reminderTime);
+    if (index == -1) index = 3; // 默认选中 15 分钟 (0, 5, 10, 15)
+    // 设置一个较大的初始偏移量，使列表处于“中间”位置，方便向上滚动
+    final int initialItem = index + _reminderTimeOptions.length * 100;
+    _reminderTimeController = FixedExtentScrollController(
+      initialItem: initialItem,
+    );
+  }
+
+  @override
+  void dispose() {
+    _reminderTimeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadReminderSettings() async {
+    final enabled = await CourseService.instance.loadReminderEnabled(
+      widget.scheduleId,
+    );
+    final time = await CourseService.instance.loadReminderTime(
+      widget.scheduleId,
+    );
+    final method = await CourseService.instance.loadReminderMethod(
+      widget.scheduleId,
+    );
+    if (mounted) {
+      setState(() {
+        _isReminderMethodEnabled = enabled;
+        _reminderTime = time;
+        _reminderMethod = method;
+
+        // 更新控制器位置
+        _reminderTimeController.dispose();
+        int index = _reminderTimeOptions.indexOf(_reminderTime);
+        if (index == -1) index = 3;
+        final int initialItem = index + _reminderTimeOptions.length * 100;
+        _reminderTimeController = FixedExtentScrollController(
+          initialItem: initialItem,
+        );
+
+        // 清除脏标记，确保首次加载不触发保存
+        _hasReminderChanged = false;
+      });
+
+      // 延迟启用动画，避免进入页面时的展开动画
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _enableAnimation = true;
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -110,6 +182,15 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     if (oldWidget.tableName != widget.tableName) {
       _tableName = widget.tableName;
     }
+  }
+
+  Future<void> _saveNotificationSettings() async {
+    await CourseService.instance.saveAllReminderSettings(
+      enabled: _isReminderMethodEnabled,
+      time: _reminderTime,
+      method: _reminderMethod,
+      scheduleId: widget.scheduleId,
+    );
   }
 
   Future<void> _loadColorAllocationAction() async {
@@ -263,47 +344,78 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             Column(
               children: [
                 _buildSwitchTile(
-                  title: '课程提醒方式',
+                  title: '课程提醒',
                   value: _isReminderMethodEnabled,
-                  onChanged: (bool value) {
+                  onChanged: (bool value) async {
                     setState(() {
                       _isReminderMethodEnabled = value;
                       if (!value) {
                         _isReminderTimeExpanded = false;
                       }
+                      if (!widget.saveNotificationImmediately) {
+                        _hasReminderChanged = true;
+                      }
                     });
+                    if (widget.saveNotificationImmediately) {
+                      await CourseService.instance.saveReminderEnabled(
+                        value,
+                        widget.scheduleId,
+                      );
+                    }
                   },
                 ),
                 AnimatedCrossFade(
                   firstChild: Container(),
-                  secondChild: _buildReminderMethodSelector(),
+                  secondChild: Column(
+                    children: [
+                      _buildReminderMethodSelector(),
+                      _buildDivider(),
+                      ExpandableItem(
+                        title: '课程提醒时间',
+                        value: Text(
+                          _reminderTime == 0 ? '准时' : '$_reminderTime分钟前',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.black54,
+                          ),
+                        ),
+                        isExpanded: _isReminderTimeExpanded,
+                        onTap: () {
+                          setState(() {
+                            _isReminderTimeExpanded = !_isReminderTimeExpanded;
+                            if (_isReminderTimeExpanded) {
+                              _isStartDateExpanded = false;
+                              _isMaxWeekExpanded = false;
+                              _isColorAllocationExpanded = false;
+
+                              // 每次展开时重置控制器位置，确保与当前值同步
+                              int index = _reminderTimeOptions.indexOf(
+                                _reminderTime,
+                              );
+                              if (index == -1) index = 3;
+                              final int initialItem =
+                                  index + _reminderTimeOptions.length * 100;
+                              _reminderTimeController.dispose();
+                              _reminderTimeController =
+                                  FixedExtentScrollController(
+                                    initialItem: initialItem,
+                                  );
+                            }
+                          });
+                        },
+                        content: _buildReminderTimePicker(),
+                        showDivider: false,
+                      ),
+                    ],
+                  ),
                   crossFadeState: _isReminderMethodEnabled
                       ? CrossFadeState.showSecond
                       : CrossFadeState.showFirst,
-                  duration: const Duration(milliseconds: 300),
+                  duration: _enableAnimation
+                      ? const Duration(milliseconds: 300)
+                      : Duration.zero,
                 ),
               ],
-            ),
-            _buildDivider(),
-            ExpandableItem(
-              title: '课程提醒时间',
-              value: Text(
-                '$_reminderTime分钟前',
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
-              ),
-              isExpanded: _isReminderTimeExpanded,
-              onTap: () {
-                setState(() {
-                  _isReminderTimeExpanded = !_isReminderTimeExpanded;
-                  if (_isReminderTimeExpanded) {
-                    _isStartDateExpanded = false;
-                    _isMaxWeekExpanded = false;
-                    _isColorAllocationExpanded = false;
-                  }
-                });
-              },
-              content: _buildReminderTimePicker(),
-              showDivider: false,
             ),
           ],
         ),
@@ -326,30 +438,224 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       return content;
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
-      appBar: AppBar(
-        title: const Text(
-          '课程表设置',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+    return WillPopScope(
+      onWillPop: () async {
+        if (!widget.saveNotificationImmediately && _hasReminderChanged) {
+          await _saveNotificationSettings();
+          _hasReminderChanged = false;
+        }
+        return true;
+      },
+      child: Scaffold(
         backgroundColor: const Color(0xFFF7F8FC),
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            color: Colors.black,
-            size: 20,
+        appBar: AppBar(
+          title: const Text(
+            '课程表设置',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          onPressed: () => Navigator.pop(context),
+          backgroundColor: const Color(0xFFF7F8FC),
+          elevation: 0,
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Colors.black,
+              size: 20,
+            ),
+            onPressed: () async {
+              if (!widget.saveNotificationImmediately && _hasReminderChanged) {
+                await _saveNotificationSettings();
+                _hasReminderChanged = false;
+              }
+              if (context.mounted) {
+                Navigator.pop(context);
+              }
+            },
+          ),
+          actions: [
+            if (!widget.saveNotificationImmediately)
+              TextButton(
+                onPressed: () async {
+                  await _saveNotificationSettings();
+                  _hasReminderChanged = false;
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
+                },
+                child: const Text(
+                  '完成',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            if (!widget.saveNotificationImmediately) const SizedBox(width: 8),
+          ],
+        ),
+        body: content,
+      ),
+    );
+  }
+
+  Widget _buildReminderMethodSelector() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final double totalWidth = constraints.maxWidth;
+            final double indicatorWidth = (totalWidth - 4) / 2;
+
+            Alignment alignment = Alignment.centerLeft;
+            if (_reminderMethod == 'alarm') {
+              alignment = Alignment.centerRight;
+            }
+
+            return Stack(
+              children: [
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  alignment: alignment,
+                  child: Container(
+                    width: indicatorWidth,
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 1,
+                          offset: const Offset(0, 1),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () async {
+                          setState(() => _reminderMethod = 'notification');
+                          if (!widget.saveNotificationImmediately) {
+                            _hasReminderChanged = true;
+                          }
+                          if (widget.saveNotificationImmediately) {
+                            await CourseService.instance.saveReminderMethod(
+                              'notification',
+                              widget.scheduleId,
+                            );
+                          }
+                        },
+                        child: Center(
+                          child: Text(
+                            '通知提醒',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _reminderMethod == 'notification'
+                                  ? Colors.black
+                                  : Colors.black54,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () async {
+                          setState(() => _reminderMethod = 'alarm');
+                          if (!widget.saveNotificationImmediately) {
+                            _hasReminderChanged = true;
+                          }
+                          if (widget.saveNotificationImmediately) {
+                            await CourseService.instance.saveReminderMethod(
+                              'alarm',
+                              widget.scheduleId,
+                            );
+                          }
+                        },
+                        child: Center(
+                          child: Text(
+                            '闹钟提醒',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _reminderMethod == 'alarm'
+                                  ? Colors.black
+                                  : Colors.black54,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ),
-      body: content,
+    );
+  }
+
+  Widget _buildReminderTimePicker() {
+    return Container(
+      height: 150,
+      color: Colors.white,
+      child: CupertinoPicker(
+        // 添加 Key 以强制重建，确保 initialItem 生效
+        key: ValueKey(_reminderTimeController),
+        scrollController: _reminderTimeController,
+        selectionOverlay: Container(),
+        itemExtent: 44,
+        looping: true,
+        onSelectedItemChanged: (index) async {
+          final value =
+              _reminderTimeOptions[index % _reminderTimeOptions.length];
+          setState(() {
+            _reminderTime = value;
+            if (!widget.saveNotificationImmediately) {
+              _hasReminderChanged = true;
+            }
+          });
+          if (widget.saveNotificationImmediately) {
+            await CourseService.instance.saveReminderTime(
+              value,
+              widget.scheduleId,
+            );
+          }
+        },
+        children: _reminderTimeOptions.map((e) {
+          return Center(
+            child: Text(
+              e == 0 ? '准时' : '$e 分钟',
+              style: const TextStyle(fontSize: 24),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -463,124 +769,6 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             child: Text(label),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildReminderMethodSelector() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Container(
-        height: 36,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2F2F7),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final double totalWidth = constraints.maxWidth;
-            final double indicatorWidth = (totalWidth - 4) / 2;
-
-            Alignment alignment = Alignment.centerLeft;
-            if (_reminderMethod == 'alarm') {
-              alignment = Alignment.centerRight;
-            }
-
-            return Stack(
-              children: [
-                AnimatedAlign(
-                  alignment: alignment,
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.fastOutSlowIn,
-                  child: Container(
-                    width: indicatorWidth,
-                    height: 32,
-                    margin: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 1,
-                          offset: const Offset(0, 1),
-                        ),
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    _buildReminderMethodOption('通知提醒', 'notification'),
-                    _buildReminderMethodOption('闹钟提醒', 'alarm'),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReminderMethodOption(String label, String value) {
-    final bool isSelected = _reminderMethod == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _reminderMethod = value;
-          });
-        },
-        behavior: HitTestBehavior.translucent,
-        child: Container(
-          alignment: Alignment.center,
-          child: AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 200),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              color: Colors.black,
-            ),
-            child: Text(label),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReminderTimePicker() {
-    final List<int> options = [5, 10, 15, 20, 25, 30, 40, 50, 60];
-    return Container(
-      height: 150,
-      color: Colors.white,
-      child: CupertinoPicker(
-        selectionOverlay: Container(),
-        itemExtent: 44,
-        looping: true,
-        scrollController: FixedExtentScrollController(
-          initialItem: options.indexOf(_reminderTime) != -1
-              ? options.indexOf(_reminderTime)
-              : 2,
-        ),
-        onSelectedItemChanged: (index) {
-          setState(() {
-            _reminderTime = options[index % options.length];
-          });
-        },
-        children: options
-            .map(
-              (e) => Center(
-                child: Text('$e 分钟', style: const TextStyle(fontSize: 20)),
-              ),
-            )
-            .toList(),
       ),
     );
   }
@@ -718,7 +906,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     required ValueChanged<int> onChanged,
     String unit = '',
     bool looping = false,
+    int step = 1,
   }) {
+    final int itemCount = ((max - min) / step).floor() + 1;
     return Container(
       height: 150,
       color: Colors.white,
@@ -728,8 +918,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         itemExtent: 44,
         scrollController: FixedExtentScrollController(
           initialItem: (() {
-            final int itemCount = max - min + 1;
-            final int baseIndex = value - min;
+            final int baseIndex = ((value - min) / step).floor();
             if (looping) {
               // 将初始位置设置到中央偏移，避免用户滑到起始边界
               final int centerOffset = itemCount * 100;
@@ -739,11 +928,11 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           })(),
         ),
         onSelectedItemChanged: (index) =>
-            onChanged(min + (index % (max - min + 1))),
-        children: List.generate(max - min + 1, (index) {
+            onChanged(min + (index % itemCount) * step),
+        children: List.generate(itemCount, (index) {
           return Center(
             child: Text(
-              '${min + index} $unit',
+              '${min + index * step} $unit',
               style: const TextStyle(fontSize: 24),
             ),
           );

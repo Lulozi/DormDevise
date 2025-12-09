@@ -836,6 +836,8 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       CupertinoPageRoute(
         builder: (BuildContext context) {
           return ScheduleSettingsPage(
+            saveNotificationImmediately: false,
+            scheduleId: scheduleId,
             scheduleConfig: config,
             semesterStart: semesterStart,
             currentWeek: currentWeek,
