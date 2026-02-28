@@ -23,6 +23,7 @@ migrate_working_dir/
 # is commented out by default.
 .vscode/
 .github/
+.agents/
 
 # Flutter/Dart/Pub related
 **/doc/api/
