@@ -436,138 +436,145 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         ),
         body: Stack(
           children: [
-            ReorderableListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-              header: Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _isSelectionMode ? '删除全部课程表将自动生成默认课程表' : '点击课程表卡片可切换当前并查看课程',
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+            // 使用自定义 Overlay 包裹列表，使拖拽代理在删除按钮的下层
+            Positioned.fill(
+              child: _ReorderableOverlay(
+                child: ReorderableListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  header: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _isSelectionMode
+                          ? '删除全部课程表将自动生成默认课程表'
+                          : '点击课程表卡片可切换当前并查看课程',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ),
+                  itemCount: _schedules.length,
+                  onReorder: (int oldIndex, int newIndex) {
+                    setState(() {
+                      if (oldIndex < newIndex) {
+                        newIndex -= 1;
+                      }
+                      final item = _schedules.removeAt(oldIndex);
+                      _schedules.insert(newIndex, item);
+                    });
+                    CourseService.instance.updateScheduleOrder(_schedules);
+                  },
+                  proxyDecorator: (child, index, animation) {
+                    return Material(color: Colors.transparent, child: child);
+                  },
+                  buildDefaultDragHandles: false,
+                  itemBuilder: (context, index) {
+                    final schedule = _schedules[index];
+                    final isNew = schedule.id == _newlyAddedId;
+                    final isDeleting = _deletingIds.contains(schedule.id);
+
+                    if (isDeleting) {
+                      return TweenAnimationBuilder<double>(
+                        key: ValueKey(schedule.id),
+                        tween: Tween(begin: 1.0, end: 0.0),
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInQuart,
+                        builder: (context, value, child) {
+                          return ClipRect(
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              heightFactor: value,
+                              child: Opacity(
+                                opacity: value.clamp(0.0, 1.0),
+                                child: child,
+                              ),
+                            ),
+                          );
+                        },
+                        child: _buildScheduleCard(
+                          context,
+                          isCurrent: schedule.id == _currentScheduleId,
+                          name: schedule.name,
+                          id: schedule.id,
+                          index: index,
+                        ),
+                      );
+                    }
+
+                    if (isNew) {
+                      return TweenAnimationBuilder<double>(
+                        key: ValueKey(schedule.id),
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 1200),
+                        curve: Curves.linear,
+                        onEnd: () {
+                          if (mounted) {
+                            setState(() {
+                              _newlyAddedId = null;
+                            });
+                          }
+                        },
+                        builder: (context, value, child) {
+                          // 1. 滑动动画 (0ms - 800ms)
+                          // 动画滑动阶段：value 0.0 -> 0.666
+                          final double slideInput = (value / 0.666).clamp(
+                            0.0,
+                            1.0,
+                          );
+                          final double slideValue = Curves.easeOutQuart
+                              .transform(slideInput);
+
+                          // 2. 闪烁动画 (400ms - 1200ms)
+                          // 闪烁阶段：value 0.333 -> 1.0
+                          // 在滑动动画进行到一半时开始触发（时间上）
+                          final double flashInput = ((value - 0.333) / 0.666)
+                              .clamp(0.0, 1.0);
+
+                          Color? flashColor;
+                          if (_shouldFlashNewlyAdded && flashInput > 0) {
+                            // 使用抛物线形曲线实现单次平滑闪烁：0 -> 1 -> 0
+                            // 模拟一次呼吸/闪烁效果
+                            final double flashIntensity =
+                                4 * flashInput * (1 - flashInput);
+                            flashColor = Color.lerp(
+                              Colors.white,
+                              Theme.of(context).primaryColor.withOpacity(0.3),
+                              flashIntensity,
+                            );
+                          }
+
+                          return Align(
+                            alignment: Alignment.topCenter,
+                            heightFactor: slideValue,
+                            child: Transform.translate(
+                              offset: Offset(0, 40 * (1 - slideValue)),
+                              child: Opacity(
+                                opacity: slideValue.clamp(0.0, 1.0),
+                                child: _buildScheduleCard(
+                                  context,
+                                  isCurrent: schedule.id == _currentScheduleId,
+                                  name: schedule.name,
+                                  id: schedule.id,
+                                  index: index,
+                                  backgroundColor: flashColor,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }
+
+                    return Container(
+                      key: ValueKey(schedule.id),
+                      child: _buildScheduleCard(
+                        context,
+                        isCurrent: schedule.id == _currentScheduleId,
+                        name: schedule.name,
+                        id: schedule.id,
+                        index: index,
+                      ),
+                    );
+                  },
                 ),
               ),
-              itemCount: _schedules.length,
-              onReorder: (int oldIndex, int newIndex) {
-                setState(() {
-                  if (oldIndex < newIndex) {
-                    newIndex -= 1;
-                  }
-                  final item = _schedules.removeAt(oldIndex);
-                  _schedules.insert(newIndex, item);
-                });
-                CourseService.instance.updateScheduleOrder(_schedules);
-              },
-              proxyDecorator: (child, index, animation) {
-                return Material(color: Colors.transparent, child: child);
-              },
-              buildDefaultDragHandles: false,
-              itemBuilder: (context, index) {
-                final schedule = _schedules[index];
-                final isNew = schedule.id == _newlyAddedId;
-                final isDeleting = _deletingIds.contains(schedule.id);
-
-                if (isDeleting) {
-                  return TweenAnimationBuilder<double>(
-                    key: ValueKey(schedule.id),
-                    tween: Tween(begin: 1.0, end: 0.0),
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeInQuart,
-                    builder: (context, value, child) {
-                      return ClipRect(
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          heightFactor: value,
-                          child: Opacity(
-                            opacity: value.clamp(0.0, 1.0),
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
-                    child: _buildScheduleCard(
-                      context,
-                      isCurrent: schedule.id == _currentScheduleId,
-                      name: schedule.name,
-                      id: schedule.id,
-                      index: index,
-                    ),
-                  );
-                }
-
-                if (isNew) {
-                  return TweenAnimationBuilder<double>(
-                    key: ValueKey(schedule.id),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 1200),
-                    curve: Curves.linear,
-                    onEnd: () {
-                      if (mounted) {
-                        setState(() {
-                          _newlyAddedId = null;
-                        });
-                      }
-                    },
-                    builder: (context, value, child) {
-                      // 1. 滑动动画 (0ms - 800ms)
-                      // 动画滑动阶段：value 0.0 -> 0.666
-                      final double slideInput = (value / 0.666).clamp(0.0, 1.0);
-                      final double slideValue = Curves.easeOutQuart.transform(
-                        slideInput,
-                      );
-
-                      // 2. 闪烁动画 (400ms - 1200ms)
-                      // 闪烁阶段：value 0.333 -> 1.0
-                      // 在滑动动画进行到一半时开始触发（时间上）
-                      final double flashInput = ((value - 0.333) / 0.666).clamp(
-                        0.0,
-                        1.0,
-                      );
-
-                      Color? flashColor;
-                      if (_shouldFlashNewlyAdded && flashInput > 0) {
-                        // 使用抛物线形曲线实现单次平滑闪烁：0 -> 1 -> 0
-                        // 模拟一次呼吸/闪烁效果
-                        final double flashIntensity =
-                            4 * flashInput * (1 - flashInput);
-                        flashColor = Color.lerp(
-                          Colors.white,
-                          Theme.of(context).primaryColor.withOpacity(0.3),
-                          flashIntensity,
-                        );
-                      }
-
-                      return Align(
-                        alignment: Alignment.topCenter,
-                        heightFactor: slideValue,
-                        child: Transform.translate(
-                          offset: Offset(0, 40 * (1 - slideValue)),
-                          child: Opacity(
-                            opacity: slideValue.clamp(0.0, 1.0),
-                            child: _buildScheduleCard(
-                              context,
-                              isCurrent: schedule.id == _currentScheduleId,
-                              name: schedule.name,
-                              id: schedule.id,
-                              index: index,
-                              backgroundColor: flashColor,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                }
-
-                return Container(
-                  key: ValueKey(schedule.id),
-                  child: _buildScheduleCard(
-                    context,
-                    isCurrent: schedule.id == _currentScheduleId,
-                    name: schedule.name,
-                    id: schedule.id,
-                    index: index,
-                  ),
-                );
-              },
             ),
             if (_isLoading)
               Positioned.fill(
@@ -939,5 +946,38 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
 
     // 重新加载课程表以反映名称变更
     _loadSchedules();
+  }
+}
+
+/// 将子组件包裹在独立的 [Overlay] 中，
+/// 使 [ReorderableListView] 的拖拽代理渲染在此 Overlay 内部，
+/// 而非全局 Overlay，从而让 Stack 中后续子项（如删除按钮）位于拖拽卡片上方。
+class _ReorderableOverlay extends StatefulWidget {
+  final Widget child;
+  const _ReorderableOverlay({required this.child});
+
+  @override
+  State<_ReorderableOverlay> createState() => _ReorderableOverlayState();
+}
+
+class _ReorderableOverlayState extends State<_ReorderableOverlay> {
+  late final OverlayEntry _entry;
+
+  @override
+  void initState() {
+    super.initState();
+    _entry = OverlayEntry(builder: (_) => widget.child);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReorderableOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 父组件重建时刷新 OverlayEntry 内容
+    _entry.markNeedsBuild();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Overlay(initialEntries: [_entry]);
   }
 }
