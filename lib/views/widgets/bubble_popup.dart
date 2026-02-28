@@ -1,73 +1,108 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
-/// 显示气泡弹窗
+/// 气泡弹窗控制器，用于外部关闭弹窗
+class BubblePopupController {
+  VoidCallback? _dismiss;
+
+  /// 关闭弹窗
+  Future<void> dismiss() async {
+    _dismiss?.call();
+  }
+}
+
+/// 显示气泡弹窗（使用 Overlay 实现，不阻塞底层滚动）
 ///
 /// [context] 上下文
 /// [content] 弹窗内容
 /// [anchorKey] 锚点组件的 GlobalKey，用于定位弹窗位置
 /// [verticalOffset] 垂直偏移量，默认为 10.0
 /// [alignment] 弹窗对齐方式，默认为右上角对齐
-Future<T?> showBubblePopup<T>({
+/// [controller] 可选的控制器，用于外部手动关闭弹窗
+Future<void> showBubblePopup({
   required BuildContext context,
   required Widget content,
   required GlobalKey anchorKey,
   double verticalOffset = 10.0,
   Alignment alignment = Alignment.topRight,
-}) {
+  BubblePopupController? controller,
+}) async {
   final RenderBox button =
       anchorKey.currentContext!.findRenderObject() as RenderBox;
-  final RenderBox overlay =
-      Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+  final overlayState = Overlay.of(context);
+  final RenderBox overlayBox =
+      overlayState.context.findRenderObject() as RenderBox;
 
   final Offset buttonBottomRight = button.localToGlobal(
     button.size.bottomRight(Offset.zero),
-    ancestor: overlay,
+    ancestor: overlayBox,
   );
 
-  // 计算位置
-  // 如果是右上角对齐，rightOffset 是距离右边的距离
-  final double rightOffset = overlay.size.width - buttonBottomRight.dx;
+  // 计算位置：右上角对齐
+  final double rightOffset = overlayBox.size.width - buttonBottomRight.dx;
   final double topOffset = buttonBottomRight.dy + verticalOffset;
 
-  return Navigator.of(context).push(
-    PageRouteBuilder(
-      opaque: false,
-      barrierDismissible: true,
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 300),
-      reverseTransitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (context, animation, __) {
-        return Stack(
-          children: [
-            GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              behavior: HitTestBehavior.translucent,
-              child: Container(color: Colors.transparent),
-            ),
-            Positioned(
-              top: topOffset,
-              right: rightOffset,
-              child: ScaleTransition(
-                scale: CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutBack,
-                  reverseCurve: Curves.easeIn,
-                ),
-                alignment: alignment,
-                child: FadeTransition(
-                  opacity: animation,
-                  child: Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(20),
-                    color: Colors.white,
-                    child: content,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+  final completer = Completer<void>();
+  late OverlayEntry barrierEntry;
+  late OverlayEntry bubbleEntry;
+
+  final animController = AnimationController(
+    vsync: overlayState,
+    duration: const Duration(milliseconds: 300),
+    reverseDuration: const Duration(milliseconds: 200),
+  );
+  final scaleAnim = CurvedAnimation(
+    parent: animController,
+    curve: Curves.easeOutBack,
+    reverseCurve: Curves.easeIn,
+  );
+
+  bool closing = false;
+  Future<void> dismiss() async {
+    if (closing) return;
+    closing = true;
+    await animController.reverse();
+    barrierEntry.remove();
+    bubbleEntry.remove();
+    animController.dispose();
+    if (!completer.isCompleted) completer.complete();
+  }
+
+  // 绑定控制器
+  controller?._dismiss = dismiss;
+
+  // 透明屏障层：仅拦截点击（tap）用以关闭弹窗，不阻塞滚动等手势
+  barrierEntry = OverlayEntry(
+    builder: (_) => Positioned.fill(
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => dismiss(),
+      ),
     ),
   );
+
+  bubbleEntry = OverlayEntry(
+    builder: (_) => Positioned(
+      top: topOffset,
+      right: rightOffset,
+      child: ScaleTransition(
+        scale: scaleAnim,
+        alignment: alignment,
+        child: FadeTransition(
+          opacity: scaleAnim,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(20),
+            color: Colors.white,
+            child: content,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  overlayState.insertAll([barrierEntry, bubbleEntry]);
+  animController.forward();
+
+  return completer.future;
 }

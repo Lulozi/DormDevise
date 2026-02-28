@@ -252,10 +252,14 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     }
   }
 
+  BubblePopupController? _bubbleController;
+
   Future<void> _showAddMenu(BuildContext context) async {
+    _bubbleController = BubblePopupController();
     await showBubblePopup(
       context: context,
       anchorKey: _addBtnKey,
+      controller: _bubbleController,
       content: SizedBox(
         width: 180,
         child: Column(
@@ -292,7 +296,8 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   ) {
     return InkWell(
       onTap: () async {
-        Navigator.of(context).pop();
+        // 先关闭气泡弹窗，再执行跳转
+        await _bubbleController?.dismiss();
         if (value == 'manual') {
           final result = await Navigator.of(context).push(
             MaterialPageRoute(
