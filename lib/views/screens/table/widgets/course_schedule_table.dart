@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../models/course.dart';
 import '../../../../models/course_schedule_config.dart';
+import '../../../../utils/color_extensions.dart';
 import 'course_detail_sheet.dart';
 
 /// 渲染课程表网格的组件，支持按照指定工作日展示课程区块。
@@ -131,13 +132,14 @@ class CourseScheduleTable extends StatefulWidget {
     }
     final TextDirection direction = Directionality.of(context);
     final TextTheme textTheme = Theme.of(context).textTheme;
+    final ColorScheme cs = Theme.of(context).colorScheme;
     final TextStyle indexStyle = textTheme.titleSmall!.copyWith(
       fontWeight: FontWeight.w600,
-      color: const Color(0xFF3D4555),
+      color: cs.onSurface,
       letterSpacing: 0.3,
     );
     final TextStyle timeStyle = textTheme.bodySmall!.copyWith(
-      color: const Color(0xFF6C768A),
+      color: cs.onSurfaceVariant,
     );
 
     double maxWidth = 0;
@@ -179,6 +181,22 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   double _horizontalOffset = 0;
   ({int weekday, int section})? _selectedSlot;
   ({int weekday, int section})? _previousSlot;
+
+  /// 固定中性色方案（blueGrey），用于课表网格/表头/节次列等结构元素，
+  /// 确保这些元素不随用户主题色变化。
+  static final ColorScheme _neutralLight = ColorScheme.fromSeed(
+    seedColor: Colors.blueGrey,
+    brightness: Brightness.light,
+  );
+  static final ColorScheme _neutralDark = ColorScheme.fromSeed(
+    seedColor: Colors.blueGrey,
+    brightness: Brightness.dark,
+  );
+  ColorScheme _neutralScheme(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark
+        ? _neutralDark
+        : _neutralLight;
+  }
 
   // 拖拽相关状态
   _CourseBlock? _selectedBlock; // 当前选中的课程块（编辑模式）
@@ -474,8 +492,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                             bottom: 0,
                             width: resolvedTimeWidth,
                             child: DecoratedBox(
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFF4F6FB),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerLow,
                               ),
                               child: _buildTimeColumn(context, geometry.rows),
                             ),
@@ -500,7 +520,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.zero,
             boxShadow: <BoxShadow>[
               BoxShadow(
@@ -550,11 +570,13 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       ),
     );
 
+    final ns = _neutralScheme(context);
     return SizedBox(
       height: 78,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFF),
+          // 使用固定中性色，日期行不随主题色改变
+          color: ns.surfaceContainerLow,
           border: Border(bottom: BorderSide(color: borderColor)),
         ),
         child: Stack(
@@ -579,7 +601,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 width: timeWidth,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF4F6FB),
+                    color: ns.surfaceContainerLow,
                     border: Border(right: BorderSide(color: borderColor)),
                   ),
                   child: _buildWeekSelectorCell(context),
@@ -629,9 +651,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
   /// 构建表头左侧的周次选择器。
   Widget _buildWeekSelectorCell(BuildContext context) {
+    final ns = _neutralScheme(context);
     final int clampedWeek = currentWeek.clamp(1, maxWeek);
     final TextStyle textStyle = Theme.of(context).textTheme.titleSmall!
-        .copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF3D4555));
+        .copyWith(fontWeight: FontWeight.w700, color: ns.onSurface);
 
     return Center(
       child: InkWell(
@@ -656,7 +679,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFFEAEBF0),
+            // 使用固定中性色，不随主题色改变
+            color: ns.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
@@ -666,11 +690,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 '$clampedWeek 周',
                 style: textStyle.copyWith(fontSize: 11, height: 1),
               ),
-              const Icon(
-                Icons.arrow_drop_down,
-                size: 16,
-                color: Color(0xFF5D667A),
-              ),
+              Icon(Icons.arrow_drop_down, size: 16, color: ns.onSurfaceVariant),
             ],
           ),
         ),
@@ -685,15 +705,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     List<CourseTableRowSlot> rows,
     double timeColumnWidth,
   ) {
+    final ns = _neutralScheme(context);
     final Color borderColor = Theme.of(
       context,
     ).dividerColor.withValues(alpha: 0.14);
-    const Color altRowColor = Color(0xFFF9FAFD);
-    const Color breakRowColor = Color(0xFFE8EBF3);
+    // 使用固定中性色方案，不随主题色改变
+    final Color altRowColor = ns.surfaceContainerLow;
+    final Color breakRowColor = ns.surfaceContainerHighest;
     final TextStyle labelStyle = Theme.of(context).textTheme.labelMedium!
         .copyWith(
           fontWeight: FontWeight.w600,
-          color: const Color(0xFF7B8499),
+          color: ns.onSurfaceVariant,
           letterSpacing: 0.5,
           fontSize: 10,
         );
@@ -812,11 +834,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   child: Container(
                     margin: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF2F3F5),
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Center(
-                      child: Icon(Icons.add, color: Colors.black87, size: 24),
+                    child: Center(
+                      child: Icon(
+                        Icons.add,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        size: 24,
+                      ),
                     ),
                   ),
                 ),
@@ -857,11 +883,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                     child: Container(
                       margin: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF2F3F5),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Center(
-                        child: Icon(Icons.add, color: Colors.black87, size: 24),
+                      child: Center(
+                        child: Icon(
+                          Icons.add,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          size: 24,
+                        ),
                       ),
                     ),
                   ),
@@ -891,19 +923,35 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         _draggingBlock!.course == block.course &&
         _draggingBlock!.session == block.session;
 
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    // 暗色模式下降低课程色块的亮度和饱和度，使其柔和
+    final Color courseColor = isDark
+        ? dimColorForDark(block.course.color)
+        : block.course.color;
+    // 暗色模式下提高不透明度，防止深色背景穿透导致色块难以辨识
+    // 课程卡片不使用半透明，改用亮度微调实现渐变效果
     final List<Color> gradientColors = isNonCurrent
-        ? <Color>[const Color(0xFFE0E0E0), const Color(0xFFF5F5F5)]
+        ? <Color>[cs.surfaceContainerHighest, cs.surfaceContainerLow]
         : <Color>[
-            block.course.color.withValues(alpha: 0.92),
-            block.course.color.withValues(alpha: 0.78),
+            courseColor,
+            Color.lerp(
+              courseColor,
+              isDark ? Colors.black : Colors.white,
+              0.12,
+            )!,
           ];
 
     final Color textColor = isNonCurrent
-        ? const Color(0xFF9E9E9E)
-        : const Color(0xFF333333);
+        ? cs.onSurfaceVariant
+        : isDark
+        ? Colors.white
+        : cs.onSurface;
     final Color detailColor = isNonCurrent
-        ? const Color(0xFFBDBDBD)
-        : const Color(0xFF666666);
+        ? cs.outline
+        : isDark
+        ? Colors.white70
+        : cs.onSurfaceVariant;
 
     final TextTheme textTheme = Theme.of(context).textTheme;
     final TextStyle titleStyle = textTheme.titleSmall!.copyWith(
@@ -1610,11 +1658,20 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     final double endOffset = sectionOffsets[endSectionIndex] ?? startOffset;
     final double blockHeight = endOffset + sectionHeight - startOffset;
 
+    final ColorScheme dcs = Theme.of(context).colorScheme;
+    final bool isDarkDrag = Theme.of(context).brightness == Brightness.dark;
+    final Color dragCourseColor = isDarkDrag
+        ? dimColorForDark(block.course.color)
+        : block.course.color;
     final List<Color> gradientColors = isNonCurrent
-        ? <Color>[const Color(0xFFE0E0E0), const Color(0xFFF5F5F5)]
+        ? <Color>[dcs.surfaceContainerHighest, dcs.surfaceContainerLow]
         : <Color>[
-            block.course.color.withValues(alpha: 0.92),
-            block.course.color.withValues(alpha: 0.78),
+            dragCourseColor,
+            Color.lerp(
+              dragCourseColor,
+              isDarkDrag ? Colors.black : Colors.white,
+              0.12,
+            )!,
           ];
 
     // 冲突时使用红色边框
@@ -1626,11 +1683,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         : Colors.blue.withValues(alpha: 0.1);
 
     final Color textColor = isNonCurrent
-        ? const Color(0xFF9E9E9E)
-        : const Color(0xFF333333);
+        ? dcs.onSurfaceVariant
+        : isDarkDrag
+        ? Colors.white
+        : dcs.onSurface;
     final Color detailColor = isNonCurrent
-        ? const Color(0xFFBDBDBD)
-        : const Color(0xFF666666);
+        ? dcs.outline
+        : isDarkDrag
+        ? Colors.white70
+        : dcs.onSurfaceVariant;
 
     final TextTheme textTheme = Theme.of(context).textTheme;
     final TextStyle titleStyle = textTheme.titleSmall!.copyWith(
@@ -2037,19 +2098,21 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   /// 构建单个节次单元。
   Widget _buildTimeCell(BuildContext context, CourseTableRowSlot slot) {
     final SectionTime section = slot.section!;
+    final ns = _neutralScheme(context);
     final Color borderColor = Theme.of(
       context,
     ).dividerColor.withValues(alpha: 0.12);
     final TextTheme textTheme = Theme.of(context).textTheme;
+    // 使用固定中性色方案，不随主题色改变
     final TextStyle indexStyle = textTheme.titleSmall!.copyWith(
       fontWeight: FontWeight.w600,
-      color: const Color(0xFF3D4555),
+      color: ns.onSurface,
       letterSpacing: 0.3,
       // 降低字体大小以适应较窄/较短的时间列单元
       fontSize: 12,
     );
     final TextStyle timeStyle = textTheme.bodySmall!.copyWith(
-      color: const Color(0xFF6C768A),
+      color: ns.onSurfaceVariant,
       height: 1.05,
       // 更小字体以避免竖直溢出
       fontSize: 11,
@@ -2058,7 +2121,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     return Container(
       height: slot.height,
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F6FB),
+        color: ns.surfaceContainerLow,
         border: Border(
           right: BorderSide(color: borderColor),
           bottom: BorderSide(color: borderColor),
@@ -2092,6 +2155,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
   /// 构建午休、晚修等分隔行单元。
   Widget _buildBreakCell(BuildContext context, CourseTableRowSlot slot) {
+    final ns = _neutralScheme(context);
     final Color borderColor = Theme.of(
       context,
     ).dividerColor.withValues(alpha: 0.1);
@@ -2115,7 +2179,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       child: Container(
         height: slot.height,
         decoration: BoxDecoration(
-          color: const Color(0xFFE8EBF3),
+          // 使用固定中性色，与网格背景层的午休行颜色保持一致
+          color: ns.surfaceContainerHighest,
           border: Border(bottom: BorderSide(color: borderColor)),
         ),
       ),
@@ -2261,19 +2326,37 @@ class _AnimatedHeaderCellState extends State<_AnimatedHeaderCell>
   Widget build(BuildContext context) {
     final TextTheme textTheme = Theme.of(context).textTheme;
     final Color primary = Theme.of(context).colorScheme.primary;
-    final HSLColor hsl = HSLColor.fromColor(primary);
-    final Color activeColor = hsl
-        .withLightness((hsl.lightness + 0.2).clamp(0.0, 1.0))
-        .toColor();
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    // 固定中性色方案用于非今天的表头文字，避免随主题色变化
+    final neutralScheme = isDark
+        ? _CourseScheduleTableState._neutralDark
+        : _CourseScheduleTableState._neutralLight;
+    // 今日高亮色：
+    // 乌黑/洁白模式下使用底部导航选中指示器背景色（secondaryContainer）；
+    // 彩色模式用 primary，暗色模式直接用、亮色模式微调亮度。
+    // 仅高亮文字，不改变今日日期底色。
+    final bool isWhite =
+        primary == Colors.black87 ||
+        primary == Colors.white ||
+        primary.toARGB32() == Colors.black87.toARGB32();
+    final Color activeColor = isWhite
+        ? (isDark ? const Color(0xFF4B636D) : const Color(0xFF6A818B))
+        : isDark
+        ? primary
+        : HSLColor.fromColor(primary)
+              .withLightness(
+                (HSLColor.fromColor(primary).lightness + 0.2).clamp(0.0, 1.0),
+              )
+              .toColor();
 
     final TextStyle labelStyle = textTheme.bodyMedium!.copyWith(
-      fontWeight: FontWeight.w600,
-      color: widget.isToday ? activeColor : const Color(0xFF3D4555),
+      fontWeight: widget.isToday ? FontWeight.w800 : FontWeight.w600,
+      color: widget.isToday ? activeColor : neutralScheme.onSurface,
     );
     final TextStyle dateStyle = textTheme.bodySmall!.copyWith(
-      color: widget.isToday ? activeColor : const Color(0xFF6C768A),
+      color: widget.isToday ? activeColor : neutralScheme.onSurfaceVariant,
       letterSpacing: 0.4,
-      fontWeight: widget.isToday ? FontWeight.w600 : null,
+      fontWeight: widget.isToday ? FontWeight.w800 : null,
     );
 
     _colorAnimation = ColorTween(

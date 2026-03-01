@@ -35,3 +35,13 @@ Color colorFromARGB32(int val) => Color(val);
 extension IntToColor on int {
   Color toColor() => Color(this);
 }
+
+/// 暗色模式下降低颜色亮度和饱和度，使课程卡片不会过于刺眼，
+/// 同时保证在深色背景上仍能清晰可辨。
+Color dimColorForDark(Color color) {
+  final HSLColor hsl = HSLColor.fromColor(color);
+  return hsl
+      .withLightness((hsl.lightness * 0.55).clamp(0.25, 0.45))
+      .withSaturation((hsl.saturation * 0.70).clamp(0.0, 0.65))
+      .toColor();
+}

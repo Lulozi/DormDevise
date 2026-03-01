@@ -93,7 +93,7 @@ Future<void> showBubblePopup({
           child: Material(
             elevation: 4,
             borderRadius: BorderRadius.circular(20),
-            color: Colors.white,
+            color: Theme.of(context).cardTheme.color ?? Theme.of(context).colorScheme.surface,
             child: content,
           ),
         ),

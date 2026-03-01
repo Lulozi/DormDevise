@@ -5,11 +5,12 @@ import 'package:dormdevise/services/alarm_service.dart';
 import 'package:dormdevise/services/course_service.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/notification_service.dart';
+import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-/// 应用入口，负责初始化桌面微件服务并启动 DormDevise。
+/// 应用入口，负责初始化各类服务并启动 DormDevise。
 Future<void> main() async {
   await runZonedGuarded<Future<void>>(
     () async {
@@ -25,6 +26,14 @@ Future<void> main() async {
           systemNavigationBarIconBrightness: Brightness.dark,
         ),
       );
+
+      // 初始化主题服务（恢复用户主色偏好）
+      try {
+        await ThemeService.instance.init();
+      } catch (e, stack) {
+        debugPrint('ThemeService initialization failed: $e\n$stack');
+      }
+
       try {
         await DoorWidgetService.instance.initialize();
       } catch (e, stack) {

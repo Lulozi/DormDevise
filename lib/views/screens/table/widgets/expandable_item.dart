@@ -32,6 +32,7 @@ class ExpandableItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         GestureDetector(
@@ -44,7 +45,7 @@ class ExpandableItem extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, color: Colors.black87),
+                  style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
                 ),
                 Row(
                   children: [
@@ -55,7 +56,8 @@ class ExpandableItem extends StatelessWidget {
                           ? Icons.keyboard_arrow_up
                           : Icons.keyboard_arrow_down,
                       size: 20,
-                      color: Colors.black26,
+                      // 与课程编辑页 chevron_right 箭头颜色保持一致
+                      color: colorScheme.outline,
                     ),
                   ],
                 ),
@@ -72,7 +74,7 @@ class ExpandableItem extends StatelessWidget {
           duration: const Duration(milliseconds: 300),
         ),
         if (showDivider)
-          const Divider(height: 1, indent: 16, color: Color(0xFFE5E5EA)),
+          Divider(height: 1, indent: 16, color: colorScheme.outlineVariant),
       ],
     );
   }

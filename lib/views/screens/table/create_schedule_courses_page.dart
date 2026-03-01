@@ -182,22 +182,25 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text(
+          child: Text(
             '上一步',
-            style: TextStyle(color: Colors.blue, fontSize: 16),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontSize: 16,
+            ),
           ),
         ),
         leadingWidth: 80,
-        title: const Text(
+        title: Text(
           '添加课程',
           style: TextStyle(
-            color: Colors.black,
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -212,9 +215,12 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text(
+                : Text(
                     '完成',
-                    style: TextStyle(color: Colors.blue, fontSize: 16),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 16,
+                    ),
                   ),
           ),
         ],

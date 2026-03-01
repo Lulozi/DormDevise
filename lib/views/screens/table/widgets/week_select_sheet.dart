@@ -26,10 +26,12 @@ class WeekSelectSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -39,20 +41,23 @@ class WeekSelectSheet extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                const Center(
+                Center(
                   child: Text(
                     '切换周课表',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                 ),
                 Positioned(
                   right: 0,
                   child: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.black54),
+                    icon: Icon(
+                      Icons.close,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ),
@@ -86,15 +91,24 @@ class WeekSelectSheet extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? const Color(0xFFE8F0FF) // 选中状态为浅蓝色
-                            : const Color(0xFFF5F5F5), // 其他状态为灰色
+                            ? colorScheme
+                                  .primaryContainer // 选中状态使用主题主色容器色
+                            : colorScheme.surfaceContainerHigh, // 其他状态为灰色
                         borderRadius: BorderRadius.circular(12),
                         border: isSelected
                             ? Border.all(
-                                color: Color.fromRGBO(30, 105, 255, 0.3),
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.3,
+                                ),
                                 width: 1.5,
                               )
-                            : null,
+                            // 非选中格子添加微弱边框，避免暗色模式下与背景融为一体
+                            : Border.all(
+                                color: colorScheme.outlineVariant.withValues(
+                                  alpha: 0.3,
+                                ),
+                                width: 1,
+                              ),
                       ),
                       alignment: Alignment.center,
                       child: Text(
@@ -105,10 +119,10 @@ class WeekSelectSheet extends StatelessWidget {
                               ? FontWeight.bold
                               : FontWeight.normal,
                           color: isSelected
-                              ? const Color(0xFF1E69FF)
+                              ? colorScheme.primary
                               : (isCurrentWeek
-                                    ? const Color(0xFF1E69FF)
-                                    : Colors.black87),
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurface),
                         ),
                       ),
                     ),

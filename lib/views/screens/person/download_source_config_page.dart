@@ -68,91 +68,151 @@ class _DownloadSourceConfigPageState extends State<DownloadSourceConfigPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('下载源配置')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          _buildRadioItem('自动', 'auto'),
-          _buildRadioItem('GitHub', 'github'),
-          _buildRadioItem('Gitee', 'gitee'),
-          _buildRadioItem('自定义', 'custom'),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (child, animation) {
-              return SizeTransition(
-                sizeFactor: animation,
-                axisAlignment: -1.0,
-                child: FadeTransition(opacity: animation, child: child),
-              );
-            },
-            child: _sourceType == 'custom'
-                ? Column(
-                    key: const ValueKey('custom_api_input'),
+          // —— 下载源选择 ——
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _apiUrlController,
-                        decoration: InputDecoration(
-                          labelText: '自定义 API 地址',
-                          hintText: '例如: https://api.github.com/repos/...',
-                          border: inputBorder,
-                          enabledBorder: inputBorder,
-                          focusedBorder: focusedBorder,
+                      Icon(
+                        Icons.cloud_download_outlined,
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '选择下载源',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
-                  )
-                : const SizedBox.shrink(key: ValueKey('empty')),
-          ),
-          const SizedBox(height: 24),
-          const Divider(),
-          ListTile(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildRadioItem('自动', 'auto'),
+                  _buildRadioItem('GitHub', 'github'),
+                  _buildRadioItem('Gitee', 'gitee'),
+                  _buildRadioItem('自定义', 'custom'),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) {
+                      return SizeTransition(
+                        sizeFactor: animation,
+                        axisAlignment: -1.0,
+                        child: FadeTransition(opacity: animation, child: child),
+                      );
+                    },
+                    child: _sourceType == 'custom'
+                        ? Padding(
+                            key: const ValueKey('custom_api_input'),
+                            padding: const EdgeInsets.only(top: 8),
+                            child: TextField(
+                              controller: _apiUrlController,
+                              decoration: InputDecoration(
+                                labelText: '自定义 API 地址',
+                                hintText:
+                                    '例如: https://api.github.com/repos/...',
+                                border: inputBorder,
+                                enabledBorder: inputBorder,
+                                focusedBorder: focusedBorder,
+                                prefixIcon: const Icon(Icons.link_outlined),
+                                prefixIconColor: colorScheme.primary,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(key: ValueKey('empty')),
+                  ),
+                ],
+              ),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            title: Text('高级设置', style: Theme.of(context).textTheme.titleMedium),
-            trailing: AnimatedRotation(
-              turns: _advancedExpanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(Icons.keyboard_arrow_down),
-            ),
-            onTap: () {
-              setState(() {
-                _advancedExpanded = !_advancedExpanded;
-              });
-            },
           ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (child, animation) {
-              return SizeTransition(
-                sizeFactor: animation,
-                axisAlignment: -1.0,
-                child: FadeTransition(opacity: animation, child: child),
-              );
-            },
-            child: _advancedExpanded
-                ? Column(
-                    key: const ValueKey('advanced_settings'),
-                    children: [
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _downloadUrlController,
-                        decoration: InputDecoration(
-                          labelText: '自定义下载路径 (镜像加速)',
-                          hintText: '支持变量: \$sanitizedName',
-                          helperText: '留空则使用源地址。若填写，将优先选择最快的下载链接。',
-                          border: inputBorder,
-                          enabledBorder: inputBorder,
-                          focusedBorder: focusedBorder,
+          const SizedBox(height: 12),
+
+          // —— 高级设置 ——
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 使用 GestureDetector 代替 InkWell 避免
+                  // 点击展开时出现灰色水波纹底色
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _advancedExpanded = !_advancedExpanded;
+                      });
+                    },
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.tune_outlined,
+                          size: 20,
+                          color: colorScheme.primary,
                         ),
-                      ),
-                    ],
-                  )
-                : const SizedBox.shrink(key: ValueKey('advanced_empty')),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            '高级设置',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        AnimatedRotation(
+                          turns: _advancedExpanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(Icons.keyboard_arrow_down),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) {
+                      return SizeTransition(
+                        sizeFactor: animation,
+                        axisAlignment: -1.0,
+                        child: FadeTransition(opacity: animation, child: child),
+                      );
+                    },
+                    child: _advancedExpanded
+                        ? Padding(
+                            key: const ValueKey('advanced_settings'),
+                            padding: const EdgeInsets.only(top: 12),
+                            child: TextField(
+                              controller: _downloadUrlController,
+                              decoration: InputDecoration(
+                                labelText: '自定义下载路径 (镜像加速)',
+                                hintText: '支持变量: \$sanitizedName',
+                                helperText: '留空则使用源地址。若填写，将优先选择最快的下载链接。',
+                                border: inputBorder,
+                                enabledBorder: inputBorder,
+                                focusedBorder: focusedBorder,
+                                prefixIcon: const Icon(Icons.speed_outlined),
+                                prefixIconColor: colorScheme.primary,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(
+                            key: ValueKey('advanced_empty'),
+                          ),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 24),
           ElevatedButton(

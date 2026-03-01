@@ -727,6 +727,8 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
         enabledBorder: inputBorder,
         focusedBorder: focusedBorder,
         prefixIcon: prefixIcon,
+        // 输入框前缀图标统一使用主题色
+        prefixIconColor: colorScheme.primary,
       );
     }
 
@@ -775,15 +777,29 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Card(
-                elevation: 0,
-                color: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.settings_ethernet_outlined,
+                            size: 20,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            '连接配置',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       TextField(
                         key: const ValueKey('host'),
                         controller: _hostController,
@@ -1034,83 +1050,109 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      SwitchListTile(
-                        title: const Text('启用TLS/SSL'),
-                        value: _withTls,
-                        onChanged: (v) => setState(() => _withTls = v),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _withTls = !_withTls),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          child: Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  '启用TLS/SSL',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              ),
+                              Switch(
+                                value: _withTls,
+                                onChanged: (v) => setState(() => _withTls = v),
+                              ),
+                            ],
+                          ),
                         ),
-                        tileColor: colorScheme.surface,
-                        contentPadding: EdgeInsets.zero,
                       ),
-                      if (_withTls) ...[
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: () => _pickFile(
-                            _caPathController,
-                            dialogTitle: '选择CA证书',
-                          ),
-                          child: AbsorbPointer(
-                            child: TextField(
-                              key: const ValueKey('caPath'),
-                              controller: _caPathController,
-                              decoration: decoration(
-                                'CA证书路径',
-                                prefixIcon: const Icon(
-                                  Icons.file_present_outlined,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: () => _pickFile(
-                            _certPathController,
-                            dialogTitle: '选择客户端证书',
-                          ),
-                          child: AbsorbPointer(
-                            child: TextField(
-                              key: const ValueKey('certPath'),
-                              controller: _certPathController,
-                              decoration: decoration(
-                                '客户端证书路径(可选)',
-                                prefixIcon: const Icon(
-                                  Icons.assignment_turned_in_outlined,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: () => _pickFile(
-                            _keyPathController,
-                            dialogTitle: '选择客户端私钥',
-                          ),
-                          child: AbsorbPointer(
-                            child: TextField(
-                              key: const ValueKey('keyPath'),
-                              controller: _keyPathController,
-                              decoration: decoration(
-                                '客户端私钥路径(可选)',
-                                prefixIcon: const Icon(Icons.vpn_key_outlined),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          key: const ValueKey('keyPwd'),
-                          controller: _keyPwdController,
-                          decoration: decoration(
-                            '私钥密码(可选)',
-                            prefixIcon: const Icon(Icons.password_outlined),
-                          ),
-                          obscureText: true,
-                        ),
-                      ],
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                        child: _withTls
+                            ? Column(
+                                children: [
+                                  const SizedBox(height: 12),
+                                  GestureDetector(
+                                    onTap: () => _pickFile(
+                                      _caPathController,
+                                      dialogTitle: '选择CA证书',
+                                    ),
+                                    child: AbsorbPointer(
+                                      child: TextField(
+                                        key: const ValueKey('caPath'),
+                                        controller: _caPathController,
+                                        decoration: decoration(
+                                          'CA证书路径',
+                                          prefixIcon: const Icon(
+                                            Icons.file_present_outlined,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  GestureDetector(
+                                    onTap: () => _pickFile(
+                                      _certPathController,
+                                      dialogTitle: '选择客户端证书',
+                                    ),
+                                    child: AbsorbPointer(
+                                      child: TextField(
+                                        key: const ValueKey('certPath'),
+                                        controller: _certPathController,
+                                        decoration: decoration(
+                                          '客户端证书路径(可选)',
+                                          prefixIcon: const Icon(
+                                            Icons.assignment_turned_in_outlined,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  GestureDetector(
+                                    onTap: () => _pickFile(
+                                      _keyPathController,
+                                      dialogTitle: '选择客户端私钥',
+                                    ),
+                                    child: AbsorbPointer(
+                                      child: TextField(
+                                        key: const ValueKey('keyPath'),
+                                        controller: _keyPathController,
+                                        decoration: decoration(
+                                          '客户端私钥路径(可选)',
+                                          prefixIcon: const Icon(
+                                            Icons.vpn_key_outlined,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextField(
+                                    key: const ValueKey('keyPwd'),
+                                    controller: _keyPwdController,
+                                    decoration: decoration(
+                                      '私钥密码(可选)',
+                                      prefixIcon: const Icon(
+                                        Icons.password_outlined,
+                                      ),
+                                    ),
+                                    obscureText: true,
+                                  ),
+                                ],
+                              )
+                            : const SizedBox.shrink(),
+                      ),
                     ],
                   ),
                 ),
@@ -1182,122 +1224,104 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                 ],
               ),
               const SizedBox(height: 20),
-              Card(
-                elevation: 0,
-                color: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 56,
-                          child: TextField(
-                            controller: _customMsgController,
-                            textAlignVertical: TextAlignVertical.center,
-                            decoration: decoration(
-                              '自定义发送消息',
-                              hint: '输入mqtt接收开门的消息',
-                              prefixIcon: const Icon(Icons.chat_bubble_outline),
-                            ),
-                          ),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: TextField(
+                        controller: _customMsgController,
+                        textAlignVertical: TextAlignVertical.center,
+                        decoration: decoration(
+                          '自定义发送消息',
+                          hint: '输入mqtt接收开门的消息',
+                          prefixIcon: const Icon(Icons.chat_bubble_outline),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        height: 40,
-                        child: FilledButton.icon(
-                          onPressed: _sending
-                              ? null
-                              : () async {
-                                  final msg = _customMsgController.text.trim();
-                                  if (msg.isEmpty) return;
-                                  setState(() {
-                                    _sending = true;
-                                  });
-                                  _showStatus(
-                                    '正在发送...',
-                                    icon: Icons.hourglass_top,
-                                  );
-                                  try {
-                                    SecurityContext? sc;
-                                    if (_withTls) {
-                                      sc = await buildSecurityContext(
-                                        caAsset: _caPathController.text,
-                                        clientCertAsset:
-                                            _certPathController.text.isNotEmpty
-                                            ? _certPathController.text
-                                            : null,
-                                        clientKeyAsset:
-                                            _keyPathController.text.isNotEmpty
-                                            ? _keyPathController.text
-                                            : null,
-                                        clientKeyPassword:
-                                            _keyPwdController.text.isNotEmpty
-                                            ? _keyPwdController.text
-                                            : null,
-                                      );
-                                    }
-                                    final service = MqttService(
-                                      host: _hostController.text,
-                                      port:
-                                          int.tryParse(_portController.text) ??
-                                          1883,
-                                      clientId:
-                                          _clientIdController.text.isNotEmpty
-                                          ? _clientIdController.text
-                                          : 'flutter_client',
-                                      username:
-                                          _usernameController.text.isNotEmpty
-                                          ? _usernameController.text
-                                          : null,
-                                      password:
-                                          _passwordController.text.isNotEmpty
-                                          ? _passwordController.text
-                                          : null,
-                                      securityContext: sc,
-                                      log: (msg) => debugPrint(msg),
-                                      onError: (e, [st]) =>
-                                          debugPrint('MQTT error: $e'),
-                                    );
-                                    await service.connect();
-                                    final topic = _topicController.text.trim();
-                                    if (topic.isEmpty) {
-                                      throw Exception('Topic不能为空');
-                                    }
-                                    await service.publishText(topic, msg);
-                                    _showStatus('消息已发送');
-                                    await service.dispose();
-                                  } catch (e) {
-                                    _showStatus('发送失败: $e', isError: true);
-                                  } finally {
-                                    setState(() {
-                                      _sending = false;
-                                    });
-                                  }
-                                },
-                          style: FilledButton.styleFrom(
-                            shape: buttonShape,
-                            padding: const EdgeInsets.symmetric(horizontal: 18),
-                          ),
-                          icon: _sending
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.send_outlined),
-                          label: Text(_sending ? '发送中...' : '测试发送'),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 40,
+                    child: FilledButton.icon(
+                      onPressed: _sending
+                          ? null
+                          : () async {
+                              final msg = _customMsgController.text.trim();
+                              if (msg.isEmpty) return;
+                              setState(() {
+                                _sending = true;
+                              });
+                              _showStatus('正在发送...', icon: Icons.hourglass_top);
+                              try {
+                                SecurityContext? sc;
+                                if (_withTls) {
+                                  sc = await buildSecurityContext(
+                                    caAsset: _caPathController.text,
+                                    clientCertAsset:
+                                        _certPathController.text.isNotEmpty
+                                        ? _certPathController.text
+                                        : null,
+                                    clientKeyAsset:
+                                        _keyPathController.text.isNotEmpty
+                                        ? _keyPathController.text
+                                        : null,
+                                    clientKeyPassword:
+                                        _keyPwdController.text.isNotEmpty
+                                        ? _keyPwdController.text
+                                        : null,
+                                  );
+                                }
+                                final service = MqttService(
+                                  host: _hostController.text,
+                                  port:
+                                      int.tryParse(_portController.text) ??
+                                      1883,
+                                  clientId: _clientIdController.text.isNotEmpty
+                                      ? _clientIdController.text
+                                      : 'flutter_client',
+                                  username: _usernameController.text.isNotEmpty
+                                      ? _usernameController.text
+                                      : null,
+                                  password: _passwordController.text.isNotEmpty
+                                      ? _passwordController.text
+                                      : null,
+                                  securityContext: sc,
+                                  log: (msg) => debugPrint(msg),
+                                  onError: (e, [st]) =>
+                                      debugPrint('MQTT error: $e'),
+                                );
+                                await service.connect();
+                                final topic = _topicController.text.trim();
+                                if (topic.isEmpty) {
+                                  throw Exception('Topic不能为空');
+                                }
+                                await service.publishText(topic, msg);
+                                _showStatus('消息已发送');
+                                await service.dispose();
+                              } catch (e) {
+                                _showStatus('发送失败: $e', isError: true);
+                              } finally {
+                                setState(() {
+                                  _sending = false;
+                                });
+                              }
+                            },
+                      style: FilledButton.styleFrom(
+                        shape: buttonShape,
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                      ),
+                      icon: _sending
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send_outlined),
+                      label: Text(_sending ? '发送中...' : '测试发送'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               AnimatedSwitcher(

@@ -63,8 +63,9 @@ class _SettingsOpenContainerState extends State<SettingsOpenContainer> {
       _isOpen = true;
     });
     final colorScheme = Theme.of(context).colorScheme;
+    final cardColor = Theme.of(context).cardTheme.color ?? Colors.white;
     final route = _SettingsOpenContainerRoute<void>(
-      closedColor: colorScheme.surfaceContainerHighest,
+      closedColor: cardColor,
       openColor: colorScheme.surface,
       middleColor: Theme.of(context).canvasColor,
       closedElevation: 0,
@@ -159,7 +160,7 @@ class _SettingsOpenContainerState extends State<SettingsOpenContainer> {
     required bool interactive,
   }) {
     return Material(
-      color: colorScheme.surfaceContainerHighest,
+      color: Theme.of(context).cardTheme.color ?? Colors.white,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: ListTile(
@@ -237,9 +238,10 @@ class _SettingsOpenContainerRoute<T> extends ModalRoute<T> {
        _closedOpacityTween = _buildClosedOpacityTween(),
        _openOpacityTween = _buildOpenOpacityTween();
 
-  final Color closedColor;
-  final Color openColor;
-  final Color middleColor;
+  /// 收缩动画的目标颜色，在 didPop 时根据当前主题更新以确保颜色同步
+  Color closedColor;
+  Color openColor;
+  Color middleColor;
   final double openElevation;
   final ShapeBorder openShape;
   final WidgetBuilder openBuilder;
@@ -252,7 +254,9 @@ class _SettingsOpenContainerRoute<T> extends ModalRoute<T> {
 
   final Tween<double> _elevationTween;
   final ShapeBorderTween _shapeTween;
-  final _FlippableTweenSequence<Color?> _colorTween;
+
+  /// 颜色过渡序列，在 didPop 时根据当前主题重建
+  _FlippableTweenSequence<Color?> _colorTween;
   final _FlippableTweenSequence<double> _closedOpacityTween;
   final _FlippableTweenSequence<double> _openOpacityTween;
   final GlobalKey _openBuilderKey = GlobalKey();
@@ -428,6 +432,14 @@ class _SettingsOpenContainerRoute<T> extends ModalRoute<T> {
   @override
   bool didPop(T? result) {
     _notifyClosing();
+    // 用当前主题色重建颜色过渡，避免主题切换后收缩动画仍使用旧颜色
+    if (subtreeContext != null) {
+      final theme = Theme.of(subtreeContext!);
+      closedColor = theme.cardTheme.color ?? theme.colorScheme.surface;
+      openColor = theme.colorScheme.surface;
+      middleColor = theme.canvasColor;
+      _colorTween = _buildColorTween(closedColor, openColor, middleColor);
+    }
     _takeMeasurements(
       navigatorContext: subtreeContext!,
       delayForSourceRoute: true,

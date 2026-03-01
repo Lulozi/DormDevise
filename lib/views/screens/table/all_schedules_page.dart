@@ -328,12 +328,12 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: Colors.black87),
+            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurface),
               ),
             ),
           ],
@@ -344,6 +344,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return PopScope(
       canPop: !_isSelectionMode,
       onPopInvokedWithResult: (didPop, result) {
@@ -361,34 +362,34 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF7F8FC), // 浅灰背景色
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: const Color(0xFFF7F8FC),
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           leading: _isSelectionMode
               ? TextButton(
                   onPressed: _selectAll,
                   child: Text(
                     _selectedIds.length == _schedules.length ? '全不选' : '全选',
-                    style: const TextStyle(
-                      color: Colors.blue,
+                    style: TextStyle(
+                      color: colorScheme.primary,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 )
               : IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.arrow_back_ios_new,
-                    color: Colors.black,
+                    color: colorScheme.onSurface,
                   ),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
           leadingWidth: _isSelectionMode ? 80 : null,
           title: Text(
             _isSelectionMode ? '已选择${_selectedIds.length}项' : '全部课程表',
-            style: const TextStyle(
-              color: Colors.black,
+            style: TextStyle(
+              color: colorScheme.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -398,10 +399,10 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             if (_isSelectionMode)
               TextButton(
                 onPressed: _toggleSelectionMode,
-                child: const Text(
+                child: Text(
                   '取消',
                   style: TextStyle(
-                    color: Colors.blue,
+                    color: colorScheme.primary,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -409,9 +410,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               )
             else ...[
               IconButton(
-                icon: const FaIcon(
+                icon: FaIcon(
                   FontAwesomeIcons.squareCheck,
-                  color: Colors.black87,
+                  color: colorScheme.primary,
                   size: 22,
                 ),
                 onPressed: _toggleSelectionMode,
@@ -420,7 +421,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 key: _addBtnKey,
                 icon: Icon(
                   Icons.add,
-                  color: _isAddMenuOpen ? Colors.grey : Colors.black87,
+                  color: _isAddMenuOpen ? Colors.grey : colorScheme.primary,
                   size: 28,
                 ),
                 onPressed: () async {
@@ -539,7 +540,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                             final double flashIntensity =
                                 4 * flashInput * (1 - flashInput);
                             flashColor = Color.lerp(
-                              Colors.white,
+                              colorScheme.surface,
                               Theme.of(context).primaryColor.withOpacity(0.3),
                               flashIntensity,
                             );
@@ -584,7 +585,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             if (_isLoading)
               Positioned.fill(
                 child: Container(
-                  color: Colors.white.withOpacity(0.6),
+                  color: colorScheme.surface.withOpacity(0.6),
                   child: const Center(child: CircularProgressIndicator()),
                 ),
               ),
@@ -599,7 +600,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                     child: Container(
                       height: 72,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: colorScheme.surface,
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
@@ -616,7 +617,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                             Icons.delete_outline,
                             color: _selectedIds.isEmpty
                                 ? Colors.grey
-                                : const Color(0xFF333333),
+                                : colorScheme.primary,
                             size: 26,
                           ),
                           const SizedBox(height: 2),
@@ -625,7 +626,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                             style: TextStyle(
                               color: _selectedIds.isEmpty
                                   ? Colors.grey
-                                  : const Color(0xFF333333),
+                                  : colorScheme.primary,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
@@ -651,11 +652,12 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     Color? backgroundColor,
   }) {
     final bool isSelected = _selectedIds.contains(id);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: backgroundColor ?? Colors.white,
+        color: backgroundColor ?? (Theme.of(context).cardTheme.color ?? colorScheme.surface),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -713,10 +715,10 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 ),
                 Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 if (isCurrent) ...[
@@ -727,14 +729,14 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.15),
+                      color: colorScheme.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text(
+                    child: Text(
                       '当前',
                       style: TextStyle(
                         fontSize: 10,
-                        color: Colors.blue,
+                        color: colorScheme.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -752,15 +754,15 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                   )
                 else
                   Material(
-                    color: const Color(0xFFF2F2F2),
+                    color: colorScheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(16),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(16),
                       onTap: () {
                         _openSettings(context, id);
                       },
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 6,
                         ),
@@ -768,7 +770,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                           '设置',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.black87,
+                            color: colorScheme.primary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -784,6 +786,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   }
 
   Widget _buildAnimatedCheckbox(bool isSelected) {
+    final colorScheme = Theme.of(context).colorScheme;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
@@ -791,10 +794,10 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       width: 16,
       height: 16,
       decoration: BoxDecoration(
-        color: isSelected ? Colors.blue : Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: isSelected ? Colors.blue : Colors.grey.shade300,
+      color: isSelected ? colorScheme.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(
+        color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
           width: 1.2,
         ),
       ),

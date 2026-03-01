@@ -89,6 +89,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
 
     final OverlayEntry entry = OverlayEntry(
       builder: (BuildContext context) {
+        final ColorScheme colorScheme = Theme.of(context).colorScheme;
         return Positioned(
           top: MediaQuery.of(context).padding.top + 12,
           left: 16,
@@ -102,12 +103,14 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEBF2FF),
+                  color: colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Color.fromRGBO(30, 105, 255, 0.15)),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.15),
+                  ),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
-                      color: Color.fromRGBO(30, 105, 255, 0.1),
+                      color: colorScheme.primary.withValues(alpha: 0.1),
                       blurRadius: 16,
                       offset: const Offset(0, 6),
                     ),
@@ -116,16 +119,16 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    const Icon(
+                    Icon(
                       Icons.info_outline_rounded,
                       size: 18,
-                      color: Color(0xFF1E69FF),
+                      color: colorScheme.primary,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       message,
-                      style: const TextStyle(
-                        color: Color(0xFF2D3A52),
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                       ),
@@ -153,6 +156,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   /// 构建底部弹窗整体布局。
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final MediaQueryData media = MediaQuery.of(context);
     // 计算目标高度：屏幕高度 - 状态栏 - 导航栏
     final double targetHeight =
@@ -165,9 +169,9 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
       curve: Curves.easeOutCubic,
       child: Container(
         height: targetHeight,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SafeArea(
           top: false,
@@ -175,7 +179,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           child: Column(
             children: <Widget>[
               _buildHeader(context),
-              const Divider(height: 1, color: Color(0xFFE7EDF8)),
+              Divider(height: 1, color: colorScheme.outlineVariant),
               Expanded(
                 child: ListView(
                   controller: _scrollController,
@@ -249,11 +253,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   /// 构建全局时长与模式切换卡片。
   Widget _buildGlobalSettingsCard(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFF7FAFF),
+        color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E9F5)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         children: <Widget>[
@@ -310,6 +315,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
   /// 构建单个时段的配置卡片。
   Widget _buildSegmentCard(BuildContext context, int index) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
     final _MutableSegment segment = _segments[index];
     final int baseNumber = _segments
         .take(index)
@@ -322,7 +328,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     return DecoratedBox(
       key: _segmentKeys[index],
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: <BoxShadow>[
           BoxShadow(
@@ -399,16 +405,18 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Icon(
+                          Icon(
                             Icons.chevron_right_rounded,
                             size: 20,
-                            color: Colors.black26,
+                            color: colorScheme.onSurface.withValues(
+                              alpha: 0.26,
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const Divider(height: 1, color: Color(0xFFE8EDF5)),
+                  Divider(height: 1, color: colorScheme.outlineVariant),
                   const SizedBox(height: 2),
                 ],
               ),
@@ -445,6 +453,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     bool hasConflict = false,
   }) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
     return Column(
       children: <Widget>[
         InkWell(
@@ -491,14 +500,14 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                   style: theme.textTheme.bodyMedium!.copyWith(
                     color: hasConflict
                         ? const Color(0xFFFF4D4F)
-                        : Colors.black54,
+                        : colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
                   size: 20,
-                  color: Colors.black26,
+                  color: colorScheme.onSurface.withValues(alpha: 0.26),
                 ),
               ],
             ),
@@ -825,6 +834,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
       final TimeOfDay nextSegmentStart = _segments[segmentIndex + 1].startTime;
       // cursor 此时是当前时段最后一节课的结束时间
       if (_compareTimeOfDay(cursor, nextSegmentStart) > 0) {
+        final ColorScheme colorScheme = Theme.of(context).colorScheme;
         final bool? autoAdjust = await showModalBottomSheet<bool>(
           context: context,
           backgroundColor: Colors.transparent,
@@ -833,9 +843,9 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
                 borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: const Color(0xFFE8EDF8)),
+                border: Border.all(color: colorScheme.outlineVariant),
                 boxShadow: [
                   // 轻微边缘阴影，帮助边框更清晰
                   BoxShadow(
@@ -855,12 +865,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(height: 32),
-                  const Text(
+                  Text(
                     '课程时间异常',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF333333),
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -869,9 +879,9 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                     child: Text(
                       '是否根据已设定的休息时长及课程时长，自动调整${segment.name}时间段中，第${preview.number}节课后的其他课程？',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
-                        color: Color(0xFF666666),
+                        color: colorScheme.onSurfaceVariant,
                         height: 1.5,
                       ),
                     ),
@@ -885,15 +895,15 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(25),
                         border: Border.all(
-                          color: const Color(0xFF1E69FF),
+                          color: colorScheme.primary,
                           width: 2,
                         ),
                       ),
                       alignment: Alignment.center,
-                      child: const Text(
+                      child: Text(
                         '自动调整',
                         style: TextStyle(
-                          color: Color(0xFF1E69FF),
+                          color: colorScheme.primary,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -906,10 +916,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                     child: Container(
                       height: 48,
                       alignment: Alignment.center,
-                      child: const Text(
+                      child: Text(
                         '不自动调整',
                         style: TextStyle(
-                          color: Colors.grey,
+                          color: colorScheme.onSurfaceVariant,
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1054,6 +1064,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     required int step,
     String? subtitle,
   }) async {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final List<int> options = _buildMinuteOptions(
       minMinutes: minMinutes,
       maxMinutes: maxMinutes,
@@ -1092,10 +1103,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       fit: BoxFit.scaleDown,
                       child: Text(
                         '$minutes 分钟',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -1121,6 +1132,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     required bool canEditStart,
     Duration? initialDurationOverride,
   }) async {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final int difference = _differenceInMinutes(initialStart, initialEnd);
     int currentDuration = initialDurationOverride?.inMinutes ?? difference;
     if (currentDuration < 1) {
@@ -1282,10 +1294,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                                 fit: BoxFit.scaleDown,
                                 child: Text(
                                   '${hour.toString().padLeft(2, '0')}时',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 32,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
+                                    color: colorScheme.onSurface,
                                   ),
                                 ),
                               ),
@@ -1315,10 +1327,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                                 fit: BoxFit.scaleDown,
                                 child: Text(
                                   '${minute.toString().padLeft(2, '0')}分',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 32,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
+                                    color: colorScheme.onSurface,
                                   ),
                                 ),
                               ),
@@ -1355,7 +1367,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                         '开始时间',
                         style: Theme.of(context).textTheme.bodySmall!.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: Colors.black54,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1403,7 +1415,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                         '—',
                         style: Theme.of(context).textTheme.titleLarge!.copyWith(
                           fontWeight: FontWeight.w700,
-                          color: Colors.black54,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -1417,7 +1429,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                         '结束时间',
                         style: Theme.of(context).textTheme.bodySmall!.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: Colors.black54,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1669,7 +1681,8 @@ class _BreakModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color activeColor = Color(0xFF1E69FF);
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final Color activeColor = colorScheme.primary;
     const double itemWidth = 56.0;
     const double height = 32.0;
     const double padding = 2.0;
@@ -1678,7 +1691,7 @@ class _BreakModeToggle extends StatelessWidget {
       height: height,
       width: itemWidth * 2 + padding * 2,
       decoration: BoxDecoration(
-        color: const Color(0xFFE9EDF6),
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(height / 2),
       ),
       padding: const EdgeInsets.all(padding),
@@ -1694,7 +1707,7 @@ class _BreakModeToggle extends StatelessWidget {
               width: itemWidth,
               height: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
                 borderRadius: BorderRadius.circular((height - padding * 2) / 2),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
@@ -1714,6 +1727,7 @@ class _BreakModeToggle extends StatelessWidget {
                 onTap: () => onChanged(_BreakDurationMode.segmented),
                 width: itemWidth,
                 activeColor: activeColor,
+                inactiveColor: colorScheme.onSurfaceVariant,
               ),
               _buildOption(
                 label: '全局',
@@ -1721,6 +1735,7 @@ class _BreakModeToggle extends StatelessWidget {
                 onTap: () => onChanged(_BreakDurationMode.global),
                 width: itemWidth,
                 activeColor: activeColor,
+                inactiveColor: colorScheme.onSurfaceVariant,
               ),
             ],
           ),
@@ -1735,6 +1750,7 @@ class _BreakModeToggle extends StatelessWidget {
     required VoidCallback onTap,
     required double width,
     required Color activeColor,
+    required Color inactiveColor,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1748,7 +1764,7 @@ class _BreakModeToggle extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: isSelected ? activeColor : const Color(0xFF8E9AB0),
+              color: isSelected ? activeColor : inactiveColor,
             ),
             child: Text(label),
           ),
@@ -1773,6 +1789,7 @@ class _SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(22),
       onTap: onTap,
@@ -1790,15 +1807,15 @@ class _SettingRow extends StatelessWidget {
             Text(
               value,
               style: theme.textTheme.bodyMedium!.copyWith(
-                color: Colors.black54,
+                color: colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(width: 6),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
               size: 20,
-              color: Colors.black26,
+              color: colorScheme.onSurface.withValues(alpha: 0.26),
             ),
           ],
         ),
@@ -1821,6 +1838,7 @@ class _CircleIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final bool enabled = onTap != null;
     return Tooltip(
       message: tooltip,
@@ -1831,13 +1849,17 @@ class _CircleIconButton extends StatelessWidget {
           width: 34,
           height: 34,
           decoration: BoxDecoration(
-            color: enabled ? const Color(0xFFE9EDF6) : const Color(0xFFF0F2F7),
+            color: enabled
+                ? colorScheme.surfaceContainerHighest
+                : colorScheme.surfaceContainerHigh,
             shape: BoxShape.circle,
           ),
           child: Icon(
             icon,
             size: 18,
-            color: enabled ? Colors.black87 : Colors.black26,
+            color: enabled
+                ? colorScheme.onSurface
+                : colorScheme.onSurface.withValues(alpha: 0.26),
           ),
         ),
       ),
@@ -1865,6 +1887,7 @@ class _WheelSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final String title = titleBuilder();
     final String? subtitle = subtitleBuilder?.call();
     return SafeArea(
@@ -1872,9 +1895,9 @@ class _WheelSheet extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: const Color(0xFFE8EDF8)),
+            border: Border.all(color: colorScheme.outlineVariant),
             // 添加一个较轻微的边缘阴影以突出卡片边框，同时保留现有的大阴影用于深度感
             boxShadow: <BoxShadow>[
               // 轻微的边缘阴影，便于边框突出
@@ -1919,9 +1942,9 @@ class _WheelSheet extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 subtitle,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
-                                  color: Colors.black54,
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -1937,7 +1960,7 @@ class _WheelSheet extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Divider(height: 1, color: Color(0xFFE8EDF8)),
+                Divider(height: 1, color: colorScheme.outlineVariant),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                   child: child,
@@ -1948,9 +1971,9 @@ class _WheelSheet extends StatelessWidget {
                     onPressed: onConfirm,
                     child: Text(
                       confirmLabel,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
-                        color: Color(0xFF1E69FF),
+                        color: colorScheme.primary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

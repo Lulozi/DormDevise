@@ -38,13 +38,14 @@ class BottomSheetConfirm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SafeArea(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: const Color(0xFFE8EDF8)),
+          border: Border.all(color: colorScheme.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -68,10 +69,10 @@ class BottomSheetConfirm extends StatelessWidget {
               child: Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF333333),
+                  color: colorScheme.onSurface,
                 ),
               ),
             ),
@@ -104,8 +105,8 @@ class BottomSheetConfirm extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Text(
                   cancelText,
-                  style: const TextStyle(
-                    color: Color(0xFF333333),
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
                   ),

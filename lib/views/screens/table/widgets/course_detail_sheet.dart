@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dormdevise/utils/course_utils.dart';
 import '../../../../models/course.dart';
+import '../../../../utils/color_extensions.dart';
 import '../course_edit_page.dart';
 
 /// 课程详情底部弹窗
@@ -19,13 +20,14 @@ class CourseDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.7,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF7F8FC),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -74,12 +76,12 @@ class CourseDetailSheet extends StatelessWidget {
             navigator.pop({'action': 'create', 'newCourse': result});
           }
         },
-        child: const Text(
+        child: Text(
           '新建课程',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: Colors.blue,
+            color: Theme.of(context).colorScheme.primary,
           ),
         ),
       ),
@@ -118,9 +120,10 @@ class CourseDetailSheet extends StatelessWidget {
 
   /// 构建单个课程卡片
   Widget _buildCourseCard(BuildContext context, CourseDetailItem item) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -140,7 +143,10 @@ class CourseDetailSheet extends StatelessWidget {
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
-                  color: item.course.color,
+                  // 暗色模式下降低课程颜色亮度以匹配深色界面
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? dimColorForDark(item.course.color)
+                      : item.course.color,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -148,10 +154,10 @@ class CourseDetailSheet extends StatelessWidget {
               Expanded(
                 child: Text(
                   item.course.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF333333),
+                    color: colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -193,14 +199,15 @@ class CourseDetailSheet extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
+                    // 编辑按钮底色采用整体背景色（scaffoldBackgroundColor）
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
+                  child: Text(
                     '编辑',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF666666),
+                      color: colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -209,24 +216,36 @@ class CourseDetailSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _buildDetailRow('教室', item.session.location),
+          _buildDetailRow(context, '教室', item.session.location),
           const SizedBox(height: 4),
-          _buildDetailRow('备注（如老师）', item.course.teacher),
+          _buildDetailRow(context, '备注（如老师）', item.course.teacher),
           const SizedBox(height: 4),
           _buildDetailRow(
+            context,
             '${_weekdayToString(item.session.weekday)} 第 ${item.session.startSection}${item.session.sectionCount > 1 ? '-${item.session.startSection + item.session.sectionCount - 1}' : ''} 节',
             '(${_formatTime(item.startTime)} - ${_formatTime(item.endTime)})',
             showColon: false,
           ),
           const SizedBox(height: 4),
-          _buildDetailRow(formatWeeks(item.session), '', showColon: false),
+          _buildDetailRow(
+            context,
+            formatWeeks(item.session),
+            '',
+            showColon: false,
+          ),
         ],
       ),
     );
   }
 
   /// 构建详情行（标签 + 值）
-  Widget _buildDetailRow(String label, String value, {bool showColon = true}) {
+  Widget _buildDetailRow(
+    BuildContext context,
+    String label,
+    String value, {
+    bool showColon = true,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final List<InlineSpan> children = <InlineSpan>[];
     if (value.trim().isEmpty) {
       children.add(TextSpan(text: showColon ? '$label： ' : label));
@@ -235,18 +254,14 @@ class CourseDetailSheet extends StatelessWidget {
       children.add(
         TextSpan(
           text: value,
-          style: const TextStyle(color: Color(0xFF666666)),
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
         ),
       );
     }
 
     return RichText(
       text: TextSpan(
-        style: const TextStyle(
-          fontSize: 13,
-          color: Color(0xFF999999),
-          height: 1.5,
-        ),
+        style: TextStyle(fontSize: 13, color: colorScheme.outline, height: 1.5),
         children: children,
       ),
     );

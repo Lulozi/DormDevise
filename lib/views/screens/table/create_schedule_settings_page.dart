@@ -103,23 +103,27 @@ class _CreateScheduleSettingsPageState
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text(
+          child: Text(
             '取消',
-            style: TextStyle(color: Colors.blue, fontSize: 16),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontSize: 16,
+            ),
           ),
         ),
         leadingWidth: 80,
-        title: const Text(
+        title: Text(
           '确认课程表基本信息',
           style: TextStyle(
-            color: Colors.black,
+            color: colorScheme.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -132,8 +136,8 @@ class _CreateScheduleSettingsPageState
               '下一步',
               style: TextStyle(
                 color: _nameController.text.isNotEmpty
-                    ? Colors.blue
-                    : Colors.grey,
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
                 fontSize: 16,
               ),
             ),
@@ -145,27 +149,26 @@ class _CreateScheduleSettingsPageState
         header: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: Center(
                 child: Text(
                   '以下信息对计算周数、课表展示很重要，请认真填写。',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
               child: TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: '课程表名称 (必填)',
                   border: InputBorder.none,
-                  hintStyle: TextStyle(color: Colors.grey),
+                  hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
                 onChanged: (value) => setState(() {
                   _tableName = value;

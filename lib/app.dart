@@ -7,6 +7,7 @@ import 'package:dormdevise/widgets/door_widget_dialog.dart';
 import 'package:dormdevise/views/screens/person/person_page.dart';
 import 'package:dormdevise/views/screens/table/table_page.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
+import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -18,48 +19,56 @@ class DormDeviseApp extends StatelessWidget {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  /// 构建顶层 MaterialApp 并指定首页及主题配置。
+  /// 构建顶层 MaterialApp，通过 ListenableBuilder 监听主题变化实现动态换肤。
   @override
   Widget build(BuildContext context) {
     final String initialRoute =
         WidgetsBinding.instance.platformDispatcher.defaultRouteName;
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
-        useMaterial3: true,
-      ),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
-      initialRoute: initialRoute,
-      onGenerateRoute: (RouteSettings settings) {
-        switch (settings.name) {
-          case '/':
-          case null:
-            return MaterialPageRoute<void>(
-              builder: (_) => const ManagementScreen(),
-            );
-          case 'door_widget_prompt':
-            return PageRouteBuilder<void>(
-              pageBuilder: (_, __, ___) => const DoorWidgetPromptPage(),
-              transitionDuration: Duration.zero,
-              reverseTransitionDuration: Duration.zero,
-              opaque: false,
-            );
-          case 'open_door_settings/mqtt':
-            return MaterialPageRoute<void>(
-              builder: (_) => const OpenDoorSettingsPage(initialTabIndex: 1),
-            );
-          default:
-            return MaterialPageRoute<void>(
-              builder: (_) => const ManagementScreen(),
-            );
-        }
+    return ListenableBuilder(
+      listenable: ThemeService.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          debugShowCheckedModeBanner: false,
+          theme: ThemeService.instance.lightTheme,
+          darkTheme: ThemeService.instance.darkTheme,
+          themeMode: ThemeService.instance.themeMode,
+          themeAnimationDuration: const Duration(
+            milliseconds: 500,
+          ), // 延长渐变时间使其更平滑
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
+          initialRoute: initialRoute,
+          onGenerateRoute: (RouteSettings settings) {
+            switch (settings.name) {
+              case '/':
+              case null:
+                return MaterialPageRoute<void>(
+                  builder: (_) => const ManagementScreen(),
+                );
+              case 'door_widget_prompt':
+                return PageRouteBuilder<void>(
+                  pageBuilder: (_, __, ___) => const DoorWidgetPromptPage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                  opaque: false,
+                );
+              case 'open_door_settings/mqtt':
+                return MaterialPageRoute<void>(
+                  builder: (_) =>
+                      const OpenDoorSettingsPage(initialTabIndex: 1),
+                );
+              default:
+                return MaterialPageRoute<void>(
+                  builder: (_) => const ManagementScreen(),
+                );
+            }
+          },
+        );
       },
     );
   }
@@ -76,35 +85,68 @@ class ManagementScreen extends StatefulWidget {
 
 class ManagementScreenState extends State<ManagementScreen>
     with WidgetsBindingObserver {
+  /// 所有导航项的固定定义（按原始索引排列：0=课表, 1=开门, 2=我的）。
+  static const _allDestinations = [
+    NavigationDestination(
+      icon: Icon(Icons.calendar_today_outlined),
+      selectedIcon: Icon(Icons.calendar_today),
+      label: '课表',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.door_front_door_outlined),
+      selectedIcon: Icon(Icons.door_front_door),
+      label: '开门',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.person_outline),
+      selectedIcon: Icon(Icons.person),
+      label: '我的',
+    ),
+  ];
+
   int selectedIndex = 1;
   late final PageController _pageController;
-  double _page = 1.0;
+  late double _page;
   bool _navLocked = false;
   StreamSubscription<Uri?>? _widgetLaunchSubscription;
   bool _widgetDialogVisible = false;
 
-  /// 根据索引构建对应的业务页面。
-  Widget _buildPage(int index) {
-    if (index == 2) {
+  /// 根据原始页面索引构建对应的业务页面。
+  ///
+  /// [originalIndex] 是页面的固有标识（0=课表, 1=开门, 2=我的），
+  /// 与导航顺序无关。
+  Widget _buildPageByOriginalIndex(int originalIndex) {
+    if (originalIndex == 2) {
       double progress = 0.0;
-      if (_page >= 1.7 && _page <= 2.0) {
-        progress = (1 - (_page - 1.7) / 0.3).clamp(0.0, 1.0);
-      } else if (_page <= 1.7) {
-        progress = 1.0;
+      // 在导航顺序中查找"我的"页面的实际显示位置
+      final navOrder = ThemeService.instance.navOrder;
+      final displayIndex = navOrder.indexOf(2);
+      if (displayIndex >= 0) {
+        final lower = displayIndex - 0.3;
+        if (_page >= lower && _page <= displayIndex.toDouble()) {
+          progress = (1 - (_page - lower) / 0.3).clamp(0.0, 1.0);
+        } else if (_page <= lower) {
+          progress = 1.0;
+        }
       }
       return PersonPage(
         appBarProgress: progress,
         onInteractionLockChanged: _handleInteractionLockChanged,
       );
     }
-    if (index == 1) {
+    if (originalIndex == 1) {
       return const OpenDoorPage();
     }
     return const TablePage();
   }
 
   /// 为分页添加淡入与平移动画。
+  ///
+  /// [index] 是 PageView 中的显示顺序索引，
+  /// 通过 navOrder 映射到原始页面索引。
   Widget _buildAnimatedPage(BuildContext context, int index) {
+    final navOrder = ThemeService.instance.navOrder;
+    final originalIndex = navOrder[index];
     return AnimatedBuilder(
       animation: _pageController,
       builder: (context, child) {
@@ -124,7 +166,7 @@ class ManagementScreenState extends State<ManagementScreen>
           opacity: opacity,
           child: Transform.translate(
             offset: Offset(60.0 * dx, 0),
-            child: _buildPage(index),
+            child: _buildPageByOriginalIndex(originalIndex),
           ),
         );
       },
@@ -147,6 +189,11 @@ class ManagementScreenState extends State<ManagementScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 根据用户设置的默认主页，在导航顺序中查找其实际显示位置
+    final navOrder = ThemeService.instance.navOrder;
+    final homePage = ThemeService.instance.defaultHomePage;
+    selectedIndex = navOrder.indexOf(homePage).clamp(0, 2);
+    _page = selectedIndex.toDouble();
     _pageController = PageController(initialPage: selectedIndex);
     _bindWidgetLaunchEvents();
     // 提前请求通知权限
@@ -187,15 +234,19 @@ class ManagementScreenState extends State<ManagementScreen>
     final String action = uri.pathSegments.first;
     switch (action) {
       case 'prompt':
-        if (selectedIndex != 1) {
+        // 使用导航顺序查找"开门"页面的实际显示位置
+        final doorDisplayIndex = ThemeService.instance.navOrder
+            .indexOf(1)
+            .clamp(0, 2);
+        if (selectedIndex != doorDisplayIndex) {
           setState(() {
-            selectedIndex = 1;
+            selectedIndex = doorDisplayIndex;
           });
           if (_pageController.hasClients) {
-            _pageController.jumpToPage(1);
+            _pageController.jumpToPage(doorDisplayIndex);
           }
         } else if (_pageController.hasClients) {
-          _pageController.jumpToPage(1);
+          _pageController.jumpToPage(doorDisplayIndex);
         }
         _showDoorWidgetDialog();
         break;
@@ -243,7 +294,7 @@ class ManagementScreenState extends State<ManagementScreen>
           ignoring: _navLocked,
           child: NavigationBar(
             height: 72,
-            backgroundColor: colorScheme.surface,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             indicatorColor: colorScheme.secondaryContainer,
             selectedIndex: selectedIndex,
             onDestinationSelected: (value) {
@@ -256,22 +307,10 @@ class ManagementScreenState extends State<ManagementScreen>
                 curve: Curves.ease,
               );
             },
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.calendar_today_outlined),
-                selectedIcon: Icon(Icons.calendar_today),
-                label: '课表',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.door_front_door_outlined),
-                selectedIcon: Icon(Icons.door_front_door),
-                label: '开门',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
-                label: '我的',
-              ),
+            destinations: [
+              // 根据导航顺序动态构建底部导航项
+              for (final oi in ThemeService.instance.navOrder)
+                _allDestinations[oi],
             ],
             labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
             elevation: 0,

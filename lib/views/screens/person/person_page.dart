@@ -1,3 +1,4 @@
+import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:flutter/material.dart';
 
 import '../open_door/local_door_lock_settings_page.dart';
@@ -5,6 +6,7 @@ import '../open_door/mqtt_settings_page.dart';
 import 'about_page.dart';
 import 'door_widget_settings_page.dart';
 import 'download_source_config_page.dart';
+import 'theme_settings_page.dart';
 import 'widgets/settings_open_container.dart';
 
 /// 个人中心页面，汇总多类设置入口及动画。
@@ -30,12 +32,8 @@ class _PersonPageState extends State<PersonPage> {
     // 渐变区间 0.0~1.0，0.0为不透明，1.0为完全透明
     final double progress = widget.appBarProgress.clamp(0.0, 1.0);
     final colorScheme = Theme.of(context).colorScheme;
-    // 渐变色：primary/primaryContainer -> 完全透明
-    final Color appBarColor = Color.lerp(
-      Color.lerp(colorScheme.primary, colorScheme.primaryContainer, progress)!,
-      Colors.transparent,
-      progress,
-    )!;
+    final Color scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+
     final Color titleColor = Color.lerp(
       Colors.white,
       colorScheme.onSurface,
@@ -75,6 +73,11 @@ class _PersonPageState extends State<PersonPage> {
         builder: (context) => const DownloadSourceConfigPage(),
       ),
       _buildSettingsEntry(
+        icon: Icons.palette_outlined,
+        title: '个性主题',
+        builder: (context) => const ThemeSettingsPage(),
+      ),
+      _buildSettingsEntry(
         icon: Icons.info_outline,
         title: '关于',
         builder: (context) => const AboutPage(),
@@ -89,41 +92,62 @@ class _PersonPageState extends State<PersonPage> {
               expandedHeight: 160.0,
               floating: false,
               pinned: true,
-              surfaceTintColor: colorScheme.surface,
-              backgroundColor: appBarColor,
-              flexibleSpace: FlexibleSpaceBar(
-                titlePadding: EdgeInsets.only(left: 0),
-                title: Opacity(
-                  opacity: 1.0 - progress,
-                  child: _buildHead(titleColor),
-                ),
-                centerTitle: true,
-                background: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Color.lerp(
-                          colorScheme.primary,
-                          Colors.transparent,
-                          progress,
-                        )!,
-                        Color.lerp(
-                          colorScheme.primaryContainer,
-                          Colors.transparent,
-                          progress,
-                        )!,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
+              backgroundColor: Colors.transparent,
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      // 使用与开关预览一致的颜色：
+                      // 洁白模式用 grey.shade700，彩色模式用 primary
+                      Color.lerp(
+                        _resolveTopGradientColor(colorScheme),
+                        scaffoldBg,
+                        progress,
+                      )!,
+                      Color.lerp(
+                        colorScheme.primaryContainer,
+                        scaffoldBg,
+                        progress,
+                      )!,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
+                ),
+                child: FlexibleSpaceBar(
+                  titlePadding: const EdgeInsets.only(left: 0),
+                  // 上滑后从不使用半透明，快速消失而非渐隐
+                  title: progress < 0.3
+                      ? _buildHead(titleColor)
+                      : const SizedBox.shrink(),
+                  centerTitle: true,
                 ),
               ),
             ),
           ];
         },
         body: Container(
-          color: colorScheme.surface,
+          decoration: BoxDecoration(
+            // 从 header 底边色（primaryContainer）柔和过渡到 scaffold 底色，
+            // 使用较长的过渡带消除割裂感
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0.0, 0.08, 0.25],
+              colors: [
+                Color.lerp(colorScheme.primaryContainer, scaffoldBg, progress)!,
+                Color.lerp(
+                  colorScheme.primaryContainer,
+                  scaffoldBg,
+                  (progress + 0.3).clamp(0.0, 1.0),
+                )!,
+                scaffoldBg,
+              ],
+            ),
+          ),
           child: ListView.builder(
             itemCount: cards.length,
             itemBuilder: (context, index) {
@@ -162,6 +186,21 @@ class _PersonPageState extends State<PersonPage> {
 }
 
 /// 构建个人中心的头像与标题区域。
+/// 计算个人页面顶部渐变起始色，与开关预览颜色保持一致。
+///
+/// - 洁白/乌黑模式：使用 grey.shade700（与 Switch track 相同）
+/// - 彩色模式：使用 primary 的 HSL 柔化版本
+Color _resolveTopGradientColor(ColorScheme colorScheme) {
+  final bool isWhite = ThemeService.instance.isWhiteMode;
+  if (isWhite) {
+    return Colors.grey.shade700;
+  }
+  // 彩色模式：稍微降低饱和度、提升亮度，使顶部柔和
+  return HSLColor.fromColor(
+    colorScheme.primary,
+  ).withLightness(0.45).withSaturation(0.6).toColor();
+}
+
 Widget _buildHead(Color textColor) {
   return Row(
     children: [

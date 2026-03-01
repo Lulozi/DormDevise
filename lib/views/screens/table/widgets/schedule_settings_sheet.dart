@@ -220,6 +220,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final content = ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -241,7 +242,10 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               title: '学期开始时间',
               value: Text(
                 DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(_semesterStart),
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
               isExpanded: _isStartDateExpanded,
               onTap: () {
@@ -270,7 +274,10 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               title: '学期总周数',
               value: Text(
                 '$_maxWeek 周',
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
               isExpanded: _isMaxWeekExpanded,
               onTap: () {
@@ -374,9 +381,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                         title: '课程提醒时间',
                         value: Text(
                           _reminderTime == 0 ? '准时' : '$_reminderTime分钟前',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
-                            color: Colors.black54,
+                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
                         isExpanded: _isReminderTimeExpanded,
@@ -447,23 +454,23 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         return true;
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          title: const Text(
+          title: Text(
             '课程表设置',
             style: TextStyle(
-              color: Colors.black,
+              color: colorScheme.onSurface,
               fontSize: 17,
               fontWeight: FontWeight.w600,
             ),
           ),
-          backgroundColor: const Color(0xFFF7F8FC),
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           centerTitle: true,
           leading: IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.arrow_back_ios_new,
-              color: Colors.black,
+              color: colorScheme.onSurface,
               size: 20,
             ),
             onPressed: () async {
@@ -486,10 +493,10 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                     Navigator.pop(context);
                   }
                 },
-                child: const Text(
+                child: Text(
                   '完成',
                   style: TextStyle(
-                    color: Colors.black,
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
                   ),
@@ -504,14 +511,22 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   }
 
   Widget _buildReminderMethodSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Container(
-        height: 36,
+        height: 40,
         decoration: BoxDecoration(
-          color: const Color(0xFFF2F2F7),
+          // 与课程颜色分配策略的轨道底色保持一致
+          color: Theme.of(context).brightness == Brightness.dark
+              ? colorScheme.surfaceContainer
+              : colorScheme.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 1,
+          ),
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -526,25 +541,29 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             return Stack(
               children: [
                 AnimatedAlign(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.fastOutSlowIn,
                   alignment: alignment,
                   child: Container(
                     width: indicatorWidth,
+                    height: 36,
                     margin: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      // 与课程颜色分配策略的滑块颜色保持一致
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? colorScheme.surfaceContainerHigh
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 1,
                           offset: const Offset(0, 1),
                         ),
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.12),
+                          color: Colors.black.withValues(alpha: 0.12),
                           blurRadius: 8,
-                          offset: const Offset(0, 3),
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
@@ -574,8 +593,8 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: _reminderMethod == 'notification'
-                                  ? Colors.black
-                                  : Colors.black54,
+                                  ? colorScheme.onSurface
+                                  : colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -603,8 +622,8 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: _reminderMethod == 'alarm'
-                                  ? Colors.black
-                                  : Colors.black54,
+                                  ? colorScheme.onSurface
+                                  : colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -623,7 +642,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   Widget _buildReminderTimePicker() {
     return Container(
       height: 150,
-      color: Colors.white,
+      color:
+          Theme.of(context).cardTheme.color ??
+          Theme.of(context).colorScheme.surface,
       child: CupertinoPicker(
         // 添加 Key 以强制重建，确保 initialItem 生效
         key: ValueKey(_reminderTimeController),
@@ -668,7 +689,10 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       title: '课程颜色分配策略',
       value: Text(
         valueText,
-        style: const TextStyle(fontSize: 14, color: Colors.black54),
+        style: TextStyle(
+          fontSize: 14,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
       isExpanded: _isColorAllocationExpanded,
       onTap: () {
@@ -687,14 +711,23 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   }
 
   Widget _buildColorAllocationSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Container(
-        height: 36,
+        height: 40,
         decoration: BoxDecoration(
-          color: const Color(0xFFF2F2F7),
+          // 轨道底色：白天更白，夜间比 card 略深以形成对比
+          color: Theme.of(context).brightness == Brightness.dark
+              ? colorScheme.surfaceContainer
+              : colorScheme.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(12),
+          // 添加边框以增强在暗色模式下的辨识度
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 1,
+          ),
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -716,10 +749,13 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                   curve: Curves.fastOutSlowIn,
                   child: Container(
                     width: indicatorWidth,
-                    height: 32,
+                    height: 36,
                     margin: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      // 白天白色，夜间用 card 底色（surfaceContainerHigh）
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? colorScheme.surfaceContainerHigh
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
@@ -764,7 +800,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              color: Colors.black,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
             child: Text(label),
           ),
@@ -777,7 +813,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   Widget _buildGroup({required List<Widget> children}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color:
+            Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
       ),
       clipBehavior: Clip.hardEdge,
@@ -790,11 +828,11 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
 
   /// 构建分组内的分割线
   Widget _buildDivider() {
-    return const Divider(
+    return Divider(
       height: 1,
       indent: 16,
       endIndent: 16,
-      color: Color(0xFFF0F0F0),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
     );
   }
 
@@ -805,6 +843,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     Widget? trailing,
     VoidCallback? onTap,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -818,15 +857,18 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 16, color: Colors.black87),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
                   if (subtitle != null) ...[
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Colors.black54,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -836,10 +878,10 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             if (trailing != null)
               trailing
             else
-              const Icon(
+              Icon(
                 Icons.arrow_forward_ios,
                 size: 16,
-                color: Colors.black26,
+                color: colorScheme.onSurface.withOpacity(0.26),
               ),
           ],
         ),
@@ -849,12 +891,20 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
 
   /// 构建列表行尾部的文本和箭头
   Widget _buildTrailingText(String text) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(text, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+        Text(
+          text,
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+        ),
         const SizedBox(width: 8),
-        const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.black26),
+        Icon(
+          Icons.arrow_forward_ios,
+          size: 16,
+          color: colorScheme.onSurface.withOpacity(0.26),
+        ),
       ],
     );
   }
@@ -866,6 +916,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -876,23 +927,22 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, color: Colors.black87),
+                  style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ],
             ),
           ),
-          CupertinoSwitch(
-            value: value,
-            onChanged: onChanged,
-            activeTrackColor: Theme.of(context).primaryColor,
-          ),
+          Switch(value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -911,7 +961,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     final int itemCount = ((max - min) / step).floor() + 1;
     return Container(
       height: 150,
-      color: Colors.white,
+      color:
+          Theme.of(context).cardTheme.color ??
+          Theme.of(context).colorScheme.surface,
       child: CupertinoPicker(
         looping: looping,
         selectionOverlay: Container(),
@@ -953,7 +1005,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           builder: (context, setDialogState) {
             final bool isEnabled = controller.text.trim().isNotEmpty;
             return AlertDialog(
-              backgroundColor: Colors.white,
+              backgroundColor:
+                  Theme.of(context).cardTheme.color ??
+                  Theme.of(context).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(28),
               ),
@@ -1056,7 +1110,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
 
     return Container(
       height: 200,
-      color: Colors.white,
+      color:
+          Theme.of(context).cardTheme.color ??
+          Theme.of(context).colorScheme.surface,
       child: LayoutBuilder(
         builder: (context, constraints) {
           // 以月份居中，左右间隔固定，且保证文字完整显示

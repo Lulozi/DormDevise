@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:linked_scroll_controller/linked_scroll_controller.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import '../../../services/theme/theme_service.dart';
 
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
@@ -142,13 +143,13 @@ class _TablePageState extends State<TablePage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFFF7F8FC),
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,12 +170,13 @@ class _TablePageState extends State<TablePage> {
   /// 构建顶部工具栏，包含返回与菜单操作。
   Widget _buildToolbar(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final TextStyle titleStyle = theme.textTheme.headlineSmall!.copyWith(
       fontWeight: FontWeight.w800,
       letterSpacing: 0.4,
     );
     final TextStyle subtitleStyle = theme.textTheme.bodySmall!.copyWith(
-      color: Colors.black54,
+      color: colorScheme.onSurfaceVariant,
       letterSpacing: 0.2,
     );
 
@@ -269,6 +271,16 @@ class _TablePageState extends State<TablePage> {
     );
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
+    final bool isWhite = ThemeService.instance.isWhiteMode;
+    final bool isDark = theme.brightness == Brightness.dark;
+    // 选中色与开关预览保持一致：洁白/乌黑用 grey.shade700，彩色用 primary
+    final Color pickerPrimary = isWhite
+        ? Colors.grey.shade700
+        : colorScheme.primary;
+    // 乌黑模式下选中日期圆圈为白色，其上文字应为黑色
+    final Color pickerOnPrimary = (isDark && isWhite)
+        ? Colors.black
+        : Colors.white;
 
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -280,48 +292,55 @@ class _TablePageState extends State<TablePage> {
         return Theme(
           data: theme.copyWith(
             colorScheme: colorScheme.copyWith(
-              surface: Colors.white,
-              onSurface: const Color(0xFF3D4555),
-              primary: colorScheme.primary,
-              onPrimary: Colors.white,
-              secondaryContainer: colorScheme.primary.withValues(alpha: 0.15),
-              onSecondaryContainer: colorScheme.primary,
+              surface: colorScheme.surface,
+              onSurface: colorScheme.onSurface,
+              primary: pickerPrimary,
+              onPrimary: pickerOnPrimary,
+              secondaryContainer: pickerPrimary.withValues(alpha: 0.15),
+              onSecondaryContainer: pickerPrimary,
             ),
             datePickerTheme: DatePickerThemeData(
-              backgroundColor: Colors.white,
+              backgroundColor: colorScheme.surface,
               surfaceTintColor: Colors.transparent,
-              headerBackgroundColor: const Color(0xFFF8FAFF),
-              headerForegroundColor: const Color(0xFF3D4555),
+              headerBackgroundColor: colorScheme.surfaceContainerLow,
+              headerForegroundColor: colorScheme.onSurface,
               dividerColor: Colors.transparent,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(28),
               ),
-              headerHeadlineStyle: const TextStyle(
+              headerHeadlineStyle: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF3D4555),
+                color: colorScheme.onSurface,
                 letterSpacing: -0.5,
               ),
-              headerHelpStyle: const TextStyle(
+              headerHelpStyle: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF6C768A),
+                color: colorScheme.onSurfaceVariant,
               ),
-              weekdayStyle: const TextStyle(
-                color: Color(0xFF6C768A),
+              weekdayStyle: TextStyle(
+                color: colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
-              dayStyle: const TextStyle(
-                color: Color(0xFF3D4555),
+              dayStyle: TextStyle(
+                color: colorScheme.onSurface,
                 fontWeight: FontWeight.w500,
               ),
-              yearStyle: const TextStyle(color: Color(0xFF3D4555)),
-              todayBorder: BorderSide(color: colorScheme.primary, width: 1.5),
+              yearStyle: TextStyle(color: colorScheme.onSurface),
+              todayBorder: BorderSide(color: pickerPrimary, width: 1.5),
               todayForegroundColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
-                  return Colors.white;
+                  // 深色模式下选中文字采用黑色
+                  return isDark ? Colors.black : pickerOnPrimary;
                 }
-                return colorScheme.primary;
+                return pickerPrimary;
+              }),
+              dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return isDark ? Colors.black : pickerOnPrimary;
+                }
+                return colorScheme.onSurface;
               }),
             ),
             textButtonTheme: TextButtonThemeData(
@@ -745,14 +764,17 @@ class _ToolbarIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isEnabled = onPressed != null;
-    final Color iconColor = isEnabled ? Colors.black87 : Colors.black26;
+    final colorScheme = Theme.of(context).colorScheme;
+    final Color iconColor = isEnabled
+        ? colorScheme.primary
+        : colorScheme.onSurface.withValues(alpha: 0.26);
     final double size = iconSize ?? (useFaIcon ? 20 : 24);
 
     return Tooltip(
       message: tooltip,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
           boxShadow: <BoxShadow>[
             BoxShadow(

@@ -809,7 +809,6 @@ class _AboutHeader extends StatelessWidget {
 
     return Card(
       elevation: 0,
-      color: colorScheme.surfaceContainerHighest,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -879,7 +878,9 @@ class _AboutHeader extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               versionHint,
-              style: textTheme.labelSmall?.copyWith(color: Colors.grey),
+              style: textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1037,7 +1038,6 @@ class _SectionCard extends StatelessWidget {
     }
     return Card(
       elevation: 0,
-      color: colorScheme.surfaceContainerHighest,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(20),

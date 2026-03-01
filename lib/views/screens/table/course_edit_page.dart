@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/utils/index.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/utils/course_utils.dart';
+import 'package:dormdevise/services/theme/theme_service.dart';
 import '../../../../models/course.dart';
 import '../../../../models/course_schedule_config.dart';
 import '../../../../services/course_service.dart';
@@ -825,35 +827,38 @@ class _CourseEditPageState extends State<CourseEditPage> {
     String weekText = formatWeeks(tempSession);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         centerTitle: true,
         title: Text(
           widget.course == null ? '新建课程' : '编辑课程',
-          style: const TextStyle(
-            color: Colors.black,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w600,
             fontSize: 17,
           ),
         ),
         leading: TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text(
+          child: Text(
             '取消',
-            style: TextStyle(fontSize: 16, color: Colors.blue),
+            style: TextStyle(
+              fontSize: 16,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
         ),
         leadingWidth: 70,
         actions: [
           TextButton(
             onPressed: _save,
-            child: const Text(
+            child: Text(
               '完成',
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.blue,
+                color: Theme.of(context).colorScheme.primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -865,7 +870,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color:
+                  Theme.of(context).cardTheme.color ??
+                  Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -881,9 +888,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
                         width: 120,
                         child: Text(
                           '课程名',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ),
@@ -891,20 +898,19 @@ class _CourseEditPageState extends State<CourseEditPage> {
                         child: TextField(
                           controller: _nameController,
                           textAlign: TextAlign.left,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
+                            filled: false,
                             hintText: '必填',
-                            hintStyle: const TextStyle(
-                              color: Color(0xFFC4C4C6),
-                            ),
+                            hintStyle: TextStyle(color: Color(0xFFC4C4C6)),
                             border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 12,
-                            ),
+                            contentPadding: EdgeInsets.symmetric(vertical: 12),
                           ),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
-                            color: Colors.black,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ),
@@ -917,10 +923,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   child: Column(
                     children: [
                       if (_suggestions.isNotEmpty) ...[
-                        const Divider(
+                        Divider(
                           height: 1,
                           indent: 16,
-                          color: Color(0xFFE5E5EA),
+                          color: Theme.of(context).colorScheme.outlineVariant,
                         ),
                         ..._suggestions.map(_buildSuggestionItem),
                       ],
@@ -975,7 +981,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
         margin: const EdgeInsets.symmetric(horizontal: 48),
         height: 72,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color:
+              Theme.of(context).cardTheme.color ??
+              Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
@@ -987,13 +995,17 @@ class _CourseEditPageState extends State<CourseEditPage> {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.delete_outline, color: Color(0xFF333333), size: 26),
-            SizedBox(height: 2),
+          children: [
+            Icon(
+              Icons.delete_outline,
+              color: Theme.of(context).colorScheme.onSurface,
+              size: 26,
+            ),
+            const SizedBox(height: 2),
             Text(
               '删除课程',
               style: TextStyle(
-                color: Color(0xFF333333),
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -1038,7 +1050,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
               width: 12,
               height: 12,
               decoration: BoxDecoration(
-                color: course.color,
+                // 暗色模式下降低课程颜色亮度以匹配深色界面
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? dimColorForDark(course.color)
+                    : course.color,
                 shape: BoxShape.circle,
               ),
             ),
@@ -1046,7 +1061,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
             Expanded(
               child: Text(
                 course.name,
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],
@@ -1064,7 +1082,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color:
+            Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -1073,7 +1093,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
           ),
           Expanded(
@@ -1081,13 +1104,19 @@ class _CourseEditPageState extends State<CourseEditPage> {
               controller: controller,
               textAlign: TextAlign.left,
               decoration: InputDecoration(
+                filled: false,
                 hintText: placeholder,
                 hintStyle: const TextStyle(color: Color(0xFFC4C4C6)),
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              style: const TextStyle(fontSize: 16, color: Colors.black),
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
           ),
         ],
@@ -1098,7 +1127,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
   Widget _buildTimeSlotsSection() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color:
+            Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1108,13 +1139,17 @@ class _CourseEditPageState extends State<CourseEditPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   '时段',
-                  style: TextStyle(fontSize: 16, color: Colors.black87),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF2F2F7),
+                    // 时段计数器底色采用整体背景色
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -1143,7 +1178,11 @@ class _CourseEditPageState extends State<CourseEditPage> {
             ),
           ),
           if (_sessions.isNotEmpty)
-            const Divider(height: 1, indent: 16, color: Color(0xFFE5E5EA)),
+            Divider(
+              height: 1,
+              indent: 16,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ..._sessions.asMap().entries.map((entry) {
             final index = entry.key;
             final session = entry.value;
@@ -1161,7 +1200,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
               title: '课程时间 ${index + 1}',
               value: Text(
                 timeText,
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               isExpanded: isExpanded,
               onTap: () {
@@ -1189,7 +1231,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
     return Container(
       height: 200,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      color: Colors.white,
+      color:
+          Theme.of(context).cardTheme.color ??
+          Theme.of(context).colorScheme.surface,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final double baseFont =
@@ -1399,7 +1443,11 @@ class _CourseEditPageState extends State<CourseEditPage> {
         width: 32,
         height: 32,
         color: Colors.transparent,
-        child: Icon(icon, size: 18, color: Colors.black54),
+        child: Icon(
+          icon,
+          size: 18,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -1414,7 +1462,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color:
+              Theme.of(context).cardTheme.color ??
+              Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -1422,7 +1472,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
           children: [
             Text(
               label,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -1432,18 +1485,19 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   Flexible(
                     child: Text(
                       value,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
-                        color: Color(0xFF8E8E93),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right,
                     size: 20,
-                    color: Color(0xFFC4C4C6),
+                    // 与课程背景色行的 > 箭头颜色保持一致
+                    color: Theme.of(context).colorScheme.outline,
                   ),
                 ],
               ),
@@ -1460,15 +1514,20 @@ class _CourseEditPageState extends State<CourseEditPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color:
+              Theme.of(context).cardTheme.color ??
+              Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
+            Text(
               '课程背景色',
-              style: TextStyle(fontSize: 16, color: Colors.black87),
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
             Row(
               children: [
@@ -1476,15 +1535,18 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   width: 24,
                   height: 24,
                   decoration: BoxDecoration(
-                    color: _selectedColor,
+                    // 暗色模式下降低课程颜色亮度以匹配深色界面
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? dimColorForDark(_selectedColor)
+                        : _selectedColor,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(
+                Icon(
                   Icons.chevron_right,
                   size: 20,
-                  color: Color(0xFFC4C4C6),
+                  color: Theme.of(context).colorScheme.outline,
                 ),
               ],
             ),
@@ -1652,9 +1714,11 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color:
+            Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
         child: Column(
@@ -1665,7 +1729,8 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF2F2F7),
+                // 上课周数网格底色采用整体背景色
+                color: Theme.of(context).scaffoldBackgroundColor,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: GridView.builder(
@@ -1692,9 +1757,9 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
                         const SizedBox(width: 6),
                         Text(
                           '$week',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ],
@@ -1707,12 +1772,12 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
               padding: const EdgeInsets.only(bottom: 30, top: 10),
               child: GestureDetector(
                 onTap: _confirm,
-                child: const Text(
+                child: Text(
                   '确定',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
               ),
@@ -1741,7 +1806,10 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
             Align(
               alignment: Alignment.centerRight,
               child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.black87),
+                icon: Icon(
+                  Icons.close,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 onPressed: () => Navigator.pop(context),
               ),
             ),
@@ -1776,13 +1844,18 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
             isSelected
                 ? Icons.radio_button_checked
                 : Icons.radio_button_unchecked,
-            color: isSelected ? Colors.blue : const Color(0xFFE0E0E0),
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outlineVariant,
             size: 22,
           ),
           const SizedBox(width: 8),
           Text(
             label,
-            style: const TextStyle(fontSize: 15, color: Color(0xFF333333)),
+            style: TextStyle(
+              fontSize: 15,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ],
       ),
@@ -1790,18 +1863,30 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
   }
 
   Widget _buildCheckbox(bool isSelected) {
+    // 选中颜色采用开关预览色：
+    // 洁白/乌黑模式用 grey.shade700，彩色模式用 primary
+    final Color activeColor = ThemeService.instance.isWhiteMode
+        ? Colors.grey.shade700
+        : Theme.of(context).colorScheme.primary;
     return Container(
       width: 18,
       height: 18,
       decoration: BoxDecoration(
-        color: isSelected ? Colors.blue : Colors.transparent,
+        color: isSelected ? activeColor : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
         border: isSelected
             ? null
             : Border.all(color: const Color(0xFFC4C4C6), width: 1.5),
       ),
       child: isSelected
-          ? const Icon(Icons.check, size: 14, color: Colors.white)
+          ? Icon(
+              Icons.check,
+              size: 14,
+              // 深色模式下打勾采用黑色以在亮色 primary 背景上清晰可见
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black
+                  : Colors.white,
+            )
           : null,
     );
   }
@@ -1922,9 +2007,11 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
     final allColors = [...widget.colors, ..._localCustomColors];
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color:
+            Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1968,9 +2055,26 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                 if (index == allColors.length) {
                   return GestureDetector(
                     onTap: () async {
-                      final Color? customColor = await showDialog<Color>(
-                        context: context,
-                        builder: (context) => const _CustomColorPickerDialog(),
+                      final Color?
+                      customColor = await Navigator.of(context).push<Color>(
+                        PageRouteBuilder<Color>(
+                          opaque: false,
+                          barrierDismissible: true,
+                          barrierColor: Colors.black.withValues(alpha: 0.55),
+                          pageBuilder:
+                              (context, animation, secondaryAnimation) {
+                                return _CustomColorPickerDialog(
+                                  initialColor: widget.selectedColor,
+                                );
+                              },
+                          transitionsBuilder:
+                              (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                );
+                              },
+                        ),
                       );
                       if (customColor != null && context.mounted) {
                         widget.onAddCustomColor(customColor);
@@ -1980,11 +2084,22 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                       }
                     },
                     child: Container(
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF2F2F7),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHigh,
                         shape: BoxShape.circle,
+                        border: Theme.of(context).brightness == Brightness.dark
+                            ? Border.all(
+                                color: Colors.white.withValues(alpha: 0.24),
+                                width: 1,
+                              )
+                            : null,
                       ),
-                      child: const Icon(Icons.add, color: Colors.black54),
+                      child: Icon(
+                        Icons.add,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   );
                 }
@@ -2043,16 +2158,24 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                       : null,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: color,
+                      // 暗色模式下应用 dim 效果，与课表中实际展示的颜色一致
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? dimColorForDark(color)
+                          : color,
                       shape: BoxShape.circle,
                       border: isCustom
                           ? Border.all(color: Colors.grey.shade400, width: 2)
                           : null,
                     ),
                     child: widget.selectedColor == color
-                        ? const Icon(
+                        ? Icon(
                             Icons.check,
-                            color: Colors.black54,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white70
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                             size: 24,
                           )
                         : null,
@@ -2069,7 +2192,9 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
 }
 
 class _CustomColorPickerDialog extends StatefulWidget {
-  const _CustomColorPickerDialog();
+  final Color initialColor;
+
+  const _CustomColorPickerDialog({required this.initialColor});
 
   @override
   State<_CustomColorPickerDialog> createState() =>
@@ -2077,29 +2202,26 @@ class _CustomColorPickerDialog extends StatefulWidget {
 }
 
 class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
-  late double _r;
-  late double _g;
-  late double _b;
+  /// HSB 三通道（色相 0-360, 饱和度 0-1, 明度 0-1）
+  late double _hue;
+  late double _saturation;
+  late double _brightness;
 
   @override
   void initState() {
     super.initState();
-    final random = Random();
-    // 保持与自动生成一致的风格
-    // 饱和度 (Saturation): 0.3 - 0.5
-    // 亮度 (Value): 0.85 - 0.95
-    final hsv = HSVColor.fromAHSV(
-      1.0,
-      random.nextDouble() * 360,
-      0.3 + random.nextDouble() * 0.2,
-      0.85 + random.nextDouble() * 0.1,
-    );
-    final color = hsv.toColor();
-    _r = (color.r * 255.0);
-    _g = (color.g * 255.0);
-    _b = (color.b * 255.0);
+    final hsv = HSVColor.fromColor(widget.initialColor);
+    // 自定义添加颜色默认采用更柔和的课程色风格（贴近截图效果）
+    _hue = hsv.hue;
+    _saturation = hsv.saturation.clamp(0.25, 0.5);
+    _brightness = hsv.value.clamp(0.85, 0.96);
   }
 
+  /// 将当前 HSB 转换为 Color
+  Color get _currentColor =>
+      HSVColor.fromAHSV(1.0, _hue, _saturation, _brightness).toColor();
+
+  /// 校验颜色是否可用——禁止添加纯黑/纯白/灰色
   String? _getInvalidColorReason(Color color) {
     final hsv = HSVColor.fromColor(color);
 
@@ -2110,7 +2232,6 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
 
     // 判定低饱和度 (灰或白)
     if (hsv.saturation < 0.05) {
-      // 亮度高则是白色
       if (hsv.value > 0.85) {
         return '不能添加白色';
       }
@@ -2122,139 +2243,509 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final currentColor = Color.fromARGB(
-      255,
-      _r.toInt(),
-      _g.toInt(),
-      _b.toInt(),
-    );
-    return AlertDialog(
-      backgroundColor: Colors.white,
-      title: const Text('添加自定义颜色'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: currentColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Container(
-                  height: 64,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    gradient: LinearGradient(
-                      colors: [
-                        currentColor.withValues(alpha: 0.92),
-                        currentColor.withValues(alpha: 0.78),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: currentColor.withValues(alpha: 0.25),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+    final currentColor = _currentColor;
+    final r = (currentColor.r * 255).round();
+    final g = (currentColor.g * 255).round();
+    final b = (currentColor.b * 255).round();
+    final hexStr =
+        r.toRadixString(16).padLeft(2, '0') +
+        g.toRadixString(16).padLeft(2, '0') +
+        b.toRadixString(16).padLeft(2, '0');
+
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                ],
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
                         Text(
-                          '课程预览',
+                          '添加自定义颜色',
                           style: TextStyle(
-                            color: Color(0xFF333333),
+                            fontSize: 18,
                             fontWeight: FontWeight.w700,
-                            fontSize: 14,
+                            color: colorScheme.onSurface,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          '@演示室',
-                          style: TextStyle(
-                            color: Color(0xFF666666),
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                          tooltip: '关闭',
                         ),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    // ── 课程卡片预览 ──
+                    _buildCoursePreview(currentColor),
+                    const SizedBox(height: 16),
+                    // ── SV 矩形色域（类似 Photoshop 的 SB 平面）──
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        height: 180,
+                        child: _CourseColorSVPicker(
+                          hue: _hue,
+                          saturation: _saturation,
+                          brightness: _brightness,
+                          onChanged: (s, v) => setState(() {
+                            _saturation = s;
+                            _brightness = v;
+                          }),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // ── 色相条（彩虹渐变横条）──
+                    SizedBox(
+                      height: 22,
+                      child: _CourseColorHueSlider(
+                        hue: _hue,
+                        onChanged: (h) => setState(() => _hue = h),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // ── Hex / R / G / B 输入 ──
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _CourseColorCompactField(
+                            label: 'Hex',
+                            value: hexStr.toUpperCase(),
+                            onSubmitted: (v) {
+                              final parsed = int.tryParse(v, radix: 16);
+                              if (parsed != null && v.length == 6) {
+                                final c = Color(0xFF000000 | parsed);
+                                final hsv = HSVColor.fromColor(c);
+                                setState(() {
+                                  _hue = hsv.hue;
+                                  _saturation = hsv.saturation;
+                                  _brightness = hsv.value;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _CourseColorCompactField(
+                            label: 'R',
+                            value: '$r',
+                            onSubmitted: (v) => _setFromRGB(r: int.tryParse(v)),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _CourseColorCompactField(
+                            label: 'G',
+                            value: '$g',
+                            onSubmitted: (v) => _setFromRGB(g: int.tryParse(v)),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _CourseColorCompactField(
+                            label: 'B',
+                            value: '$b',
+                            onSubmitted: (v) => _setFromRGB(b: int.tryParse(v)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('取消'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () {
+                            final reason = _getInvalidColorReason(currentColor);
+                            if (reason != null) {
+                              AppToast.show(
+                                context,
+                                '$reason，请调整颜色',
+                                variant: AppToastVariant.warning,
+                              );
+                              return;
+                            }
+                            Navigator.pop(context, currentColor);
+                          },
+                          child: const Text('应用'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
-          _buildSlider('R', _r, Colors.red, (v) => setState(() => _r = v)),
-          _buildSlider('G', _g, Colors.green, (v) => setState(() => _g = v)),
-          _buildSlider('B', _b, Colors.blue, (v) => setState(() => _b = v)),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
         ),
-        TextButton(
-          onPressed: () {
-            final reason = _getInvalidColorReason(currentColor);
-            if (reason != null) {
-              AppToast.show(
-                context,
-                '$reason，请调整颜色',
-                variant: AppToastVariant.warning,
-              );
-              return;
-            }
-            Navigator.pop(context, currentColor);
-          },
-          child: const Text('确定'),
+      ),
+    );
+  }
+
+  /// 通过 RGB 值更新 HSB 状态
+  void _setFromRGB({int? r, int? g, int? b}) {
+    final c = _currentColor;
+    final nr = (r ?? (c.r * 255).round()).clamp(0, 255);
+    final ng = (g ?? (c.g * 255).round()).clamp(0, 255);
+    final nb = (b ?? (c.b * 255).round()).clamp(0, 255);
+    final newColor = Color.fromARGB(255, nr, ng, nb);
+    final hsv = HSVColor.fromColor(newColor);
+    setState(() {
+      _hue = hsv.hue;
+      _saturation = hsv.saturation;
+      _brightness = hsv.value;
+    });
+  }
+
+  /// 课程卡片预览（左侧圆点 + 右侧课程卡片），视觉效果与截图保持一致
+  Widget _buildCoursePreview(Color currentColor) {
+    final Color previewColor = currentColor;
+    final Color textColor =
+        ThemeData.estimateBrightnessForColor(previewColor) == Brightness.dark
+        ? Colors.white
+        : const Color(0xFF1F2C33);
+    final Color subtitleColor = textColor.withValues(alpha: 0.82);
+    final bool needsBorder =
+        ThemeData.estimateBrightnessForColor(previewColor) == Brightness.light;
+
+    return Row(
+      children: [
+        Container(
+          width: 62,
+          height: 62,
+          decoration: BoxDecoration(
+            color: previewColor,
+            shape: BoxShape.circle,
+            border: needsBorder
+                ? Border.all(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    width: 1,
+                  )
+                : null,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            height: 86,
+            decoration: BoxDecoration(
+              color: previewColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '课程预览',
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '@演示室',
+                    style: TextStyle(color: subtitleColor, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildSlider(
-    String label,
-    double value,
-    Color color,
-    ValueChanged<double> onChanged,
-  ) {
-    return Row(
+// ─── 课程色域选择器组件 ────────────────────────────────────────────
+
+/// Photoshop 风格的 SV 矩形选色区
+///
+/// 横轴为饱和度（S），纵轴为明度（V/B）。
+/// 通过手势拖拽选择颜色。
+class _CourseColorSVPicker extends StatelessWidget {
+  final double hue;
+  final double saturation;
+  final double brightness;
+  final void Function(double saturation, double brightness) onChanged;
+
+  const _CourseColorSVPicker({
+    required this.hue,
+    required this.saturation,
+    required this.brightness,
+    required this.onChanged,
+  });
+
+  void _handleInteraction(Offset localPosition, Size size) {
+    final s = (localPosition.dx / size.width).clamp(0.0, 1.0);
+    final v = 1.0 - (localPosition.dy / size.height).clamp(0.0, 1.0);
+    onChanged(s, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return GestureDetector(
+          onPanStart: (d) =>
+              _handleInteraction(d.localPosition, constraints.biggest),
+          onPanUpdate: (d) =>
+              _handleInteraction(d.localPosition, constraints.biggest),
+          child: CustomPaint(
+            painter: _CourseColorSVPainter(hue: hue),
+            child: Stack(
+              children: [
+                // 圆形选择指示器
+                Positioned(
+                  left: saturation * constraints.maxWidth - 8,
+                  top: (1.0 - brightness) * constraints.maxHeight - 8,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 4),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// SV 平面的 CustomPainter
+///
+/// 水平：白色 → 纯色相（表示饱和度从 0 到 1）
+/// 垂直：透明 → 黑色（表示明度从 1 到 0）
+class _CourseColorSVPainter extends CustomPainter {
+  final double hue;
+
+  _CourseColorSVPainter({required this.hue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(8));
+    canvas.clipRRect(rrect);
+
+    // 基础纯色（由色相决定）
+    final pureColor = HSVColor.fromAHSV(1.0, hue, 1.0, 1.0).toColor();
+
+    // 层 1：水平渐变（白色 → 纯色）
+    final horizontalGradient = LinearGradient(
+      colors: [Colors.white, pureColor],
+    ).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = horizontalGradient);
+
+    // 层 2：垂直渐变（透明 → 黑色）
+    final verticalGradient = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Colors.transparent, Colors.black],
+    ).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = verticalGradient);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CourseColorSVPainter oldDelegate) {
+    return oldDelegate.hue != hue;
+  }
+}
+
+/// 色相条——彩虹色带横条
+///
+/// 从红色(0°)到红色(360°)的全色相渐变，拖动选取目标色相。
+class _CourseColorHueSlider extends StatelessWidget {
+  final double hue;
+  final ValueChanged<double> onChanged;
+
+  const _CourseColorHueSlider({required this.hue, required this.onChanged});
+
+  void _handleInteraction(Offset localPosition, double width) {
+    final h = (localPosition.dx / width).clamp(0.0, 1.0) * 360;
+    onChanged(h);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return GestureDetector(
+          onPanStart: (d) => _handleInteraction(d.localPosition, width),
+          onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
+          child: CustomPaint(
+            painter: _CourseColorHuePainter(),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: (hue / 360.0) * width - 6,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 12,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 3),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 色相条的 CustomPainter
+///
+/// 绘制 7 个关键色相节点（红→黄→绿→青→蓝→紫→红）的彩虹渐变。
+class _CourseColorHuePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+    canvas.clipRRect(rrect);
+
+    final colors = List.generate(
+      7,
+      (i) => HSVColor.fromAHSV(1, i * 60.0, 1, 1).toColor(),
+    );
+    final gradient = LinearGradient(colors: colors).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = gradient);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Hex / R / G / B 紧凑型输入框
+///
+/// 支持 Hex 模式（仅允许 0-9 a-f，最多 6 位）
+/// 和数值模式（仅允许数字，最多 3 位）。
+class _CourseColorCompactField extends StatefulWidget {
+  final String label;
+  final String value;
+  final ValueChanged<String> onSubmitted;
+
+  const _CourseColorCompactField({
+    required this.label,
+    required this.value,
+    required this.onSubmitted,
+  });
+
+  @override
+  State<_CourseColorCompactField> createState() =>
+      _CourseColorCompactFieldState();
+}
+
+class _CourseColorCompactFieldState extends State<_CourseColorCompactField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CourseColorCompactField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 外部值变化时同步更新（避免用户正在编辑时被覆盖）
+    if (widget.value != oldWidget.value && widget.value != _controller.text) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: TextStyle(color: color, fontWeight: FontWeight.bold),
-        ),
-        Expanded(
-          child: Slider(
-            value: value,
-            min: 0,
-            max: 255,
-            activeColor: color,
-            onChanged: onChanged,
+        SizedBox(
+          height: 36,
+          child: TextField(
+            controller: _controller,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            inputFormatters: [
+              if (widget.label == 'Hex')
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]'))
+              else
+                FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(widget.label == 'Hex' ? 6 : 3),
+            ],
+            onSubmitted: widget.onSubmitted,
           ),
         ),
-        Text('${value.toInt()}'),
+        const SizedBox(height: 2),
+        Text(
+          widget.label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }
