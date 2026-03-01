@@ -28,7 +28,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
   void _handleLongPressStart(LongPressStartDetails details) {
     _longPressTimer?.cancel();
     _longPressProgress = 0.0;
-    const int totalMs = 2000;
+    const int totalMs = 1000;
     int elapsed = 0;
     const int tick = 50;
     _longPressTimer = Timer.periodic(const Duration(milliseconds: tick), (
