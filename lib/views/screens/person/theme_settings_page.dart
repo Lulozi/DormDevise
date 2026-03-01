@@ -151,9 +151,8 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                         );
                       }
                       final preset = _presets[index];
-                      // ignore: deprecated_member_use
                       final isSelected =
-                          currentColor.value == preset.color.value;
+                          currentColor.toARGB32() == preset.color.toARGB32();
                       return _ColorTile(
                         preset: preset,
                         isSelected: isSelected,
@@ -279,21 +278,14 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     BuildContext context,
     ThemeModeSetting currentMode,
   ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final panelColors = _resolveThemeModeLikePanelColors(context);
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        // 与课程颜色分配策略滑块保持一致：
-        // 浅色使用 surfaceContainerLowest，深色使用 surfaceContainer
-        color: isDark
-            ? colorScheme.surfaceContainer
-            : colorScheme.surfaceContainerLowest,
+        // 主题模式滑轨基准色。
+        color: panelColors.railColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        border: Border.all(color: panelColors.railBorderColor, width: 1),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -324,20 +316,20 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                   height: 36,
                   margin: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    // 与课程颜色分配策略滑块保持一致：
-                    // 浅色白色，深色使用 surfaceContainerHigh
-                    color: isDark
-                        ? colorScheme.surfaceContainerHigh
-                        : Colors.white,
+                    color: panelColors.indicatorColor,
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.04,
+                        ),
                         blurRadius: 1,
                         offset: const Offset(0, 1),
                       ),
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.12,
+                        ),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -453,15 +445,47 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     ),
   ];
 
+  /// 统一“主题模式 / 主页设置 / 主页导航顺序”的配色，保持同一套视觉规则。
+  ({
+    Color railColor,
+    Color railBorderColor,
+    Color indicatorColor,
+    Color indicatorShadowColor,
+    Color optionSelectedColor,
+    Color optionUnselectedColor,
+    Color navBlockColor,
+    Color navBlockBorderColor,
+    Color navBlockForegroundColor,
+  })
+  _resolveThemeModeLikePanelColors(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return (
+      railColor: isDark
+          ? colorScheme.surfaceContainer
+          : colorScheme.surfaceContainerLowest,
+      railBorderColor: colorScheme.outlineVariant.withValues(alpha: 0.3),
+      indicatorColor: isDark ? colorScheme.surfaceContainerHigh : Colors.white,
+      indicatorShadowColor: Colors.black,
+      optionSelectedColor: colorScheme.onSurface,
+      optionUnselectedColor: colorScheme.onSurface.withValues(alpha: 0.6),
+      // 拖拽块与滑块颜色一致。
+      navBlockColor: isDark ? colorScheme.surfaceContainerHigh : Colors.white,
+      navBlockBorderColor: colorScheme.outlineVariant.withValues(alpha: 0.45),
+      navBlockForegroundColor: colorScheme.onSurface,
+    );
+  }
+
   /// 构建主页导航顺序自定义卡片（水平排列，左右拖拽）。
   ///
   /// 用户可通过长按拖拽重新排列底部导航栏的页面顺序，
   /// 修改后实时生效并持久化到 SharedPreferences。
   Widget _buildNavOrderCard(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final navOrder = ThemeService.instance.navOrder;
-    final Color navBlockColor = Theme.of(context).scaffoldBackgroundColor;
-    final Color navBlockFg = colorScheme.onSurfaceVariant;
+    final panelColors = _resolveThemeModeLikePanelColors(context);
 
     return Card(
       child: Padding(
@@ -514,24 +538,67 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
             // 水平可拖拽重排的导航项列表
             LayoutBuilder(
               builder: (context, constraints) {
-                final itemWidth = constraints.maxWidth / 3;
-                return SizedBox(
-                  height: 64,
+                // 统一规则：整体左右边距固定为 2px，块间距固定为 2px，
+                // 并按剩余宽度均分，确保每个拖拽块可视宽度一致。
+                const double containerPadH = 2; // 容器左右内边距（每侧）
+                const double containerPadV = 2; // 容器上下内边距（每侧）
+                const double blockGap = 2; // 拖拽块之间的间距
+                const double borderW = 1; // 容器边框宽度
+                final int count = navOrder.length;
+                // 边框也会占用内部空间，必须一并扣除。
+                final double available =
+                    constraints.maxWidth - (containerPadH + borderW) * 2;
+                final double totalGaps = (count > 0 ? count - 1 : 0) * blockGap;
+                final double itemWidth =
+                    (available - totalGaps) / (count > 0 ? count : 1);
+
+                return Container(
+                  height: 72,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: containerPadH,
+                    vertical: containerPadV,
+                  ),
+                  decoration: BoxDecoration(
+                    // 调整框使用整体背景色，与页面背景融合。
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: panelColors.railBorderColor,
+                      width: 1,
+                    ),
+                  ),
                   child: ReorderableListView.builder(
                     scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    clipBehavior: Clip.none,
                     buildDefaultDragHandles: false,
                     proxyDecorator: (child, index, animation) {
+                      final curved = CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                        reverseCurve: Curves.easeInCubic,
+                      );
                       return AnimatedBuilder(
-                        animation: animation,
+                        animation: curved,
                         builder: (context, child) {
-                          final double elevation = Tween<double>(
-                            begin: 0,
-                            end: 6,
-                          ).evaluate(animation);
-                          return Material(
-                            elevation: elevation,
-                            borderRadius: BorderRadius.circular(12),
-                            child: child,
+                          final double t = curved.value;
+                          return Transform.scale(
+                            scale: 1.0 + 0.02 * t,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(
+                                      alpha: 0.10 + 0.08 * t,
+                                    ),
+                                    blurRadius: 6 + 8 * t,
+                                    offset: Offset(0, 2 + 3 * t),
+                                  ),
+                                ],
+                              ),
+                              child: child,
+                            ),
                           );
                         },
                         child: child,
@@ -543,42 +610,74 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                       final newOrder = List<int>.from(navOrder);
                       final item = newOrder.removeAt(oldIndex);
                       newOrder.insert(newIndex, item);
-                      await ThemeService.instance.setNavOrder(newOrder);
+                      final persistFuture = ThemeService.instance.setNavOrder(
+                        newOrder,
+                      );
+                      // 立即刷新，避免拖拽完成后图标闪烁跳动。
                       setState(() {});
+                      await persistFuture;
                     },
                     itemBuilder: (context, index) {
                       final destIndex = navOrder[index];
                       final dest = _allDestinations[destIndex];
+                      final bool isLast = index == navOrder.length - 1;
                       return ReorderableDragStartListener(
-                        key: ValueKey(destIndex),
+                        key: ValueKey('nav-drag-$destIndex'),
                         index: index,
-                        child: SizedBox(
-                          width: itemWidth,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 3),
-                            decoration: BoxDecoration(
-                              color: navBlockColor,
-                              border: Border.all(
-                                color: colorScheme.outlineVariant.withValues(
-                                  alpha: 0.45,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            right: isLast ? 0 : blockGap,
+                          ),
+                          child: SizedBox(
+                            width: itemWidth,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                // 拖拽块颜色与滑块颜色一致。
+                                color: panelColors.navBlockColor,
+                                border: Border.all(
+                                  color: panelColors.navBlockBorderColor,
+                                  width: 1,
                                 ),
-                                width: 1,
+                                borderRadius: BorderRadius.circular(12),
+                                // 浅色模式下添加与主题模式选中滑块一致的阴影。
+                                boxShadow: isDark
+                                    ? null
+                                    : [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.04,
+                                          ),
+                                          blurRadius: 1,
+                                          offset: const Offset(0, 1),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
                               ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(dest.icon, size: 22, color: navBlockFg),
-                                const SizedBox(height: 4),
-                                Text(
-                                  dest.label,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: navBlockFg,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    dest.icon,
+                                    size: 22,
+                                    color: panelColors.navBlockForegroundColor,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    dest.label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          panelColors.navBlockForegroundColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -634,8 +733,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     List<int> navOrder,
     int currentHomePage,
   ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final panelColors = _resolveThemeModeLikePanelColors(context);
     // 在导航顺序中查找当前默认主页的显示位置
     final displayPos = navOrder.indexOf(currentHomePage).clamp(0, 2);
 
@@ -652,15 +750,10 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        // 与课程颜色分配策略滑块保持一致
-        color: isDark
-            ? colorScheme.surfaceContainer
-            : colorScheme.surfaceContainerLowest,
+        // 与主题模式滑轨颜色保持一致。
+        color: panelColors.railColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        border: Border.all(color: panelColors.railBorderColor, width: 1),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -678,19 +771,20 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                   height: 36,
                   margin: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    // 与课程颜色分配策略滑块保持一致
-                    color: isDark
-                        ? colorScheme.surfaceContainerHigh
-                        : Colors.white,
+                    color: panelColors.indicatorColor,
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.04,
+                        ),
                         blurRadius: 1,
                         offset: const Offset(0, 1),
                       ),
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.12,
+                        ),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -698,24 +792,32 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                   ),
                 ),
               ),
-              Row(
-                children: List.generate(3, (displayIndex) {
-                  final originalIndex = navOrder[displayIndex];
-                  final dest = _allDestinations[originalIndex];
-                  final isSelected = displayIndex == displayPos;
-                  return _buildHomePageOption(
+              // 每个导航项按其在 navOrder 中的位置做动画定位，
+              // 拖拽顺序变更后选项会丝滑滑动到新位置。
+              ...List.generate(3, (destIndex) {
+                final displayIndex = navOrder.indexOf(destIndex);
+                final dest = _allDestinations[destIndex];
+                final isSelected = destIndex == currentHomePage;
+                return AnimatedPositioned(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeInOutCubic,
+                  left: displayIndex * indicatorWidth + 2, // 与滑块 margin 对齐
+                  top: 0,
+                  bottom: 0,
+                  width: indicatorWidth,
+                  child: _buildHomePageOption(
                     icon: dest.icon,
                     label: dest.label,
                     isSelected: isSelected,
+                    selectedColor: panelColors.optionSelectedColor,
+                    unselectedColor: panelColors.optionUnselectedColor,
                     onTap: () async {
-                      await ThemeService.instance.setDefaultHomePage(
-                        originalIndex,
-                      );
+                      await ThemeService.instance.setDefaultHomePage(destIndex);
                       setState(() {});
                     },
-                  );
-                }),
-              ),
+                  ),
+                );
+              }),
             ],
           );
         },
@@ -728,37 +830,35 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     required IconData icon,
     required String label,
     required bool isSelected,
+    required Color selectedColor,
+    required Color unselectedColor,
     required VoidCallback onTap,
   }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.translucent,
-        child: Container(
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: Theme.of(context).colorScheme.onSurface.withValues(
-                  alpha: isSelected ? 1.0 : 0.6,
-                ),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? selectedColor : unselectedColor,
+            ),
+            const SizedBox(width: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? selectedColor : unselectedColor,
               ),
-              const SizedBox(width: 4),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-                child: Text(label),
-              ),
-            ],
-          ),
+              child: Text(label),
+            ),
+          ],
         ),
       ),
     );
