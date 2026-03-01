@@ -67,6 +67,8 @@ class _TablePageState extends State<TablePage> {
 
   final GlobalKey _importBtnKey = GlobalKey();
   final GlobalKey _shareBtnKey = GlobalKey();
+  BubblePopupController? _toolbarBubbleController;
+  bool _isToolbarBubbleOpen = false;
 
   List<int> get _visibleWeekdays =>
       _showWeekend ? <int>[1, 2, 3, 4, 5, 6, 7] : <int>[1, 2, 3, 4, 5];
@@ -76,6 +78,54 @@ class _TablePageState extends State<TablePage> {
       _editModeResetToken = Object();
       _isEditing = false;
     });
+  }
+
+  /// 关闭工具栏气泡（若存在）。
+  Future<void> _dismissToolbarBubble() async {
+    if (!_isToolbarBubbleOpen) return;
+    await _toolbarBubbleController?.dismiss();
+    if (!mounted) return;
+    setState(() {
+      _isToolbarBubbleOpen = false;
+      _toolbarBubbleController = null;
+    });
+  }
+
+  /// 显示工具栏提示气泡，并维护返回键优先关闭所需状态。
+  Future<void> _showToolbarBubble({
+    required GlobalKey anchorKey,
+    required String message,
+  }) async {
+    await _dismissToolbarBubble();
+
+    final controller = BubblePopupController();
+    if (mounted) {
+      setState(() {
+        _toolbarBubbleController = controller;
+        _isToolbarBubbleOpen = true;
+      });
+    }
+
+    await showBubblePopup(
+      context: context,
+      anchorKey: anchorKey,
+      controller: controller,
+      content: SizedBox(
+        width: 160,
+        height: 80,
+        child: Center(
+          child: Text(message, style: const TextStyle(color: Colors.grey)),
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (identical(_toolbarBubbleController, controller)) {
+      setState(() {
+        _toolbarBubbleController = null;
+        _isToolbarBubbleOpen = false;
+      });
+    }
   }
 
   /// 初始化状态并载入课程数据。
@@ -131,6 +181,7 @@ class _TablePageState extends State<TablePage> {
 
   @override
   void dispose() {
+    _toolbarBubbleController?.dismiss();
     _timeColumnController.dispose();
     for (final ScrollController controller in _weekScrollControllers.values) {
       controller.dispose();
@@ -143,25 +194,39 @@ class _TablePageState extends State<TablePage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: const Center(child: CircularProgressIndicator()),
+      return PopScope(
+        canPop: !_isToolbarBubbleOpen,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          _dismissToolbarBubble();
+        },
+        child: Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          body: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _buildToolbar(context),
-            ),
-            const SizedBox(height: 16),
-            Expanded(child: _buildPagedTable(context)),
-          ],
+    return PopScope(
+      canPop: !_isToolbarBubbleOpen,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _dismissToolbarBubble();
+      },
+      child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildToolbar(context),
+              ),
+              const SizedBox(height: 16),
+              Expanded(child: _buildPagedTable(context)),
+            ],
+          ),
         ),
       ),
     );
@@ -197,18 +262,11 @@ class _TablePageState extends State<TablePage> {
           key: _importBtnKey,
           icon: FontAwesomeIcons.calendarPlus,
           tooltip: '导入课表',
-          onPressed: () {
+          onPressed: () async {
             _exitEditMode();
-            showBubblePopup(
-              context: context,
+            await _showToolbarBubble(
               anchorKey: _importBtnKey,
-              content: const SizedBox(
-                width: 160,
-                height: 80,
-                child: Center(
-                  child: Text('导入功能开发中', style: TextStyle(color: Colors.grey)),
-                ),
-              ),
+              message: '导入功能开发中',
             );
           },
           useFaIcon: true,
@@ -219,18 +277,11 @@ class _TablePageState extends State<TablePage> {
           key: _shareBtnKey,
           icon: FontAwesomeIcons.shareFromSquare,
           tooltip: '分享课表',
-          onPressed: () {
+          onPressed: () async {
             _exitEditMode();
-            showBubblePopup(
-              context: context,
+            await _showToolbarBubble(
               anchorKey: _shareBtnKey,
-              content: const SizedBox(
-                width: 160,
-                height: 80,
-                child: Center(
-                  child: Text('分享功能开发中', style: TextStyle(color: Colors.grey)),
-                ),
-              ),
+              message: '分享功能开发中',
             );
           },
           useFaIcon: true,

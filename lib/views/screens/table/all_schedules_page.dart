@@ -333,7 +333,10 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             Expanded(
               child: Text(
                 text,
-                style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurface),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           ],
@@ -346,9 +349,13 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return PopScope(
-      canPop: !_isSelectionMode,
-      onPopInvokedWithResult: (didPop, result) {
+      canPop: !_isSelectionMode && !_isAddMenuOpen,
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
+        if (_isAddMenuOpen) {
+          await _bubbleController?.dismiss();
+          return;
+        }
         if (_isSelectionMode) {
           _toggleSelectionMode();
         } else {
@@ -657,7 +664,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: backgroundColor ?? (Theme.of(context).cardTheme.color ?? colorScheme.surface),
+        color:
+            backgroundColor ??
+            (Theme.of(context).cardTheme.color ?? colorScheme.surface),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -794,10 +803,10 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       width: 16,
       height: 16,
       decoration: BoxDecoration(
-      color: isSelected ? colorScheme.primary : Colors.transparent,
-      borderRadius: BorderRadius.circular(4),
-      border: Border.all(
-        color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
+        color: isSelected ? colorScheme.primary : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
           width: 1.2,
         ),
       ),
