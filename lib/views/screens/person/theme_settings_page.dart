@@ -57,6 +57,8 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     final currentColor = ThemeService.instance.primaryColor;
     final currentMode = ThemeService.instance.themeModeSetting;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final whitePresetDisplayColor = _resolveWhitePresetDisplayColor(context);
+    final previewInputFillColor = _resolvePreviewInputFillColor(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('个性主题')),
@@ -156,6 +158,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                       return _ColorTile(
                         preset: preset,
                         isSelected: isSelected,
+                        whitePresetDisplayColor: whitePresetDisplayColor,
                         selectedBorderColor: colorScheme.primary,
                         onTap: () async {
                           await ThemeService.instance.setPrimaryColor(
@@ -231,10 +234,8 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                     decoration: InputDecoration(
                       labelText: '输入框预览',
                       hintText: '请输入内容...',
-                      // 显式引用当前主题的填充色，确保与主题渐变同步
-                      fillColor: Theme.of(
-                        context,
-                      ).inputDecorationTheme.fillColor,
+                      // 用与主题切换同一插值进度的填充色，避免视觉节奏不一致。
+                      fillColor: previewInputFillColor,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -264,6 +265,82 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
         ],
       ),
     );
+  }
+
+  /// 解析主题切换进度（0=亮色端，1=暗色端）。
+  ///
+  /// 通过当前 `scaffoldBackgroundColor` 在亮/暗主题端点间的位置反推插值进度，
+  /// 让自定义颜色变化与 MaterialApp 的主题过渡保持同一节奏。
+  double _resolveThemeTransitionProgress(BuildContext context) {
+    final currentColor = Theme.of(context).scaffoldBackgroundColor;
+    final lightColor = ThemeService.instance.lightTheme.scaffoldBackgroundColor;
+    final darkColor = ThemeService.instance.darkTheme.scaffoldBackgroundColor;
+    return _estimateColorLerpProgress(
+      beginColor: lightColor,
+      endColor: darkColor,
+      currentColor: currentColor,
+    );
+  }
+
+  /// 估算颜色线性插值进度（0~1），优先使用变化幅度最大的通道避免数值抖动。
+  double _estimateColorLerpProgress({
+    required Color beginColor,
+    required Color endColor,
+    required Color currentColor,
+  }) {
+    final channels = <({double begin, double end, double current})>[
+      (begin: beginColor.r, end: endColor.r, current: currentColor.r),
+      (begin: beginColor.g, end: endColor.g, current: currentColor.g),
+      (begin: beginColor.b, end: endColor.b, current: currentColor.b),
+    ];
+    channels.sort(
+      (a, b) => (b.end - b.begin).abs().compareTo((a.end - a.begin).abs()),
+    );
+
+    final primary = channels.first;
+    final delta = primary.end - primary.begin;
+    if (delta.abs() > 0.0001) {
+      return ((primary.current - primary.begin) / delta)
+          .clamp(0.0, 1.0)
+          .toDouble();
+    }
+
+    final luminanceDelta =
+        endColor.computeLuminance() - beginColor.computeLuminance();
+    if (luminanceDelta.abs() <= 0.000001) {
+      return 0.0;
+    }
+    return ((currentColor.computeLuminance() - beginColor.computeLuminance()) /
+            luminanceDelta)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
+  /// 洁白预设在主题切换时按同一进度从白色过渡到乌黑。
+  Color _resolveWhitePresetDisplayColor(BuildContext context) {
+    final progress = _resolveThemeTransitionProgress(context);
+    return Color.lerp(Colors.white, Colors.black, progress) ?? Colors.white;
+  }
+
+  /// 输入框预览底色与全局主题切换保持同速过渡。
+  Color _resolvePreviewInputFillColor(BuildContext context) {
+    final progress = _resolveThemeTransitionProgress(context);
+    final lightFillColor =
+        ThemeService.instance.lightTheme.inputDecorationTheme.fillColor ??
+        Colors.white;
+    final darkFillColor =
+        ThemeService.instance.darkTheme.inputDecorationTheme.fillColor ??
+        ThemeService.instance.darkTheme.colorScheme.surfaceContainerHigh;
+    return Color.lerp(lightFillColor, darkFillColor, progress) ??
+        lightFillColor;
+  }
+
+  /// 主页导航拖拽块与主题切换使用一致插值进度，避免块体颜色跳变。
+  Color _resolveNavDragBlockColor(BuildContext context) {
+    final progress = _resolveThemeTransitionProgress(context);
+    final darkBlockColor =
+        ThemeService.instance.darkTheme.colorScheme.surfaceContainerHigh;
+    return Color.lerp(Colors.white, darkBlockColor, progress) ?? Colors.white;
   }
 
   // ─────────────── 三段式主题模式切换 ───────────────
@@ -471,7 +548,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
       optionSelectedColor: colorScheme.onSurface,
       optionUnselectedColor: colorScheme.onSurface.withValues(alpha: 0.6),
       // 拖拽块与滑块颜色一致。
-      navBlockColor: isDark ? colorScheme.surfaceContainerHigh : Colors.white,
+      navBlockColor: _resolveNavDragBlockColor(context),
       navBlockBorderColor: colorScheme.outlineVariant.withValues(alpha: 0.45),
       navBlockForegroundColor: colorScheme.onSurface,
     );
@@ -1520,12 +1597,14 @@ class _CompactTextFieldState extends State<_CompactTextField> {
 class _ColorTile extends StatelessWidget {
   final _PresetColor preset;
   final bool isSelected;
+  final Color whitePresetDisplayColor;
   final Color selectedBorderColor;
   final VoidCallback onTap;
 
   const _ColorTile({
     required this.preset,
     required this.isSelected,
+    required this.whitePresetDisplayColor,
     required this.selectedBorderColor,
     required this.onTap,
   });
@@ -1535,8 +1614,8 @@ class _ColorTile extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // 深色模式下白色预设展示为"乌黑"
     final bool isWhitePreset = preset.color == Colors.white;
-    final Color displayColor = (isDark && isWhitePreset)
-        ? Colors.black
+    final Color displayColor = isWhitePreset
+        ? whitePresetDisplayColor
         : preset.color;
     final String displayLabel = (isDark && isWhitePreset) ? '乌黑' : preset.label;
 
@@ -1544,7 +1623,7 @@ class _ColorTile extends StatelessWidget {
     final foreground = brightness == Brightness.dark
         ? Colors.white
         : Colors.black87;
-    final needsBorder = displayColor == Colors.white;
+    final needsBorder = isWhitePreset;
 
     return GestureDetector(
       onTap: onTap,
