@@ -28,15 +28,35 @@ class NotificationService {
 
     try {
       tz.initializeTimeZones();
-      final dynamic timeZoneName = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(timeZoneName.toString()));
-    } catch (e) {
-      debugPrint('Error initializing timezone: $e');
-      // Fallback to UTC or a default if needed, but usually we just continue
-      // If setLocalLocation fails, tz.local might be uninitialized or default to UTC.
+      final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+      final String rawName = timezoneInfo.identifier;
+      // 部分设备/模拟器返回非标准时区名称（如 TimezoneInfo(...)），需要健壮处理
       try {
-        tz.setLocalLocation(tz.getLocation('UTC'));
-      } catch (_) {}
+        tz.setLocalLocation(tz.getLocation(rawName));
+      } catch (_) {
+        // 尝试从非标准字符串中提取 IANA 时区名称
+        final match = RegExp(r'[A-Za-z]+/[A-Za-z_]+').firstMatch(rawName);
+        if (match != null) {
+          try {
+            tz.setLocalLocation(tz.getLocation(match.group(0)!));
+          } catch (_) {
+            tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
+          }
+        } else {
+          // 无法解析时使用中文环境默认时区
+          tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
+        }
+      }
+    } catch (e) {
+      debugPrint('时区初始化异常，回退到 Asia/Shanghai: $e');
+      try {
+        tz.initializeTimeZones();
+        tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
+      } catch (_) {
+        try {
+          tz.setLocalLocation(tz.getLocation('UTC'));
+        } catch (_) {}
+      }
     }
 
     const AndroidInitializationSettings initializationSettingsAndroid =
