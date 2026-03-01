@@ -5,7 +5,7 @@ import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/wifi_info_service.dart';
 import 'package:flutter/material.dart';
 
-/// 本地门锁配置页面。
+/// Http配置页面。
 ///
 /// 提供 Post 请求开门配置、WiFi 搜索与保存、请求优先级设置等能力。
 class LocalDoorLockSettingsPage extends StatefulWidget {
@@ -301,7 +301,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                                 );
                               },
                             );
-                          }
+                          },
                         ),
                       ),
                     ),
@@ -333,13 +333,11 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
           leading: Icon(
             selected ? Icons.check_circle_rounded : Icons.link,
             size: 18,
-            color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            color: selected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
           ),
-          title: Text(
-            postUrl,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          title: Text(postUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
           trailing: IconButton(
             tooltip: '删除',
             onPressed: isRemoval ? null : () => _removePostUrl(postUrl),
@@ -376,7 +374,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
     }
   }
 
-  /// 加载本地门锁配置并尝试读取当前 WiFi。
+  /// 加载Http配置并尝试读取当前 WiFi。
   Future<void> _loadConfig() async {
     final config = await LocalDoorLockConfigService.instance.loadConfig(
       forceRefresh: true,
@@ -513,7 +511,8 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       return;
     }
     final indexToRemove = _savedPostUrls.indexWhere(
-        (element) => element.trim() == normalizedUrl);
+      (element) => element.trim() == normalizedUrl,
+    );
     if (indexToRemove == -1) return;
 
     final removedUrl = _savedPostUrls[indexToRemove];
@@ -523,18 +522,17 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
         ..removeAt(indexToRemove);
     });
 
-    _postUrlListKey.currentState?.removeItem(
-      indexToRemove,
-      (context, animation) {
-        return _buildPostUrlTile(
-          removedUrl,
-          animation,
-          Theme.of(context).colorScheme,
-          isRemoval: true,
-        );
-      },
-      duration: const Duration(milliseconds: 300),
-    );
+    _postUrlListKey.currentState?.removeItem(indexToRemove, (
+      context,
+      animation,
+    ) {
+      return _buildPostUrlTile(
+        removedUrl,
+        animation,
+        Theme.of(context).colorScheme,
+        isRemoval: true,
+      );
+    }, duration: const Duration(milliseconds: 300));
 
     setState(() {
       _wifiPostMappings = List<WifiPostMapping>.from(_wifiPostMappings)
@@ -985,14 +983,13 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        '启用Wifi - Post请求',
+                        '启用WiFi - Post请求',
                         style: TextStyle(
                           fontSize: 16,
                           color: _postEnabled
                               ? colorScheme.onSurface
                               : colorScheme.onSurface.withValues(alpha: 0.35),
                         ),
-                        
                       ),
                     ),
                     Switch(
@@ -1159,9 +1156,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                           fontWeight: FontWeight.w600,
                           color: _postEnabled
                               ? colorScheme.onSurface
-                              : colorScheme.onSurface.withValues(
-                                  alpha: 0.35,
-                                ),
+                              : colorScheme.onSurface.withValues(alpha: 0.35),
                         ),
                       ),
                     )
@@ -1441,7 +1436,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                     onPressed: _saving
                         ? null
                         : () async {
-                            await _saveConfig(successMessage: '本地门锁配置已保存');
+                            await _saveConfig(successMessage: 'Http配置已保存');
                           },
                     icon: _saving
                         ? const SizedBox(
@@ -1515,13 +1510,13 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: widget.showAppBar ? AppBar(title: const Text('本地门锁配置')) : null,
+        appBar: widget.showAppBar ? AppBar(title: const Text('Http配置')) : null,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: widget.showAppBar ? AppBar(title: const Text('本地门锁配置')) : null,
+      appBar: widget.showAppBar ? AppBar(title: const Text('Http配置')) : null,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

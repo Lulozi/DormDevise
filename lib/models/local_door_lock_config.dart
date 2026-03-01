@@ -112,7 +112,7 @@ class WifiPostMapping {
   }
 }
 
-/// 本地门锁（Post 开门 + WiFi 匹配）配置。
+/// Http（Post 开门 + WiFi 匹配）配置。
 class LocalDoorLockConfig {
   /// 是否开启 Post 请求开门。
   final bool postEnabled;

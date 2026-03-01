@@ -59,7 +59,7 @@ class _PersonPageState extends State<PersonPage> {
       ),
       _buildSettingsEntry(
         icon: Icons.lock_outline,
-        title: '本地门锁配置',
+        title: 'Http配置',
         builder: (context) => const LocalDoorLockSettingsPage(),
       ),
       _buildSettingsEntry(
