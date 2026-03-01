@@ -61,6 +61,7 @@ dependencies:
   flutter_timezone: ^5.0.1
   android_alarm_manager_plus: ^5.0.0
   android_intent_plus: ^6.0.0
+  network_info_plus: ^6.1.4
 
 dev_dependencies:
   flutter_test:

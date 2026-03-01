@@ -14,7 +14,6 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugins.GeneratedPluginRegistrant
 import kotlin.jvm.Volatile
 
 /**
@@ -35,7 +34,6 @@ class DoorWidgetPromptActivity : FlutterActivity() {
             if (cache.contains(ENGINE_ID)) return
             val engine = FlutterEngine(context.applicationContext)
             engine.navigationChannel.setInitialRoute("door_widget_prompt")
-            GeneratedPluginRegistrant.registerWith(engine)
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault(),
             )
@@ -76,7 +74,6 @@ class DoorWidgetPromptActivity : FlutterActivity() {
      * 绑定 MethodChannel，接收 Flutter 端关闭或跳转指令。
      */
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "door_widget/prompt")
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {

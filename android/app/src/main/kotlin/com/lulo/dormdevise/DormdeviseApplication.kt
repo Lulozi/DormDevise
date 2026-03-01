@@ -12,6 +12,5 @@ class DormdeviseApplication : Application() {
      */
     override fun onCreate() {
         super.onCreate()
-        DoorWidgetPromptActivity.ensureEngine(this)
     }
 }
