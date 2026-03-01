@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dormdevise/models/local_door_lock_config.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wifi_scan/wifi_scan.dart';
 
 /// 当前连接的 WiFi 快照。
 class WifiSnapshot {
@@ -26,6 +27,60 @@ class WifiInfoService {
   static final WifiInfoService instance = WifiInfoService._();
 
   final NetworkInfo _networkInfo = NetworkInfo();
+
+  /// 扫描附近可见的 WiFi 列表。
+  ///
+  /// 注意：该能力依赖 Android 的定位权限与定位服务开关，iOS 默认返回空列表。
+  Future<List<WifiSnapshot>> scanNearbyWifis({
+    bool requestPermission = false,
+  }) async {
+    if (!Platform.isAndroid) {
+      return const <WifiSnapshot>[];
+    }
+
+    try {
+      if (requestPermission) {
+        final status = await Permission.locationWhenInUse.request();
+        if (!status.isGranted) {
+          return const <WifiSnapshot>[];
+        }
+      }
+
+      final canStart = await WiFiScan.instance.canStartScan(
+        askPermissions: requestPermission,
+      );
+      if (canStart != CanStartScan.yes) {
+        return const <WifiSnapshot>[];
+      }
+
+      await WiFiScan.instance.startScan();
+      final canGet = await WiFiScan.instance.canGetScannedResults(
+        askPermissions: requestPermission,
+      );
+      if (canGet != CanGetScannedResults.yes) {
+        return const <WifiSnapshot>[];
+      }
+
+      final points = await WiFiScan.instance.getScannedResults();
+      final seen = <String>{};
+      final snapshots = <WifiSnapshot>[];
+
+      for (final point in points) {
+        final ssid = LocalDoorLockConfig.normalizeWifiValue(point.ssid);
+        final bssid = LocalDoorLockConfig.normalizeWifiValue(point.bssid);
+        final identity = bssid.isNotEmpty ? bssid : ssid;
+        if (identity.isEmpty || seen.contains(identity)) {
+          continue;
+        }
+        seen.add(identity);
+        snapshots.add(WifiSnapshot(ssid: ssid, bssid: bssid));
+      }
+
+      return snapshots;
+    } catch (_) {
+      return const <WifiSnapshot>[];
+    }
+  }
 
   /// 读取当前连接 WiFi。
   ///
