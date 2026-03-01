@@ -25,8 +25,52 @@ class DoorTriggerService {
 
   MqttService? _mqttService;
   String? _lastFingerprint;
+  WifiSnapshot _cachedWifiSnapshot = const WifiSnapshot();
+  bool _cachedWifiMatched = false;
+  DateTime? _cachedWifiCheckedAt;
 
   static const Duration _postTimeout = Duration(seconds: 5);
+
+  static const Duration _wifiCheckIntervalFast = Duration(milliseconds: 500);
+  static const Duration _wifiCheckIntervalSlow = Duration(seconds: 5);
+
+  /// 读取 WiFi 匹配结果。
+  ///
+  /// 当配置为“WiFi匹配后优先使用Post请求”时，使用 0.5s/5s 的自适应检查周期：
+  /// - 未匹配：0.5s 检查一次，尽快捕获切换到目标 WiFi。
+  /// - 已匹配：5s 检查一次，降低高频读取开销。
+  Future<({WifiSnapshot wifi, bool matched})> _resolveWifiMatch(
+    LocalDoorLockConfig config,
+  ) async {
+    final bool useAdaptiveCheck =
+        config.postEnabled && config.preferPostWhenWifiMatched;
+    if (!useAdaptiveCheck) {
+      final wifi = await WifiInfoService.instance.getCurrentWifi();
+      final matched = config.isWifiMatched(ssid: wifi.ssid, bssid: wifi.bssid);
+      _cachedWifiSnapshot = wifi;
+      _cachedWifiMatched = matched;
+      _cachedWifiCheckedAt = DateTime.now();
+      return (wifi: wifi, matched: matched);
+    }
+
+    final now = DateTime.now();
+    final refreshInterval = _cachedWifiMatched
+        ? _wifiCheckIntervalSlow
+        : _wifiCheckIntervalFast;
+    final bool shouldRefresh =
+        _cachedWifiCheckedAt == null ||
+        now.difference(_cachedWifiCheckedAt!) >= refreshInterval;
+
+    if (shouldRefresh) {
+      final wifi = await WifiInfoService.instance.getCurrentWifi();
+      final matched = config.isWifiMatched(ssid: wifi.ssid, bssid: wifi.bssid);
+      _cachedWifiSnapshot = wifi;
+      _cachedWifiMatched = matched;
+      _cachedWifiCheckedAt = now;
+    }
+
+    return (wifi: _cachedWifiSnapshot, matched: _cachedWifiMatched);
+  }
 
   /// 触发开门动作，返回结果信息用于展示反馈。
   Future<DoorTriggerResult> triggerDoor() async {
@@ -34,18 +78,20 @@ class DoorTriggerService {
       final LocalDoorLockConfig localConfig = await LocalDoorLockConfigService
           .instance
           .loadConfig();
-      final WifiSnapshot wifi = await WifiInfoService.instance.getCurrentWifi();
-
-      final bool wifiMatched = localConfig.isWifiMatched(
+      final wifiMatch = await _resolveWifiMatch(localConfig);
+      final WifiSnapshot wifi = wifiMatch.wifi;
+      final bool wifiMatched = wifiMatch.matched;
+      final String resolvedPostUrl = localConfig.resolvePostUrlForWifi(
         ssid: wifi.ssid,
         bssid: wifi.bssid,
       );
-      final bool canUsePost = wifiMatched && localConfig.isPostReady;
+      final bool canUsePost =
+          wifiMatched && localConfig.postEnabled && resolvedPostUrl.isNotEmpty;
 
       if (canUsePost) {
         if (localConfig.preferPostWhenWifiMatched) {
           final DoorTriggerResult postResult = await _triggerViaPost(
-            localConfig.postUrl,
+            resolvedPostUrl,
           );
           if (postResult.success) {
             return postResult;
@@ -71,7 +117,7 @@ class DoorTriggerService {
         }
 
         final DoorTriggerResult postResult = await _triggerViaPost(
-          localConfig.postUrl,
+          resolvedPostUrl,
         );
         if (postResult.success) {
           return const DoorTriggerResult(
