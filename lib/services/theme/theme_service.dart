@@ -42,6 +42,14 @@ class ThemeService extends ChangeNotifier {
   /// SharedPreferences 键名：默认主页
   static const String _prefKeyDefaultHomePage = 'default_home_page';
 
+  /// SharedPreferences 键名：是否启用自定义主题预览效果
+  static const String _prefKeyCustomPreviewEnabled =
+      'theme_custom_preview_enabled';
+
+  /// SharedPreferences 键名：自定义主题下开关圆点颜色
+  static const String _prefKeyCustomSwitchThumbColor =
+      'theme_custom_switch_thumb_color';
+
   /// 默认主色
   static const Color defaultPrimaryColor = Colors.white;
 
@@ -49,6 +57,12 @@ class ThemeService extends ChangeNotifier {
   static const List<int> defaultNavOrder = [0, 1, 2];
 
   Color _primaryColor = defaultPrimaryColor;
+
+  /// 是否启用了“自定义主题颜色弹窗”的预览效果到全局。
+  bool _isCustomPreviewEnabled = false;
+
+  /// 自定义主题下开关圆点颜色（白-黑灰阶中的任意值）。
+  Color? _customSwitchThumbColor;
 
   /// 用户选择的主题模式：浅色 / 跟随系统 / 深色
   ThemeModeSetting _themeModeSetting = ThemeModeSetting.light;
@@ -94,6 +108,7 @@ class ThemeService extends ChangeNotifier {
 
   /// 当前是否为简洁白模式
   bool get isWhiteMode {
+    if (_isCustomPreviewEnabled) return false;
     // ignore: deprecated_member_use
     return _primaryColor.value == Colors.white.value;
   }
@@ -109,6 +124,12 @@ class ThemeService extends ChangeNotifier {
     final stored = prefs.getInt(_prefKey);
     if (stored != null) {
       _primaryColor = Color(stored);
+    }
+    _isCustomPreviewEnabled =
+        prefs.getBool(_prefKeyCustomPreviewEnabled) ?? false;
+    final customThumbStored = prefs.getInt(_prefKeyCustomSwitchThumbColor);
+    if (customThumbStored != null) {
+      _customSwitchThumbColor = Color(customThumbStored);
     }
 
     // 尝试读取新格式的主题模式设置（优先）
@@ -129,12 +150,23 @@ class ThemeService extends ChangeNotifier {
 
     // 兼容旧版：如果旧版存储了黑色作为主色，自动迁移为深色模式 + 默认色
     // ignore: deprecated_member_use
-    if (_primaryColor.value == Colors.black.value) {
+    if (!_isCustomPreviewEnabled && _primaryColor.value == Colors.black.value) {
       _themeModeSetting = ThemeModeSetting.dark;
       _primaryColor = defaultPrimaryColor;
       // ignore: deprecated_member_use
       await prefs.setInt(_prefKey, defaultPrimaryColor.value);
       await prefs.setInt(_prefKeyThemeMode, ThemeModeSetting.dark.index);
+    }
+
+    if (_isCustomPreviewEnabled && _customSwitchThumbColor == null) {
+      _customSwitchThumbColor = _resolveAutoCustomSwitchThumbColor(
+        _primaryColor,
+      );
+      // ignore: deprecated_member_use
+      await prefs.setInt(
+        _prefKeyCustomSwitchThumbColor,
+        _customSwitchThumbColor!.value,
+      );
     }
 
     // 恢复用户自定义的底部导航栏排列顺序
@@ -177,12 +209,85 @@ class ThemeService extends ChangeNotifier {
 
   /// 切换主色调并持久化，同时通知所有监听者刷新 UI。
   Future<void> setPrimaryColor(Color color) async {
-    if (_primaryColor == color) return;
+    final bool unchanged =
+        _primaryColor == color &&
+        !_isCustomPreviewEnabled &&
+        _customSwitchThumbColor == null;
+    if (unchanged) return;
+
     _primaryColor = color;
+    _isCustomPreviewEnabled = false;
+    _customSwitchThumbColor = null;
     notifyListeners();
+
     final prefs = await SharedPreferences.getInstance();
     // ignore: deprecated_member_use
     await prefs.setInt(_prefKey, color.value);
+    await prefs.setBool(_prefKeyCustomPreviewEnabled, false);
+    await prefs.remove(_prefKeyCustomSwitchThumbColor);
+  }
+
+  /// 应用自定义主题颜色，并将弹窗预览效果同步到全局主题。
+  Future<void> setCustomThemeColor({
+    required Color color,
+    required Color switchThumbColor,
+  }) async {
+    final bool unchanged =
+        _primaryColor == color &&
+        _isCustomPreviewEnabled &&
+        _customSwitchThumbColor == switchThumbColor;
+    if (unchanged) return;
+
+    _primaryColor = color;
+    _isCustomPreviewEnabled = true;
+    _customSwitchThumbColor = switchThumbColor;
+    notifyListeners();
+
+    final prefs = await SharedPreferences.getInstance();
+    // ignore: deprecated_member_use
+    await prefs.setInt(_prefKey, color.value);
+    await prefs.setBool(_prefKeyCustomPreviewEnabled, true);
+    // ignore: deprecated_member_use
+    await prefs.setInt(_prefKeyCustomSwitchThumbColor, switchThumbColor.value);
+  }
+
+  /// 根据主色自动推导“白-黑灰阶”中的开关圆点颜色。
+  Color _resolveAutoCustomSwitchThumbColor(Color color) {
+    final t = color.computeLuminance().clamp(0.0, 1.0);
+    return Color.lerp(Colors.white, Colors.black, t)!;
+  }
+
+  /// 根据背景色自动推导前景文字颜色（与自定义预览按钮逻辑一致）。
+  Color _resolveOnColor(Color backgroundColor) {
+    return ThemeData.estimateBrightnessForColor(backgroundColor) ==
+            Brightness.dark
+        ? Colors.white
+        : Colors.black87;
+  }
+
+  /// 构建“自定义主题预览效果”对应的输入框样式。
+  InputDecorationTheme _buildCustomPreviewInputDecorationTheme({
+    required ColorScheme colorScheme,
+    required Color fillColor,
+  }) {
+    return InputDecorationTheme(
+      filled: true,
+      fillColor: fillColor,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: _primaryColor.withValues(alpha: 0.35)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: _primaryColor.withValues(alpha: 0.35)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: _primaryColor, width: 1.6),
+      ),
+      hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+    );
   }
 
   /// 设置主题模式并持久化，通知所有监听者刷新 UI。
@@ -305,22 +410,70 @@ class ThemeService extends ChangeNotifier {
   // ─────────── 彩色主题 ───────────
   /// 以用户选定的颜色为种子色的标准 Material 3 亮色主题。
   ThemeData _buildColorTheme(Color seedColor) {
-    final colorScheme = ColorScheme.fromSeed(
+    final baseColorScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: Brightness.light,
     );
+    final bool useCustomPreview = _isCustomPreviewEnabled;
+    final Color previewOnPrimary = _resolveOnColor(_primaryColor);
+    final colorScheme = useCustomPreview
+        ? baseColorScheme.copyWith(
+            primary: _primaryColor,
+            onPrimary: previewOnPrimary,
+            secondary: _primaryColor,
+            onSecondary: previewOnPrimary,
+          )
+        : baseColorScheme;
 
-    return _applyCommonLightTheme(
+    final Color resolvedSwitchThumbColor = useCustomPreview
+        ? (_customSwitchThumbColor ??
+              _resolveAutoCustomSwitchThumbColor(seedColor))
+        : colorScheme.onPrimary;
+
+    final ButtonStyle elevatedButtonStyle = useCustomPreview
+        ? ElevatedButton.styleFrom(
+            backgroundColor: _primaryColor,
+            foregroundColor: previewOnPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          )
+        : ElevatedButton.styleFrom(
+            backgroundColor: colorScheme.primary,
+            foregroundColor: colorScheme.onPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          );
+
+    ThemeData theme = _applyCommonLightTheme(
       colorScheme: colorScheme,
-      elevatedButtonStyle: ElevatedButton.styleFrom(
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevatedButtonStyle: elevatedButtonStyle,
+      fabBg: useCustomPreview ? _primaryColor : colorScheme.primary,
+      fabFg: useCustomPreview ? previewOnPrimary : colorScheme.onPrimary,
+      switchActiveTrack: useCustomPreview ? _primaryColor : colorScheme.primary,
+      switchActiveThumb: resolvedSwitchThumbColor,
+    );
+
+    if (!useCustomPreview) {
+      return theme;
+    }
+
+    return theme.copyWith(
+      filledButtonTheme: FilledButtonThemeData(style: elevatedButtonStyle),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _primaryColor,
+          side: BorderSide(color: _primaryColor),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
-      fabBg: colorScheme.primary,
-      fabFg: colorScheme.onPrimary,
-      switchActiveTrack: colorScheme.primary,
-      switchActiveThumb: colorScheme.onPrimary,
+      inputDecorationTheme: _buildCustomPreviewInputDecorationTheme(
+        colorScheme: colorScheme,
+        fillColor: Colors.white,
+      ),
     );
   }
 
@@ -458,6 +611,8 @@ class ThemeService extends ChangeNotifier {
   /// 仅将 primary/secondary/tertiary 强调色替换为用户选定的颜色，
   /// 确保切换颜色时底色保持不变，与浅色模式的行为一致。
   ThemeData _buildDarkTheme() {
+    final bool useCustomPreview = _isCustomPreviewEnabled;
+    final Color previewOnPrimary = _resolveOnColor(_primaryColor);
     // 固定 blueGrey 作为 surface 底色基础，保证暗色模式底色稳定
     final base = ColorScheme.fromSeed(
       seedColor: Colors.blueGrey,
@@ -479,12 +634,12 @@ class ThemeService extends ChangeNotifier {
         brightness: Brightness.dark,
       );
       colorScheme = base.copyWith(
-        primary: accent.primary,
-        onPrimary: accent.onPrimary,
+        primary: useCustomPreview ? _primaryColor : accent.primary,
+        onPrimary: useCustomPreview ? previewOnPrimary : accent.onPrimary,
         primaryContainer: accent.primaryContainer,
         onPrimaryContainer: accent.onPrimaryContainer,
-        secondary: accent.secondary,
-        onSecondary: accent.onSecondary,
+        secondary: useCustomPreview ? _primaryColor : accent.secondary,
+        onSecondary: useCustomPreview ? previewOnPrimary : accent.onSecondary,
         secondaryContainer: accent.secondaryContainer,
         onSecondaryContainer: accent.onSecondaryContainer,
         tertiary: accent.tertiary,
@@ -522,15 +677,26 @@ class ThemeService extends ChangeNotifier {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
+          borderSide: BorderSide(
+            color: useCustomPreview
+                ? _primaryColor.withValues(alpha: 0.35)
+                : colorScheme.outlineVariant,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
+          borderSide: BorderSide(
+            color: useCustomPreview
+                ? _primaryColor.withValues(alpha: 0.35)
+                : colorScheme.outlineVariant,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+          borderSide: BorderSide(
+            color: useCustomPreview ? _primaryColor : colorScheme.primary,
+            width: useCustomPreview ? 1.6 : 2,
+          ),
         ),
         hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
       ),
@@ -538,8 +704,12 @@ class ThemeService extends ChangeNotifier {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           // 乌黑模式：黑底白字，与白天洁白模式的白底黑字形成对称
-          backgroundColor: isWhiteMode ? Colors.black : colorScheme.primary,
-          foregroundColor: isWhiteMode ? Colors.white : colorScheme.onPrimary,
+          backgroundColor: isWhiteMode
+              ? Colors.black
+              : (useCustomPreview ? _primaryColor : colorScheme.primary),
+          foregroundColor: isWhiteMode
+              ? Colors.white
+              : (useCustomPreview ? previewOnPrimary : colorScheme.onPrimary),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -549,8 +719,12 @@ class ThemeService extends ChangeNotifier {
       // FilledButton 与 ElevatedButton 保持一致的视觉风格
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: isWhiteMode ? Colors.black : colorScheme.primary,
-          foregroundColor: isWhiteMode ? Colors.white : colorScheme.onPrimary,
+          backgroundColor: isWhiteMode
+              ? Colors.black
+              : (useCustomPreview ? _primaryColor : colorScheme.primary),
+          foregroundColor: isWhiteMode
+              ? Colors.white
+              : (useCustomPreview ? previewOnPrimary : colorScheme.onPrimary),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -563,8 +737,12 @@ class ThemeService extends ChangeNotifier {
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: colorScheme.primary,
-          side: const BorderSide(color: Colors.grey),
+          foregroundColor: useCustomPreview
+              ? _primaryColor
+              : colorScheme.primary,
+          side: useCustomPreview
+              ? BorderSide(color: _primaryColor)
+              : const BorderSide(color: Colors.grey),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -575,22 +753,29 @@ class ThemeService extends ChangeNotifier {
         thumbColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             // 乌黑模式与白天洁白模式使用相同的开关颜色
-            return isWhiteMode ? Colors.white : colorScheme.onPrimary;
+            if (isWhiteMode) return Colors.white;
+            return _isCustomPreviewEnabled
+                ? (_customSwitchThumbColor ??
+                      _resolveAutoCustomSwitchThumbColor(_primaryColor))
+                : colorScheme.onPrimary;
           }
           return colorScheme.outline;
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             // 乌黑模式与白天洁白模式开关轨道色保持一致
-            return isWhiteMode ? Colors.grey.shade700 : colorScheme.primary;
+            if (isWhiteMode) return Colors.grey.shade700;
+            return useCustomPreview ? _primaryColor : colorScheme.primary;
           }
           return colorScheme.surfaceContainerHighest;
         }),
       ),
 
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
+        backgroundColor: useCustomPreview ? _primaryColor : colorScheme.primary,
+        foregroundColor: useCustomPreview
+            ? previewOnPrimary
+            : colorScheme.onPrimary,
       ),
 
       dividerTheme: DividerThemeData(color: colorScheme.outlineVariant),

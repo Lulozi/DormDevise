@@ -33,21 +33,26 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   /// 取色成功后自动应用为当前主色。
   Future<void> _showCustomColorDialog() async {
     if (!mounted) return;
-    final Color? result = await Navigator.of(context).push<Color>(
-      PageRouteBuilder<Color>(
-        opaque: false,
-        barrierDismissible: true,
-        barrierColor: Colors.black.withValues(alpha: 0.55),
-        pageBuilder: (context, animation, secondaryAnimation) {
-          return const _ThemeCustomColorDialog();
-        },
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
-    );
+    final _ThemeCustomColorResult? result = await Navigator.of(context)
+        .push<_ThemeCustomColorResult>(
+          PageRouteBuilder<_ThemeCustomColorResult>(
+            opaque: false,
+            barrierDismissible: true,
+            barrierColor: Colors.black.withValues(alpha: 0.55),
+            pageBuilder: (context, animation, secondaryAnimation) {
+              return const _ThemeCustomColorDialog();
+            },
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+          ),
+        );
     if (result != null && mounted) {
-      await ThemeService.instance.setPrimaryColor(result);
+      await ThemeService.instance.setCustomThemeColor(
+        color: result.color,
+        switchThumbColor: result.switchThumbColor,
+      );
     }
   }
 
@@ -953,10 +958,21 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
 
 // ─────────────── HSB 自定义颜色对话框 ───────────────
 
+/// 自定义主题颜色应用结果。
+class _ThemeCustomColorResult {
+  final Color color;
+  final Color switchThumbColor;
+
+  const _ThemeCustomColorResult({
+    required this.color,
+    required this.switchThumbColor,
+  });
+}
+
 /// HSB 色轮自定义颜色伪弹窗页面（透明路由 + 背景变暗）。
 ///
 /// 页面包含「效果预览 + 色轮取色」同屏内容，
-/// 通过 Navigator.pop 返回选中的 Color。
+/// 通过 Navigator.pop 返回包含主题色与开关圆点色的结果对象。
 class _ThemeCustomColorDialog extends StatefulWidget {
   const _ThemeCustomColorDialog();
 
@@ -969,6 +985,8 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
   late double _hue;
   late double _saturation;
   late double _brightness;
+  late double _switchThumbTone;
+  bool _isSwitchThumbToneManuallyAdjusted = false;
   bool _previewSwitchValue = true;
 
   @override
@@ -982,10 +1000,30 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
     _hue = hsv.hue;
     _saturation = hsv.saturation;
     _brightness = hsv.value;
+    _switchThumbTone = _resolveAutoSwitchThumbTone(_pickerColor);
   }
 
   Color get _pickerColor =>
       HSVColor.fromAHSV(1.0, _hue, _saturation, _brightness).toColor();
+
+  Color get _switchThumbColor =>
+      Color.lerp(
+        Colors.white,
+        Colors.black,
+        _switchThumbTone.clamp(0.0, 1.0),
+      ) ??
+      Colors.white;
+
+  /// 自动推导开关圆点灰阶：深色主题色偏向浅灰，浅色主题色偏向深灰。
+  double _resolveAutoSwitchThumbTone(Color color) {
+    return color.computeLuminance().clamp(0.0, 1.0);
+  }
+
+  /// 在未手动调整灰度色条时，随当前取色自动更新开关圆点灰阶。
+  void _syncSwitchThumbToneIfNeeded() {
+    if (_isSwitchThumbToneManuallyAdjusted) return;
+    _switchThumbTone = _resolveAutoSwitchThumbTone(_pickerColor);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1142,7 +1180,7 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                                   });
                                 },
                                 activeTrackColor: color,
-                                activeThumbColor: textOnColor,
+                                activeThumbColor: _switchThumbColor,
                               ),
                             ],
                           ),
@@ -1162,6 +1200,7 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                           onChanged: (s, v) => setState(() {
                             _saturation = s;
                             _brightness = v;
+                            _syncSwitchThumbToneIfNeeded();
                           }),
                         ),
                       ),
@@ -1175,7 +1214,10 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                             height: 24,
                             child: _HueSlider(
                               hue: _hue,
-                              onChanged: (h) => setState(() => _hue = h),
+                              onChanged: (h) => setState(() {
+                                _hue = h;
+                                _syncSwitchThumbToneIfNeeded();
+                              }),
                             ),
                           ),
                         ),
@@ -1195,6 +1237,47 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 10),
+                    // 开关圆点灰度色条（白 ↔ 黑）
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 24,
+                            child: _GraySlider(
+                              value: _switchThumbTone,
+                              onChanged: (v) => setState(() {
+                                _switchThumbTone = v;
+                                _isSwitchThumbToneManuallyAdjusted = true;
+                              }),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 36,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: _switchThumbColor,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '开关圆点灰度（未手动调整时自动匹配）',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     // Hex / RGB 输入
@@ -1216,6 +1299,7 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                                     _hue = hsv.hue;
                                     _saturation = hsv.saturation;
                                     _brightness = hsv.value;
+                                    _syncSwitchThumbToneIfNeeded();
                                   });
                                 }
                               }
@@ -1261,7 +1345,13 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
-                          onPressed: () => Navigator.pop(context, color),
+                          onPressed: () => Navigator.pop(
+                            context,
+                            _ThemeCustomColorResult(
+                              color: color,
+                              switchThumbColor: _switchThumbColor,
+                            ),
+                          ),
                           child: const Text('应用'),
                         ),
                       ],
@@ -1288,6 +1378,7 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
       _hue = hsv.hue;
       _saturation = hsv.saturation;
       _brightness = hsv.value;
+      _syncSwitchThumbToneIfNeeded();
     });
   }
 
@@ -1321,6 +1412,7 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
               _hue = hsv.hue;
               _saturation = hsv.saturation;
               _brightness = hsv.value;
+              _syncSwitchThumbToneIfNeeded();
             });
           },
           child: Container(
@@ -1490,6 +1582,54 @@ class _HueSlider extends StatelessWidget {
   }
 }
 
+/// 水平灰度滑块，渲染白色~黑色渐变，用于开关圆点颜色调节。
+class _GraySlider extends StatelessWidget {
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  const _GraySlider({required this.value, required this.onChanged});
+
+  void _handleInteraction(Offset localPosition, double width) {
+    final normalized = (localPosition.dx / width).clamp(0.0, 1.0);
+    onChanged(normalized);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return GestureDetector(
+          onPanStart: (d) => _handleInteraction(d.localPosition, width),
+          onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
+          child: CustomPaint(
+            painter: _GrayPainter(),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: value.clamp(0.0, 1.0) * width - 6,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 12,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 3),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// 色相条的 CustomPainter，绘制 0°~360° 彩虹渐变。
 class _HuePainter extends CustomPainter {
   @override
@@ -1504,6 +1644,24 @@ class _HuePainter extends CustomPainter {
       (i) => HSVColor.fromAHSV(1, i * 60.0, 1, 1).toColor(),
     );
     final gradient = LinearGradient(colors: colors).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = gradient);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 灰度色条的 CustomPainter，绘制白~黑渐变。
+class _GrayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+    canvas.clipRRect(rrect);
+
+    final gradient = const LinearGradient(
+      colors: [Colors.white, Colors.black],
+    ).createShader(rect);
     canvas.drawRect(rect, Paint()..shader = gradient);
   }
 
