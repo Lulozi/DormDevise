@@ -22,7 +22,13 @@ class LocalDoorLockConfigService {
       'local_post_enabled': prefs.getBool('local_post_enabled'),
       'local_post_url': prefs.getString('local_post_url'),
       'local_post_prefer_on_wifi': prefs.getBool('local_post_prefer_on_wifi'),
+      'local_multi_post_enabled': prefs.getBool('local_multi_post_enabled'),
+      'local_wifi_post_enabled': prefs.getBool('local_wifi_post_enabled'),
+      'local_saved_post_urls': prefs.getStringList('local_saved_post_urls'),
       'local_saved_wifis': prefs.getStringList('local_saved_wifis'),
+      'local_wifi_post_mappings': prefs.getStringList(
+        'local_wifi_post_mappings',
+      ),
     };
     _cachedConfig = LocalDoorLockConfig.fromStorage(storage);
     return _cachedConfig!;
@@ -37,9 +43,24 @@ class LocalDoorLockConfigService {
       'local_post_prefer_on_wifi',
       config.preferPostWhenWifiMatched,
     );
+    await prefs.setBool('local_multi_post_enabled', config.multiPostEnabled);
+    await prefs.setBool('local_wifi_post_enabled', config.wifiPostEnabled);
+    await prefs.setStringList(
+      'local_saved_post_urls',
+      config.savedPostUrls
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList(),
+    );
     await prefs.setStringList(
       'local_saved_wifis',
       config.savedWifis.map((wifi) => wifi.toStorageString()).toList(),
+    );
+    await prefs.setStringList(
+      'local_wifi_post_mappings',
+      config.wifiPostMappings
+          .map((mapping) => mapping.toStorageString())
+          .toList(),
     );
     _cachedConfig = config;
   }
