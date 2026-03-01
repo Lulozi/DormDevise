@@ -158,12 +158,26 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                             right: 0,
                             child: Column(
                               children: [
-                                LinearProgressIndicator(
-                                  value: _longPressProgress,
-                                  minHeight: 6,
-                                  backgroundColor:
-                                      colorScheme.surfaceContainerHighest,
-                                  color: colorScheme.primary,
+                                Builder(
+                                  builder: (ctx) {
+                                    final ColorScheme cs = Theme.of(
+                                      ctx,
+                                    ).colorScheme;
+                                    final Color progressColor =
+                                        Theme.of(
+                                          ctx,
+                                        ).switchTheme.trackColor?.resolve({
+                                          MaterialState.selected,
+                                        }) ??
+                                        cs.primary;
+                                    return LinearProgressIndicator(
+                                      value: _longPressProgress,
+                                      minHeight: 6,
+                                      backgroundColor:
+                                          cs.surfaceContainerHighest,
+                                      color: progressColor,
+                                    );
+                                  },
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
