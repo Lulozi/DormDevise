@@ -1074,84 +1074,98 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                           ),
                         ),
                       ),
-                      AnimatedSize(
+                      // TLS/SSL 字段区域：使用 heightFactor 动画实现展开/收起
+                      TweenAnimationBuilder<double>(
+                        tween: Tween<double>(end: _withTls ? 1.0 : 0.0),
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeInOut,
-                        child: _withTls
-                            ? Column(
-                                children: [
-                                  const SizedBox(height: 12),
-                                  GestureDetector(
-                                    onTap: () => _pickFile(
-                                      _caPathController,
-                                      dialogTitle: '选择CA证书',
-                                    ),
-                                    child: AbsorbPointer(
-                                      child: TextField(
-                                        key: const ValueKey('caPath'),
-                                        controller: _caPathController,
-                                        decoration: decoration(
-                                          'CA证书路径',
-                                          prefixIcon: const Icon(
-                                            Icons.file_present_outlined,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  GestureDetector(
-                                    onTap: () => _pickFile(
-                                      _certPathController,
-                                      dialogTitle: '选择客户端证书',
-                                    ),
-                                    child: AbsorbPointer(
-                                      child: TextField(
-                                        key: const ValueKey('certPath'),
-                                        controller: _certPathController,
-                                        decoration: decoration(
-                                          '客户端证书路径(可选)',
-                                          prefixIcon: const Icon(
-                                            Icons.assignment_turned_in_outlined,
-                                          ),
-                                        ),
-                                      ),
+                        builder: (context, value, child) {
+                          return ClipRect(
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              heightFactor: value,
+                              child: IgnorePointer(
+                                // 收起过程中禁用交互
+                                ignoring: value < 1.0 && !_withTls,
+                                child: Opacity(
+                                  opacity: value.clamp(0.0, 1.0),
+                                  child: child,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: () => _pickFile(
+                                _caPathController,
+                                dialogTitle: '选择CA证书',
+                              ),
+                              child: AbsorbPointer(
+                                child: TextField(
+                                  key: const ValueKey('caPath'),
+                                  controller: _caPathController,
+                                  decoration: decoration(
+                                    'CA证书路径',
+                                    prefixIcon: const Icon(
+                                      Icons.file_present_outlined,
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  GestureDetector(
-                                    onTap: () => _pickFile(
-                                      _keyPathController,
-                                      dialogTitle: '选择客户端私钥',
-                                    ),
-                                    child: AbsorbPointer(
-                                      child: TextField(
-                                        key: const ValueKey('keyPath'),
-                                        controller: _keyPathController,
-                                        decoration: decoration(
-                                          '客户端私钥路径(可选)',
-                                          prefixIcon: const Icon(
-                                            Icons.vpn_key_outlined,
-                                          ),
-                                        ),
-                                      ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: () => _pickFile(
+                                _certPathController,
+                                dialogTitle: '选择客户端证书',
+                              ),
+                              child: AbsorbPointer(
+                                child: TextField(
+                                  key: const ValueKey('certPath'),
+                                  controller: _certPathController,
+                                  decoration: decoration(
+                                    '客户端证书路径(可选)',
+                                    prefixIcon: const Icon(
+                                      Icons.assignment_turned_in_outlined,
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  TextField(
-                                    key: const ValueKey('keyPwd'),
-                                    controller: _keyPwdController,
-                                    decoration: decoration(
-                                      '私钥密码(可选)',
-                                      prefixIcon: const Icon(
-                                        Icons.password_outlined,
-                                      ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: () => _pickFile(
+                                _keyPathController,
+                                dialogTitle: '选择客户端私钥',
+                              ),
+                              child: AbsorbPointer(
+                                child: TextField(
+                                  key: const ValueKey('keyPath'),
+                                  controller: _keyPathController,
+                                  decoration: decoration(
+                                    '客户端私钥路径(可选)',
+                                    prefixIcon: const Icon(
+                                      Icons.vpn_key_outlined,
                                     ),
-                                    obscureText: true,
                                   ),
-                                ],
-                              )
-                            : const SizedBox.shrink(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              key: const ValueKey('keyPwd'),
+                              controller: _keyPwdController,
+                              decoration: decoration(
+                                '私钥密码(可选)',
+                                prefixIcon: const Icon(Icons.password_outlined),
+                              ),
+                              obscureText: true,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
