@@ -93,7 +93,10 @@ Future<void> showBubblePopup({
           child: Material(
             elevation: 4,
             borderRadius: BorderRadius.circular(20),
-            color: Theme.of(context).cardTheme.color ?? Theme.of(context).colorScheme.surface,
+            clipBehavior: Clip.antiAlias, // 裁剪子项，防止波纹/阴影溢出
+            color:
+                Theme.of(context).cardTheme.color ??
+                Theme.of(context).colorScheme.surface,
             child: content,
           ),
         ),
