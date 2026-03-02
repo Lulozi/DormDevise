@@ -7,7 +7,6 @@ import '../../../../models/course_schedule_config.dart';
 import '../../../../models/schedule_metadata.dart';
 import '../../../../services/course_service.dart';
 import '../../widgets/bottom_sheet_confirm.dart';
-import '../../widgets/bubble_popup.dart';
 import 'widgets/schedule_settings_sheet.dart';
 import 'create_schedule_settings_page.dart';
 
@@ -60,7 +59,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   late bool _showWeekend;
   late bool _showNonCurrentWeek;
 
-  bool _isAddMenuOpen = false;
+  // _isAddMenuOpen 和 _addBtnKey 用于旧的气泡菜单，现在不再需要
   final GlobalKey _addBtnKey = GlobalKey();
 
   List<ScheduleMetadata> _schedules = [];
@@ -250,110 +249,15 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     }
   }
 
-  BubblePopupController? _bubbleController;
-
-  Future<void> _showAddMenu(BuildContext context) async {
-    _bubbleController = BubblePopupController();
-    await showBubblePopup(
-      context: context,
-      anchorKey: _addBtnKey,
-      controller: _bubbleController,
-      content: SizedBox(
-        width: 180,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildCustomMenuItem(context, 'web', '网页导入课程表', Icons.language),
-            const Divider(height: 1, thickness: 0.5),
-            _buildCustomMenuItem(
-              context,
-              'camera',
-              '拍照导入课程表',
-              Icons.camera_alt_outlined,
-            ),
-            const Divider(height: 1, thickness: 0.5),
-            _buildCustomMenuItem(context, 'file', '文件导入课程表', Icons.folder_open),
-            const Divider(height: 1, thickness: 0.5),
-            _buildCustomMenuItem(
-              context,
-              'manual',
-              '手动创建课程表',
-              Icons.edit_outlined,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCustomMenuItem(
-    BuildContext context,
-    String value,
-    String text,
-    IconData icon,
-  ) {
-    return InkWell(
-      onTap: () async {
-        // 先关闭气泡弹窗，再执行跳转
-        await _bubbleController?.dismiss();
-        if (value == 'manual') {
-          final result = await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const CreateScheduleSettingsPage(),
-            ),
-          );
-          if (result == true && mounted) {
-            await _loadSchedules();
-            if (_schedules.isNotEmpty) {
-              setState(() {
-                _newlyAddedId = _schedules.first.id;
-                _shouldFlashNewlyAdded = true;
-              });
-            }
-          }
-        } else {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => Scaffold(
-                appBar: AppBar(title: const Text('功能开发中')),
-                body: const Center(child: Text('暂未开放')),
-              ),
-            ),
-          );
-        }
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // BubblePopupController? _bubbleController;  // 不再需要
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return PopScope(
-      canPop: !_isSelectionMode && !_isAddMenuOpen,
+      canPop: !_isSelectionMode,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (_isAddMenuOpen) {
-          await _bubbleController?.dismiss();
-          return;
-        }
         if (_isSelectionMode) {
           _toggleSelectionMode();
         } else {
@@ -424,20 +328,22 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               ),
               IconButton(
                 key: _addBtnKey,
-                icon: Icon(
-                  Icons.add,
-                  color: _isAddMenuOpen ? Colors.grey : colorScheme.primary,
-                  size: 28,
-                ),
+                icon: Icon(Icons.add, color: colorScheme.primary, size: 28),
                 onPressed: () async {
-                  setState(() {
-                    _isAddMenuOpen = true;
-                  });
-                  await _showAddMenu(context);
-                  if (mounted) {
-                    setState(() {
-                      _isAddMenuOpen = false;
-                    });
+                  // 直接跳转到手动创建页
+                  final result = await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const CreateScheduleSettingsPage(),
+                    ),
+                  );
+                  if (result == true && mounted) {
+                    await _loadSchedules();
+                    if (_schedules.isNotEmpty) {
+                      setState(() {
+                        _newlyAddedId = _schedules.first.id;
+                        _shouldFlashNewlyAdded = true;
+                      });
+                    }
                   }
                 },
               ),

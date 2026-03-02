@@ -14,6 +14,11 @@ import 'widgets/section_config_sheet.dart';
 import 'widgets/week_select_sheet.dart';
 import 'course_edit_page.dart';
 import 'all_schedules_page.dart';
+import 'camera_import_schedule_page.dart';
+import 'file_import_schedule_page.dart';
+import 'scan_import_schedule_page.dart';
+import 'schedule_share.dart';
+import 'web_import_schedule_page.dart';
 
 /// 展示并管理大学课程表的页面。
 class TablePage extends StatefulWidget {
@@ -91,12 +96,83 @@ class _TablePageState extends State<TablePage> {
     });
   }
 
-  /// 显示工具栏提示气泡，并维护返回键优先关闭所需状态。
-  Future<void> _showToolbarBubble({
-    required GlobalKey anchorKey,
-    required String message,
-  }) async {
+  /// 导入菜单条目构造器，重用 AllSchedulesPage 中的样式。
+  Widget _buildImportMenuItem(
+    String value,
+    String text,
+    IconData icon,
+    BubblePopupController controller,
+  ) {
+    return InkWell(
+      onTap: () async {
+        await controller.dismiss();
+        if (!mounted) return;
+        // 每种导入方式独立成页，后续方便分别扩展。
+        final Widget page = switch (value) {
+          'web' => const WebImportSchedulePage(),
+          'camera' => const CameraImportSchedulePage(),
+          'scan' => const ScanImportSchedulePage(),
+          'file' => const FileImportSchedulePage(),
+          _ => const WebImportSchedulePage(),
+        };
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (BuildContext context) => page));
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 显示分享菜单
+  Future<void> _showShareMenu() async {
     await _dismissToolbarBubble();
+    if (!mounted) return;
+
+    final BubblePopupController controller = BubblePopupController();
+    setState(() {
+      _toolbarBubbleController = controller;
+      _isToolbarBubbleOpen = true;
+    });
+
+    await ScheduleShare.show(
+      context: context,
+      anchorKey: _shareBtnKey,
+      controller: controller,
+      tableName: _tableName,
+      semesterRange: _formatSemesterRange(),
+      currentWeek: _currentWeek,
+    );
+
+    if (!mounted) return;
+    if (identical(_toolbarBubbleController, controller)) {
+      setState(() {
+        _toolbarBubbleController = null;
+        _isToolbarBubbleOpen = false;
+      });
+    }
+  }
+
+  /// 显示导入方法菜单，去掉手动选项。
+  Future<void> _showImportMenu() async {
+    await _dismissToolbarBubble();
+    if (!mounted) return;
 
     final controller = BubblePopupController();
     if (mounted) {
@@ -108,13 +184,36 @@ class _TablePageState extends State<TablePage> {
 
     await showBubblePopup(
       context: context,
-      anchorKey: anchorKey,
+      anchorKey: _importBtnKey,
       controller: controller,
       content: SizedBox(
         width: 160,
-        height: 80,
-        child: Center(
-          child: Text(message, style: const TextStyle(color: Colors.grey)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildImportMenuItem('web', '网页导入课表', Icons.language, controller),
+            const Divider(height: 1, thickness: 0.5),
+            _buildImportMenuItem(
+              'camera',
+              '拍照导入课表',
+              Icons.camera_alt_outlined,
+              controller,
+            ),
+            const Divider(height: 1, thickness: 0.5),
+            _buildImportMenuItem(
+              'scan',
+              '扫码导入课表',
+              Icons.qr_code_scanner,
+              controller,
+            ),
+            const Divider(height: 1, thickness: 0.5),
+            _buildImportMenuItem(
+              'file',
+              '文件导入课表',
+              Icons.folder_open,
+              controller,
+            ),
+          ],
         ),
       ),
     );
@@ -264,10 +363,7 @@ class _TablePageState extends State<TablePage> {
           tooltip: '导入课表',
           onPressed: () async {
             _exitEditMode();
-            await _showToolbarBubble(
-              anchorKey: _importBtnKey,
-              message: '导入功能开发中',
-            );
+            await _showImportMenu();
           },
           useFaIcon: true,
           iconSize: 16,
@@ -279,10 +375,7 @@ class _TablePageState extends State<TablePage> {
           tooltip: '分享课表',
           onPressed: () async {
             _exitEditMode();
-            await _showToolbarBubble(
-              anchorKey: _shareBtnKey,
-              message: '分享功能开发中',
-            );
+            await _showShareMenu();
           },
           useFaIcon: true,
           iconSize: 16,
