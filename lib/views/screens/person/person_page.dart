@@ -59,23 +59,23 @@ class _PersonPageState extends State<PersonPage> {
       ),
       _buildSettingsEntry(
         icon: Icons.lock_outline,
-        title: 'Http配置',
+        title: 'HTTP配置',
         builder: (context) => const LocalDoorLockSettingsPage(),
       ),
       _buildSettingsEntry(
         icon: Icons.dashboard_customize,
-        title: '桌面微件配置',
+        title: '桌面微件',
         builder: (context) => const DoorWidgetSettingsPage(),
-      ),
-      _buildSettingsEntry(
-        icon: Icons.cloud_download_outlined,
-        title: '下载源配置',
-        builder: (context) => const DownloadSourceConfigPage(),
       ),
       _buildSettingsEntry(
         icon: Icons.palette_outlined,
         title: '个性主题',
         builder: (context) => const ThemeSettingsPage(),
+      ),
+      _buildSettingsEntry(
+        icon: Icons.cloud_download_outlined,
+        title: '下载源',
+        builder: (context) => const DownloadSourceConfigPage(),
       ),
       _buildSettingsEntry(
         icon: Icons.info_outline,

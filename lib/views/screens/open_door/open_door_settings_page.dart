@@ -18,7 +18,7 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  final List<Tab> _tabs = const [Tab(text: 'Http配置'), Tab(text: 'MQTT 设置')];
+  final List<Tab> _tabs = const [Tab(text: 'HTTP配置'), Tab(text: 'MQTT 设置')];
 
   /// 初始化标签控制器。
   @override

@@ -164,11 +164,8 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
                                       ctx,
                                     ).colorScheme;
                                     final Color progressColor =
-                                        Theme.of(
-                                          ctx,
-                                        ).switchTheme.trackColor?.resolve({
-                                          MaterialState.selected,
-                                        }) ??
+                                        Theme.of(ctx).switchTheme.trackColor
+                                            ?.resolve({WidgetState.selected}) ??
                                         cs.primary;
                                     return LinearProgressIndicator(
                                       value: _longPressProgress,

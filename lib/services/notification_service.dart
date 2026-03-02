@@ -467,8 +467,9 @@ class NotificationService {
       // debugPrint('Checking ${course.name}: Date=$d, Week=$currentWeek, SessionWeeks=${session.startWeek}-${session.endWeek}');
 
       // 检查周次是否符合 session 要求
-      if (currentWeek < session.startWeek || currentWeek > session.endWeek)
+      if (currentWeek < session.startWeek || currentWeek > session.endWeek) {
         continue;
+      }
 
       bool isWeekValid = false;
       if (session.customWeeks.isNotEmpty) {

@@ -5,7 +5,7 @@ import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/wifi_info_service.dart';
 import 'package:flutter/material.dart';
 
-/// Http配置页面。
+/// HTTP配置页面。
 ///
 /// 提供 Post 请求开门配置、WiFi 搜索与保存、请求优先级设置等能力。
 class LocalDoorLockSettingsPage extends StatefulWidget {
@@ -374,7 +374,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
     }
   }
 
-  /// 加载Http配置并尝试读取当前 WiFi。
+  /// 加载HTTP配置并尝试读取当前 WiFi。
   Future<void> _loadConfig() async {
     final config = await LocalDoorLockConfigService.instance.loadConfig(
       forceRefresh: true,
@@ -994,22 +994,22 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                     ),
                     Switch(
                       value: _multiPostEnabled,
-                      thumbColor: MaterialStateProperty.resolveWith((states) {
-                        if (states.contains(MaterialState.disabled)) {
+                      thumbColor: WidgetStateProperty.resolveWith((states) {
+                        if (states.contains(WidgetState.disabled)) {
                           return colorScheme.onSurface.withValues(alpha: 0.25);
                         }
                         return null;
                       }),
-                      trackColor: MaterialStateProperty.resolveWith((states) {
-                        if (states.contains(MaterialState.disabled)) {
+                      trackColor: WidgetStateProperty.resolveWith((states) {
+                        if (states.contains(WidgetState.disabled)) {
                           return colorScheme.onSurface.withValues(alpha: 0.12);
                         }
                         return null;
                       }),
-                      trackOutlineColor: MaterialStateProperty.resolveWith((
+                      trackOutlineColor: WidgetStateProperty.resolveWith((
                         states,
                       ) {
-                        if (states.contains(MaterialState.disabled)) {
+                        if (states.contains(WidgetState.disabled)) {
                           return colorScheme.onSurface.withValues(alpha: 0.18);
                         }
                         return null;
@@ -1248,22 +1248,22 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                     ),
                     Switch(
                       value: _preferPostWhenWifiMatched,
-                      thumbColor: MaterialStateProperty.resolveWith((states) {
-                        if (states.contains(MaterialState.disabled)) {
+                      thumbColor: WidgetStateProperty.resolveWith((states) {
+                        if (states.contains(WidgetState.disabled)) {
                           return colorScheme.onSurface.withValues(alpha: 0.25);
                         }
                         return null;
                       }),
-                      trackColor: MaterialStateProperty.resolveWith((states) {
-                        if (states.contains(MaterialState.disabled)) {
+                      trackColor: WidgetStateProperty.resolveWith((states) {
+                        if (states.contains(WidgetState.disabled)) {
                           return colorScheme.onSurface.withValues(alpha: 0.12);
                         }
                         return null;
                       }),
-                      trackOutlineColor: MaterialStateProperty.resolveWith((
+                      trackOutlineColor: WidgetStateProperty.resolveWith((
                         states,
                       ) {
-                        if (states.contains(MaterialState.disabled)) {
+                        if (states.contains(WidgetState.disabled)) {
                           return colorScheme.onSurface.withValues(alpha: 0.18);
                         }
                         return null;
@@ -1436,7 +1436,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                     onPressed: _saving
                         ? null
                         : () async {
-                            await _saveConfig(successMessage: 'Http配置已保存');
+                            await _saveConfig(successMessage: 'HTTP配置已保存');
                           },
                     icon: _saving
                         ? const SizedBox(
@@ -1510,13 +1510,13 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: widget.showAppBar ? AppBar(title: const Text('Http配置')) : null,
+        appBar: widget.showAppBar ? AppBar(title: const Text('HTTP配置')) : null,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: widget.showAppBar ? AppBar(title: const Text('Http配置')) : null,
+      appBar: widget.showAppBar ? AppBar(title: const Text('HTTP配置')) : null,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

@@ -99,9 +99,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       setState(() {
         _schedules = schedules;
         _currentScheduleId = currentId;
-        if (_initialScheduleId == null) {
-          _initialScheduleId = currentId;
-        }
+        _initialScheduleId ??= currentId;
         _isLoading = false;
       });
     }

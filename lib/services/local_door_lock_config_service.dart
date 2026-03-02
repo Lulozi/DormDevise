@@ -1,7 +1,7 @@
 import 'package:dormdevise/models/local_door_lock_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Http配置读写服务。
+/// HTTP配置读写服务。
 class LocalDoorLockConfigService {
   LocalDoorLockConfigService._();
 
@@ -11,7 +11,7 @@ class LocalDoorLockConfigService {
 
   LocalDoorLockConfig? _cachedConfig;
 
-  /// 读取Http配置，默认优先返回缓存。
+  /// 读取HTTP配置，默认优先返回缓存。
   Future<LocalDoorLockConfig> loadConfig({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedConfig != null) {
       return _cachedConfig!;
@@ -34,7 +34,7 @@ class LocalDoorLockConfigService {
     return _cachedConfig!;
   }
 
-  /// 保存Http配置并更新缓存。
+  /// 保存HTTP配置并更新缓存。
   Future<void> saveConfig(LocalDoorLockConfig config) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('local_post_enabled', config.postEnabled);
