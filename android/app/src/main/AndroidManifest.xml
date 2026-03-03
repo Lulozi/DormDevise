@@ -25,6 +25,7 @@
         android:label="舍设"
         android:name=".DormdeviseApplication"
         android:icon="@mipmap/icon_dormdevise"
+        android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
