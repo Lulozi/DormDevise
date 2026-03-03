@@ -362,21 +362,85 @@ class FitScheduleScraper {
             kCoursePresetColors[courseMap.length % kCoursePresetColors.length],
       ),
     );
-    builder.sessions.add(
-      CourseSession(
+    final List<int> incomingWeeks = _expandWeeks(
+      start: weekRange.start,
+      end: weekRange.end,
+      weekType: weekRange.weekType,
+    );
+
+    final int existingIndex = builder.sessions.indexWhere(
+      (CourseSession s) =>
+          s.weekday == weekday &&
+          s.startSection == sectionStart &&
+          s.sectionCount == sectionCount &&
+          s.location == location,
+    );
+
+    if (existingIndex != -1) {
+      final CourseSession existing = builder.sessions[existingIndex];
+      final List<int> existingWeeks = existing.customWeeks.isNotEmpty
+          ? List<int>.from(existing.customWeeks)
+          : _expandWeeks(
+              start: existing.startWeek,
+              end: existing.endWeek,
+              weekType: existing.weekType,
+            );
+
+      final Set<int> mergedWeekSet = <int>{...existingWeeks, ...incomingWeeks};
+      final List<int> mergedWeeks = mergedWeekSet.toList()..sort();
+
+      builder.sessions[existingIndex] = CourseSession(
         weekday: weekday,
         startSection: sectionStart,
         sectionCount: sectionCount,
         location: location,
-        startWeek: weekRange.start,
-        endWeek: weekRange.end,
-        weekType: weekRange.weekType,
-      ),
-    );
+        startWeek: mergedWeeks.first,
+        endWeek: mergedWeeks.last,
+        weekType: CourseWeekType.all,
+        customWeeks: mergedWeeks,
+      );
+    } else {
+      builder.sessions.add(
+        CourseSession(
+          weekday: weekday,
+          startSection: sectionStart,
+          sectionCount: sectionCount,
+          location: location,
+          startWeek: incomingWeeks.first,
+          endWeek: incomingWeeks.last,
+          weekType: CourseWeekType.all,
+          customWeeks: incomingWeeks,
+        ),
+      );
+    }
     // 如果后续出现更完整的教师信息，更新
     if (builder.teacher.isEmpty && teacher.isNotEmpty) {
       builder.teacher = teacher;
     }
+  }
+
+  /// 将周次范围按单双周规则展开为显式周次列表，便于去重与合并。
+  static List<int> _expandWeeks({
+    required int start,
+    required int end,
+    required CourseWeekType weekType,
+  }) {
+    final List<int> weeks = <int>[];
+    for (int week = start; week <= end; week++) {
+      switch (weekType) {
+        case CourseWeekType.all:
+          weeks.add(week);
+        case CourseWeekType.single:
+          if (week.isOdd) {
+            weeks.add(week);
+          }
+        case CourseWeekType.double:
+          if (week.isEven) {
+            weeks.add(week);
+          }
+      }
+    }
+    return weeks;
   }
 
   // -------------------------------------------------------------------------
