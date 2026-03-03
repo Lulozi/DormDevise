@@ -1,16 +1,26 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../../../models/course.dart';
+import '../../../models/course_schedule_config.dart';
 import '../../../services/web_login/fit/fit_china_ocr_service.dart';
 import '../../../services/web_login/fit/fit_login_web_automation.dart';
+import '../../../services/web_login/fit/fit_schedule_scraper.dart';
 import '../../../utils/app_toast.dart';
+import '../../../utils/course_utils.dart';
+import 'create_schedule_settings_page.dart';
 
-/// 网页自动登录页面。
+/// 网页自动登录 + 课表爬取页面。
 ///
 /// 页面会在加载完成后尝试自动执行：
 /// 1. 填入账号密码；
 /// 2. 读取验证码图片并 OCR 识别；
 /// 3. 自动填入验证码并提交登录。
+///
+/// 登录成功后，用户在课表页面点击「确认」按钮即可触发爬取，
+/// 爬取到的课程数据将自动带入新建课程表页面。
 class WebImportAutoLoginWebViewPage extends StatefulWidget {
   final String schoolName;
   final String loginUrl;
@@ -37,9 +47,11 @@ class _WebImportAutoLoginWebViewPageState
   final FitChinaOcrService _fitChinaOcrService = FitChinaOcrService();
 
   InAppWebViewController? _webViewController;
-  String _statusText = '正在加载登录页面...';
+  String _statusText = '正在加载页面...';
   bool _isLoading = true;
+  bool _isPreparingWebView = true;
   bool _isAutoLoginRunning = false;
+  bool _isScraping = false;
 
   /// 记录上一次尝试自动登录的 URL，避免同一页面重复执行，
   /// 但允许在重定向到新 URL 后重新触发。
@@ -47,7 +59,35 @@ class _WebImportAutoLoginWebViewPageState
 
   bool get _isFitSchool => widget.schoolName.trim() == _fitSchoolName;
 
-  /// 统一更新状态文案，避免重复判空与 mounted 判断。
+  @override
+  void initState() {
+    super.initState();
+    _prepareWebLoginEnvironment();
+  }
+
+  /// 进入登录页前清理 Web 缓存，确保修改账号后使用最新凭据重新登录。
+  Future<void> _prepareWebLoginEnvironment() async {
+    try {
+      _updateStatus('正在清理登录缓存...');
+      await CookieManager.instance().deleteAllCookies();
+      await WebStorageManager.instance().deleteAllData();
+    } catch (error) {
+      debugPrint('[自动登录] 清理缓存失败: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPreparingWebView = false;
+          _isLoading = true;
+          _statusText = '正在加载页面...';
+        });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 状态辅助
+  // ---------------------------------------------------------------------------
+
   void _updateStatus(String statusText) {
     if (!mounted) return;
     setState(() {
@@ -55,17 +95,16 @@ class _WebImportAutoLoginWebViewPageState
     });
   }
 
-  /// 页面加载完成后触发自动登录流程。
-  ///
-  /// 仅在检测到当前 URL 为登录页（含 `login_slogin`）时执行，
-  /// 避免在非登录页面（如课表页重定向前）误触发。
+  // ---------------------------------------------------------------------------
+  // 自动登录
+  // ---------------------------------------------------------------------------
+
   Future<void> _tryAutoLogin() async {
     if (_isAutoLoginRunning) return;
 
     final InAppWebViewController? controller = _webViewController;
     if (controller == null) return;
 
-    // 获取当前实际 URL（可能经过了重定向）
     final WebUri? currentUrl = await controller.getUrl();
     final String urlString = currentUrl?.toString() ?? '';
     debugPrint('[自动登录] onLoadStop 当前 URL: $urlString');
@@ -75,16 +114,24 @@ class _WebImportAutoLoginWebViewPageState
       return;
     }
 
-    // 仅在登录页面执行（避免在课表页等非登录页触发）
+    // 仅在登录页面执行
     final bool isLoginPage = urlString.contains('login_slogin');
     if (!isLoginPage) {
       debugPrint('[自动登录] 非登录页面，跳过自动登录');
+      _updateStatus('加载完成！浏览到课表页面后__CONFIRM_HINT__');
       return;
     }
 
-    // 同一 URL 只尝试一次，重定向到新页面后可重新触发
+    // 每次停留在登录页时，先检测页面内是否已显示账号/密码错误提示。
+    final bool hasCredentialError = await _checkPageForCredentialError(
+      controller,
+    );
+    if (hasCredentialError) {
+      return;
+    }
+
     if (_lastAttemptedUrl == urlString) {
-      debugPrint('[自动登录] 已在该 URL 尝试过，跳过');
+      debugPrint('[自动登录] 已在该 URL 尝试过，跳过重复提交');
       return;
     }
 
@@ -92,7 +139,6 @@ class _WebImportAutoLoginWebViewPageState
     _lastAttemptedUrl = urlString;
 
     try {
-      // 等待页面 DOM 完全渲染（避免 onLoadStop 时元素还未就绪）
       debugPrint('[自动登录] 等待 1.5 秒确保 DOM 就绪...');
       await Future<void>.delayed(const Duration(milliseconds: 1500));
 
@@ -154,15 +200,259 @@ class _WebImportAutoLoginWebViewPageState
     }
   }
 
-  /// 手动重试自动登录（重置尝试记录，允许再次执行）。
+  /// 手动重试自动登录。
   Future<void> _retryAutoLogin() async {
     _lastAttemptedUrl = null;
     await _tryAutoLogin();
   }
 
+  /// 检测页面中是否包含密码错误提示，若检测到则返回登录页并提示。
+  /// 返回 true 表示已处理（已提示并返回），调用方应终止后续自动登录。
+  Future<bool> _checkPageForCredentialError(
+    InAppWebViewController controller,
+  ) async {
+    try {
+      final Object? bodyText = await controller.evaluateJavascript(
+        source:
+            '(function(){ return document.body ? document.body.innerText : ""; })()',
+      );
+      final String text = bodyText?.toString() ?? '';
+      if (text.contains('用户名或密码不正确') ||
+          text.contains('用户名或密码不正确，请重新输入') ||
+          text.contains('密码不正确') ||
+          text.contains('用户名或密码')) {
+        _updateStatus('账号或密码错误');
+        if (mounted) {
+          AppToast.show(
+            context,
+            '账号或密码错误，请检查后重新输入',
+            variant: AppToastVariant.error,
+          );
+          Navigator.of(context).pop();
+        }
+        return true;
+      }
+    } catch (e) {
+      debugPrint('[自动登录] 检测页面错误信息异常: $e');
+    }
+    return false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 课表爬取 + 跳转
+  // ---------------------------------------------------------------------------
+
+  /// 点击「确认」按钮后触发：爬取当前页面课表并跳转到新建课程表页面。
+  Future<void> _onConfirmScrape() async {
+    if (_isScraping) return;
+
+    final InAppWebViewController? controller = _webViewController;
+    if (controller == null) {
+      AppToast.show(context, '页面未就绪', variant: AppToastVariant.warning);
+      return;
+    }
+
+    setState(() {
+      _isScraping = true;
+    });
+    _updateStatus('正在爬取课表数据...');
+
+    try {
+      // 1. 爬取原始数据（含学年学期信息）
+      final FitScrapeResult scrapeResult =
+          await FitScheduleScraper.scrapeScheduleRaw(controller);
+
+      if (scrapeResult.isEmpty) {
+        _updateStatus('未在当前页面找到课表数据，请先导航到课表页面');
+        if (mounted) {
+          AppToast.show(
+            context,
+            '未找到课表数据，请确认当前页面是否显示课程表',
+            variant: AppToastVariant.warning,
+          );
+        }
+        return;
+      }
+
+      // 2. 解析为 Course 列表
+      final List<Course> rawCourses = FitScheduleScraper.parseRawToCourses(
+        scrapeResult.rawItems,
+      );
+
+      if (rawCourses.isEmpty) {
+        _updateStatus('课表数据解析为空，请检查页面内容');
+        if (mounted) {
+          AppToast.show(
+            context,
+            '课表解析失败，请确认页面是否正确显示课表',
+            variant: AppToastVariant.warning,
+          );
+        }
+        return;
+      }
+
+      // 3. 按教学时段拆分跨时段课程（如 1-8 节 → 上午 1-4 + 下午 5-8）
+      final CourseScheduleConfig fitConfig = _buildFitScheduleConfig();
+      final List<Course> courses = splitCrossSegmentSessions(
+        rawCourses,
+        fitConfig,
+      );
+      final int maxWeek = _computeImportedMaxWeek(courses);
+
+      _updateStatus('成功爬取 ${courses.length} 门课程，正在跳转...');
+      debugPrint('[FIT 爬取] 准备跳转，共 ${courses.length} 门课程');
+
+      if (!mounted) return;
+
+      // 4. 跳转到基本信息页面（预填充 FIT 默认配置 + 课程数据）
+      //    用户可在该页面修改配置后，再进入课程表页面。
+      final String scheduleName = '${widget.schoolName}课表';
+
+      final bool? result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (BuildContext context) => CreateScheduleSettingsPage(
+            initialScheduleName: scheduleName,
+            initialConfig: fitConfig,
+            initialSemesterStart: _guessSemesterStart(),
+            initialMaxWeek: maxWeek,
+            initialShowWeekend: _hasWeekendCourses(courses),
+            initialShowNonCurrentWeek: true,
+            initialCourses: courses,
+          ),
+        ),
+      );
+
+      // 用户在后续页面完成创建后一路返回
+      if (result == true && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (error) {
+      debugPrint('[FIT 爬取] 异常: $error');
+      _updateStatus('爬取失败：$error');
+      if (mounted) {
+        AppToast.show(context, '爬取失败：$error', variant: AppToastVariant.warning);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isScraping = false;
+        });
+      }
+    }
+  }
+
+  /// 检查课程列表中是否有周末排课（weekday == 6 或 7）。
+  bool _hasWeekendCourses(List<Course> courses) {
+    return courses.any(
+      (Course c) => c.sessions.any((CourseSession s) => s.weekday >= 6),
+    );
+  }
+
+  /// 根据导入课程估算学期总周数：最后一节课周次 + 2。
+  int _computeImportedMaxWeek(List<Course> courses) {
+    int lastWeek = 1;
+    for (final Course course in courses) {
+      for (final CourseSession session in course.sessions) {
+        if (session.customWeeks.isNotEmpty) {
+          final int customMax = session.customWeeks.reduce(max);
+          if (customMax > lastWeek) {
+            lastWeek = customMax;
+          }
+          continue;
+        }
+        if (session.endWeek > lastWeek) {
+          lastWeek = session.endWeek;
+        }
+      }
+    }
+    return lastWeek + 2;
+  }
+
+  /// 构建福州理工学院默认课表节次配置。
+  CourseScheduleConfig _buildFitScheduleConfig() {
+    return CourseScheduleConfig(
+      defaultClassDuration: const Duration(minutes: 45),
+      defaultBreakDuration: const Duration(minutes: 10),
+      segments: const <ScheduleSegmentConfig>[
+        ScheduleSegmentConfig(
+          name: '上午',
+          startTime: TimeOfDay(hour: 8, minute: 20),
+          classCount: 4,
+        ),
+        ScheduleSegmentConfig(
+          name: '下午',
+          startTime: TimeOfDay(hour: 14, minute: 0),
+          classCount: 4,
+        ),
+        ScheduleSegmentConfig(
+          name: '晚上',
+          startTime: TimeOfDay(hour: 19, minute: 0),
+          classCount: 3,
+          classDuration: Duration(minutes: 45),
+        ),
+      ],
+    );
+  }
+
+  /// 估算学期开始日期（春季 2 月下旬，秋季 9 月初）。
+  DateTime _guessSemesterStart() {
+    final DateTime now = DateTime.now();
+    if (now.month >= 1 && now.month <= 7) {
+      return DateTime(now.year, 3, 4);
+    }
+    return DateTime(now.year, 9, 1);
+  }
+
+  // ---------------------------------------------------------------------------
+  // UI 构建
+  // ---------------------------------------------------------------------------
+
+  /// 构建状态栏文本内容。
+  /// 当状态文本包含确认提示标记时，使用红色富文本显示打勾图标。
+  Widget _buildStatusContent(ColorScheme colorScheme) {
+    // 使用 __CONFIRM_HINT__ 标记来区分需要特殊展示的提示
+    if (_statusText.contains('__CONFIRM_HINT__')) {
+      final String prefix = _statusText.split('__CONFIRM_HINT__').first;
+      return Text.rich(
+        TextSpan(
+          style: TextStyle(color: colorScheme.onSurface, fontSize: 12),
+          children: <InlineSpan>[
+            TextSpan(text: prefix),
+            TextSpan(
+              text: '点击右上角 ',
+              style: const TextStyle(color: Colors.red),
+            ),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Icon(
+                Icons.check_rounded,
+                size: 16,
+                color: colorScheme.primary,
+              ),
+            ),
+            const TextSpan(
+              text: ' 导入',
+              style: TextStyle(color: Colors.red),
+            ),
+          ],
+        ),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+    return Text(
+      _statusText,
+      style: TextStyle(color: colorScheme.onSurface, fontSize: 12),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool isBusy =
+        _isPreparingWebView || _isAutoLoginRunning || _isLoading || _isScraping;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -170,7 +460,7 @@ class _WebImportAutoLoginWebViewPageState
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         title: Text(
-          '${widget.schoolName} 登录',
+          widget.schoolName,
           style: TextStyle(
             color: colorScheme.onSurface,
             fontSize: 18,
@@ -179,15 +469,29 @@ class _WebImportAutoLoginWebViewPageState
         ),
         centerTitle: true,
         actions: <Widget>[
+          // 重试按钮
           IconButton(
             onPressed: _isAutoLoginRunning ? null : _retryAutoLogin,
             tooltip: '重试自动登录',
             icon: const Icon(Icons.refresh_rounded),
           ),
+          // 确认爬取按钮（打勾图标，无圆圈）
+          IconButton(
+            onPressed: _isScraping ? null : _onConfirmScrape,
+            tooltip: '确认导入课表',
+            icon: _isScraping
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(Icons.check_rounded, color: colorScheme.primary),
+          ),
         ],
       ),
       body: Column(
         children: <Widget>[
+          // 状态栏
           Material(
             color: colorScheme.surfaceContainerHighest.withAlpha(110),
             child: Padding(
@@ -197,7 +501,7 @@ class _WebImportAutoLoginWebViewPageState
                   SizedBox(
                     width: 16,
                     height: 16,
-                    child: _isAutoLoginRunning || _isLoading
+                    child: isBusy
                         ? const CircularProgressIndicator(strokeWidth: 2)
                         : Icon(
                             Icons.check_circle_outline,
@@ -206,70 +510,91 @@ class _WebImportAutoLoginWebViewPageState
                           ),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _statusText,
-                      style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 12,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+                  Expanded(child: _buildStatusContent(colorScheme)),
                 ],
               ),
             ),
           ),
+          // WebView 主体
           Expanded(
-            child: InAppWebView(
-              initialUrlRequest: URLRequest(url: WebUri(widget.loginUrl)),
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                useShouldOverrideUrlLoading: true,
-                mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                safeBrowsingEnabled: false,
-              ),
-              onWebViewCreated: (InAppWebViewController controller) {
-                _webViewController = controller;
-              },
-              onLoadStart: (_, __) {
-                if (!mounted) return;
-                setState(() {
-                  _isLoading = true;
-                });
-              },
-              onLoadStop: (_, url) async {
-                debugPrint('[自动登录] onLoadStop 触发, url=$url');
-                if (!mounted) return;
-                setState(() {
-                  _isLoading = false;
-                });
-                await _tryAutoLogin();
-              },
-              shouldOverrideUrlLoading: (_, navigationAction) async {
-                final WebUri? requestUrl = navigationAction.request.url;
-                if (requestUrl == null) {
-                  return NavigationActionPolicy.ALLOW;
-                }
-                final String scheme = requestUrl.scheme.toLowerCase();
-                if (scheme == 'http' || scheme == 'https') {
-                  return NavigationActionPolicy.ALLOW;
-                }
-                return NavigationActionPolicy.CANCEL;
-              },
-              onReceivedServerTrustAuthRequest: (_, __) async {
-                return ServerTrustAuthResponse(
-                  action: ServerTrustAuthResponseAction.PROCEED,
-                );
-              },
-              onReceivedError: (_, request, error) {
-                if (!mounted) return;
-                if (request.isForMainFrame == true) {
-                  _updateStatus('页面加载失败：${error.description}');
-                }
-              },
-            ),
+            child: _isPreparingWebView
+                ? const Center(child: CircularProgressIndicator())
+                : InAppWebView(
+                    initialUrlRequest: URLRequest(url: WebUri(widget.loginUrl)),
+                    initialSettings: InAppWebViewSettings(
+                      javaScriptEnabled: true,
+                      useShouldOverrideUrlLoading: true,
+                      mixedContentMode:
+                          MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                      safeBrowsingEnabled: false,
+                      clearCache: true,
+                      clearSessionCache: true,
+                      cacheEnabled: false,
+                    ),
+                    onWebViewCreated: (InAppWebViewController controller) {
+                      _webViewController = controller;
+                    },
+                    onLoadStart: (_, __) {
+                      if (!mounted) return;
+                      setState(() {
+                        _isLoading = true;
+                      });
+                    },
+                    onLoadStop: (_, url) async {
+                      debugPrint('[自动登录] onLoadStop 触发, url=$url');
+                      if (!mounted) return;
+                      setState(() {
+                        _isLoading = false;
+                        _statusText = '加载完成！';
+                      });
+                      await _tryAutoLogin();
+                    },
+                    // 拦截 JS alert 弹窗，检测密码错误提示
+                    onJsAlert:
+                        (
+                          InAppWebViewController controller,
+                          JsAlertRequest jsAlertRequest,
+                        ) async {
+                          final String msg = jsAlertRequest.message ?? '';
+                          debugPrint('[自动登录] 拦截 JS alert: $msg');
+                          if (msg.contains('密码不正确') || msg.contains('用户名或密码')) {
+                            _updateStatus('账号或密码错误');
+                            if (mounted) {
+                              AppToast.show(
+                                context,
+                                '账号或密码错误，请检查后重新输入',
+                                variant: AppToastVariant.error,
+                              );
+                              Navigator.of(context).pop();
+                            }
+                            return JsAlertResponse(handledByClient: true);
+                          }
+                          // 其他 alert 正常弹出
+                          return JsAlertResponse(handledByClient: false);
+                        },
+                    shouldOverrideUrlLoading: (_, navigationAction) async {
+                      final WebUri? requestUrl = navigationAction.request.url;
+                      if (requestUrl == null) {
+                        return NavigationActionPolicy.ALLOW;
+                      }
+                      final String scheme = requestUrl.scheme.toLowerCase();
+                      if (scheme == 'http' || scheme == 'https') {
+                        return NavigationActionPolicy.ALLOW;
+                      }
+                      return NavigationActionPolicy.CANCEL;
+                    },
+                    onReceivedServerTrustAuthRequest: (_, __) async {
+                      return ServerTrustAuthResponse(
+                        action: ServerTrustAuthResponseAction.PROCEED,
+                      );
+                    },
+                    onReceivedError: (_, request, error) {
+                      if (!mounted) return;
+                      if (request.isForMainFrame == true) {
+                        _updateStatus('页面加载失败：${error.description}');
+                      }
+                    },
+                  ),
           ),
         ],
       ),

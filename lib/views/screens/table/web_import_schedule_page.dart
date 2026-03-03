@@ -195,7 +195,7 @@ class _WebImportSchedulePageState extends State<WebImportSchedulePage> {
   }
 
   /// 点击学校卡片。
-  void _onSchoolTap(int index) {
+  Future<void> _onSchoolTap(int index) async {
     if ((_swipeOffsets[index] ?? 0) < 0) {
       _closeAllSwipeActions();
       return;
@@ -209,11 +209,15 @@ class _WebImportSchedulePageState extends State<WebImportSchedulePage> {
     }
 
     final WebSchool school = _schools[index];
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+    final bool? result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (context) => WebImportLoginPage(school: school),
       ),
     );
+    // 课表创建成功后一路回退到课表主页
+    if (result == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   @override

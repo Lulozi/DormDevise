@@ -27,6 +27,9 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _usernameFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _idleFocusNode = FocusNode(skipTraversal: true);
   bool _obscurePassword = true;
   bool _isSaving = false;
   bool _isLoading = true;
@@ -41,7 +44,23 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _usernameFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _idleFocusNode.dispose();
     super.dispose();
+  }
+
+  /// 将账号/密码输入框重置到未选中状态，避免页面返回后输入法意外弹出。
+  void _resetInputFocusState() {
+    if (!mounted) return;
+    FocusScope.of(context).requestFocus(_idleFocusNode);
+    FocusManager.instance.primaryFocus?.unfocus();
+    _usernameController.selection = TextSelection.collapsed(
+      offset: _usernameController.text.length,
+    );
+    _passwordController.selection = TextSelection.collapsed(
+      offset: _passwordController.text.length,
+    );
   }
 
   /// 加载已保存的凭据（如果有）。
@@ -95,8 +114,8 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
           '账号密码已加密保存，正在打开登录页',
           variant: AppToastVariant.success,
         );
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
+        final bool? result = await Navigator.of(context).push<bool>(
+          MaterialPageRoute<bool>(
             builder: (context) => WebImportAutoLoginWebViewPage(
               schoolName: widget.school.name,
               loginUrl: loginUrl,
@@ -105,6 +124,14 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
             ),
           ),
         );
+
+        // 返回登录页后重置焦点，防止输入法误弹。
+        _resetInputFocusState();
+
+        // 课表创建成功后一路回退到课表主页
+        if (result == true && mounted) {
+          Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -240,6 +267,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: _usernameController,
+                          focusNode: _usernameFocusNode,
                           style: TextStyle(
                             fontSize: 15,
                             color: colorScheme.onSurface,
@@ -290,6 +318,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: _passwordController,
+                          focusNode: _passwordFocusNode,
                           obscureText: _obscurePassword,
                           style: TextStyle(
                             fontSize: 15,
