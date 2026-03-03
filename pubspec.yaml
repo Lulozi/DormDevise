@@ -91,6 +91,7 @@ flutter:
   assets:
     - assets/images/person/
     - assets/images/start/
+    - assets/images/schoolBadge/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
