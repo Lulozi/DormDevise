@@ -205,12 +205,17 @@ class FitScheduleScraper {
     final Map<String, _CourseBuilder> courseMap = <String, _CourseBuilder>{};
 
     for (final Map<String, dynamic> item in rawList) {
-      final String courseName = (item['courseName'] as String?) ?? '';
+      // 将中文括号统一替换为英文括号以减少显示占位宽度
+      final String courseName = ((item['courseName'] as String?) ?? '')
+          .replaceAll('（', '(')
+          .replaceAll('）', ')');
       final String sectionWeekText = (item['sectionWeekText'] as String?) ?? '';
       final String location = _normalizeImportedLocation(
         (item['location'] as String?) ?? '',
       );
-      final String teacher = (item['teacher'] as String?) ?? '';
+      final String teacher = ((item['teacher'] as String?) ?? '')
+          .replaceAll('（', '(')
+          .replaceAll('）', ')');
       final int weekday = (item['weekday'] as int?) ?? 0;
 
       if (courseName.isEmpty || weekday <= 0) continue;
@@ -462,9 +467,12 @@ class FitScheduleScraper {
       '',
     );
 
-    final String normalized = stripped.trim();
+    String normalized = stripped.trim();
     // 若剥离后为空，则回退原值，避免误伤极端数据。
-    return normalized.isEmpty ? text : normalized;
+    if (normalized.isEmpty) normalized = text;
+    // 将中文括号替换为英文括号以减少占位宽度
+    normalized = normalized.replaceAll('（', '(').replaceAll('）', ')');
+    return normalized;
   }
 
   // -------------------------------------------------------------------------
