@@ -75,13 +75,52 @@ class FitLoginWebAutomation {
         const passwordInput = await _waitFor('mm',  3000);
 
         const yhmOk = _setValue(usernameInput, username);
-        const mmOk  = _setValue(passwordInput, password);
+
+        const _setPasswordSecure = (el, val) => {
+          if (!el) {
+            return { filled: false, masked: false };
+          }
+
+          try {
+            // 强制密码框为掩码模式，避免明文显示。
+            el.setAttribute('type', 'password');
+            el.autocomplete = 'off';
+            el.style.webkitTextSecurity = 'disc';
+          } catch (_) {}
+
+          const nativeSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value'
+          )?.set;
+          if (nativeSetter) {
+            nativeSetter.call(el, val);
+          } else {
+            el.value = val;
+          }
+
+          el.dispatchEvent(new Event('input',  { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+
+          // 某些页面脚本可能把 type 改回 text，这里再次兜底恢复为 password。
+          try {
+            if ((el.type || '').toLowerCase() !== 'password') {
+              el.setAttribute('type', 'password');
+            }
+          } catch (_) {}
+
+          return {
+            filled: true,
+            masked: (el.type || '').toLowerCase() === 'password'
+          };
+        };
+
+        const mmResult = _setPasswordSecure(passwordInput, password);
 
         return {
           yhmFound:  !!usernameInput,
           mmFound:   !!passwordInput,
           yhmFilled: yhmOk,
-          mmFilled:  mmOk
+          mmFilled:  mmResult.filled,
+          mmMasked:  mmResult.masked
         };
       ''',
           arguments: <String, dynamic>{
