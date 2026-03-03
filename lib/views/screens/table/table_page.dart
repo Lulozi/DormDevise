@@ -404,16 +404,16 @@ class _TablePageState extends State<TablePage> {
     );
   }
 
-  /// 格式化学期日期范围便于展示。
+  /// 格式化学期日期范围便于展示，含学期序号。
   String _formatSemesterRange() {
     final int year = _currentSemesterStart.year;
     final int month = _currentSemesterStart.month;
     // 一般高校秋季学期从8-9月开始，属于当前年份至下一年份的学年
     // 春季学期从2-3月开始，属于上一年份至当前年份的学年
     if (month >= 8) {
-      return '$year-${year + 1} 学年';
+      return '$year-${year + 1} 学年 第 1 学期';
     } else {
-      return '${year - 1}-$year 学年';
+      return '${year - 1}-$year 学年 第 2 学期';
     }
   }
 
