@@ -352,6 +352,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 behavior: _NoOverscrollBehavior(),
                 child: SingleChildScrollView(
                   controller: scrollController,
+                  clipBehavior: Clip.none,
                   physics: _selectedBlock != null || _draggingBlock != null
                       ? const NeverScrollableScrollPhysics()
                       : const ClampingScrollPhysics(),
@@ -359,6 +360,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   child: SizedBox(
                     height: tableHeight,
                     child: Stack(
+                      clipBehavior: Clip.none,
                       children: <Widget>[
                         Positioned.fill(
                           left: includeTimeColumn ? resolvedTimeWidth : 0,
@@ -366,6 +368,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                               ? SingleChildScrollView(
                                   controller: _horizontalController,
                                   scrollDirection: Axis.horizontal,
+                                  clipBehavior: Clip.none,
                                   physics:
                                       _selectedBlock != null ||
                                           _draggingBlock != null
@@ -418,6 +421,12 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                             tableHeight,
                                             blockIndex: i,
                                           ),
+                                        _buildOverlapBadgeLayer(
+                                          context,
+                                          blocks,
+                                          dayWidth,
+                                          sectionOffsets,
+                                        ),
                                         // 拖拽时的悬浮卡片
                                         if (_draggingBlock != null)
                                           _buildDraggingOverlay(
@@ -476,6 +485,12 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                           tableHeight,
                                           blockIndex: i,
                                         ),
+                                      _buildOverlapBadgeLayer(
+                                        context,
+                                        blocks,
+                                        dayWidth,
+                                        sectionOffsets,
+                                      ),
                                       // 拖拽时的悬浮卡片
                                       if (_draggingBlock != null)
                                         _buildDraggingOverlay(
@@ -924,18 +939,22 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     final bool isDragging =
         _draggingBlock != null &&
         _draggingBlock!.course == block.course &&
-        _draggingBlock!.session == block.session;
+        _draggingBlock!.session == block.session &&
+        _draggingBlock!.renderStartSection == block.renderStartSection &&
+        _draggingBlock!.renderSectionCount == block.renderSectionCount;
 
     final ColorScheme cs = Theme.of(context).colorScheme;
+    final ColorScheme ns = _neutralScheme(context);
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     // 暗色模式下降低课程色块的亮度和饱和度，使其柔和
     final Color courseColor = isDark
         ? dimColorForDark(block.course.color)
         : block.course.color;
-    // 暗色模式下提高不透明度，防止深色背景穿透导致色块难以辨识
-    // 课程卡片不使用半透明，改用亮度微调实现渐变效果
+    // 非本周课程固定使用中性灰阶，不受主题主色影响。
+    final Color nonCurrentTopColor = ns.surfaceContainerHighest;
+    final Color nonCurrentBottomColor = ns.surfaceContainerLow;
     final List<Color> gradientColors = isNonCurrent
-        ? <Color>[cs.surfaceContainerHighest, cs.surfaceContainerLow]
+        ? <Color>[nonCurrentTopColor, nonCurrentBottomColor]
         : <Color>[
             courseColor,
             Color.lerp(
@@ -951,7 +970,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         ? Colors.white
         : cs.onSurface;
     final Color detailColor = isNonCurrent
-        ? cs.outline
+        ? (isDark ? Colors.grey[600]! : cs.outline)
         : isDark
         ? Colors.white70
         : cs.onSurfaceVariant;
@@ -964,18 +983,18 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     final TextStyle detailStyle = textTheme.bodySmall!.copyWith(
       color: detailColor,
     );
-
-    final double startOffset =
-        sectionOffsets[block.session.startSection] ?? 0.0;
+    final double startOffset = sectionOffsets[block.renderStartSection] ?? 0.0;
     final int endSectionIndex =
-        block.session.startSection + block.session.sectionCount - 1;
+        block.renderStartSection + block.renderSectionCount - 1;
     final double endOffset = sectionOffsets[endSectionIndex] ?? startOffset;
     final double blockHeight = endOffset + sectionHeight - startOffset;
 
     final bool isSelected =
         _selectedBlock != null &&
         _selectedBlock!.course == block.course &&
-        _selectedBlock!.session == block.session;
+        _selectedBlock!.session == block.session &&
+        _selectedBlock!.renderStartSection == block.renderStartSection &&
+        _selectedBlock!.renderSectionCount == block.renderSectionCount;
 
     // 构建调整手柄圆点
     Widget buildDotHandle(bool isTop) {
@@ -1043,66 +1062,71 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            if (isNonCurrent)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  '[非本周]',
-                  style: detailStyle.copyWith(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (isNonCurrent)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      '[非本周]',
+                      style: detailStyle.copyWith(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                // 1. 自适应课程名（标题）
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Text(
+                    block.course.name,
+                    style: titleStyle.copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.fade,
                   ),
                 ),
-              ),
-            // 1. 自适应课程名（标题）
-            Flexible(
-              fit: FlexFit.loose,
-              child: Text(
-                block.course.name,
-                style: titleStyle.copyWith(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-                overflow: TextOverflow.fade,
-              ),
+                // 2. 教室信息（独立一行，限制最大高度比例）
+                if (block.session.location.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: blockHeight * 0.3, // 最多占用 30% 高度
+                    ),
+                    child: Text(
+                      '@${block.session.location}',
+                      style: detailStyle.copyWith(fontSize: 10),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 10, // 允许显示多行，由高度限制
+                    ),
+                  ),
+                ],
+                // 3. 教师/备注信息（独立一行，限制最大高度比例）
+                if (block.course.teacher.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: blockHeight * 0.2, // 最多占用 20% 高度
+                    ),
+                    child: Text(
+                      block.course.teacher,
+                      style: detailStyle.copyWith(fontSize: 10),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 10,
+                    ),
+                  ),
+                ],
+              ],
             ),
-            // 2. 教室信息（独立一行，限制最大高度比例）
-            if (block.session.location.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: blockHeight * 0.3, // 最多占用 30% 高度
-                ),
-                child: Text(
-                  '@${block.session.location}',
-                  style: detailStyle.copyWith(fontSize: 10),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 10, // 允许显示多行，由高度限制
-                ),
-              ),
-            ],
-            // 3. 教师/备注信息（独立一行，限制最大高度比例）
-            if (block.course.teacher.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: blockHeight * 0.2, // 最多占用 20% 高度
-                ),
-                child: Text(
-                  block.course.teacher,
-                  style: detailStyle.copyWith(fontSize: 10),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 10,
-                ),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
 
@@ -1436,6 +1460,91 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     );
   }
 
+  /// 构建重叠数量角标层。
+  ///
+  /// 角标独立于课程卡片单独渲染，始终位于课程层上方，
+  /// 避免被其他课程卡片覆盖。
+  Widget _buildOverlapBadgeLayer(
+    BuildContext context,
+    List<_CourseBlock> blocks,
+    double dayWidth,
+    Map<int, double> sectionOffsets,
+  ) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    // 非本周角标固定灰红色（不随主题变）
+    const Color nonCurrentBadgeBg = Color(0xFFDCC9CB);
+    const Color nonCurrentBadgeText = Color(0xFF8A666A);
+    const Color nonCurrentBadgeBorder = Color(0xFFCDB5B8);
+
+    const double cardMargin = 2;
+    const double badgeRadius = 9;
+    const double anchorShiftRatio = 0.25;
+
+    return IgnorePointer(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          for (final _CourseBlock block in blocks)
+            if (block.overlapCount > 1 &&
+                // 同一课程被拆分时只在首段显示角标
+                block.renderStartSection == block.session.startSection &&
+                !(_draggingBlock != null &&
+                    _draggingBlock!.course == block.course &&
+                    _draggingBlock!.session == block.session))
+              () {
+                final double startOffset =
+                    sectionOffsets[block.renderStartSection] ?? 0.0;
+                // 卡片右上角最突出点（外边界顶点）
+                final double cornerX =
+                    block.columnIndex * dayWidth + (dayWidth - cardMargin);
+                final double cornerY = startOffset + cardMargin;
+
+                // 以“角标中心点偏右上 25% 的位置”作为锚点，与卡片右上角重叠。
+                // 锚点 = (centerX + 0.25r, centerY - 0.25r) = corner
+                final double badgeCenterX =
+                    cornerX - badgeRadius * anchorShiftRatio;
+                final double badgeCenterY =
+                    cornerY + badgeRadius * anchorShiftRatio;
+
+                final bool isNonCurrent = block.isNonCurrent;
+                final Color badgeBgColor = isNonCurrent
+                    ? nonCurrentBadgeBg
+                    : cs.error.withValues(alpha: 0.92);
+                final Color badgeTextColor = isNonCurrent
+                    ? nonCurrentBadgeText
+                    : Colors.white;
+                final Color badgeBorderColor = isNonCurrent
+                    ? nonCurrentBadgeBorder
+                    : Colors.white;
+
+                return Positioned(
+                  left: badgeCenterX - badgeRadius,
+                  top: badgeCenterY - badgeRadius,
+                  child: Container(
+                    width: badgeRadius * 2,
+                    height: badgeRadius * 2,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: badgeBgColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: badgeBorderColor, width: 1),
+                    ),
+                    child: Text(
+                      '${block.overlapCount}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: badgeTextColor,
+                      ),
+                    ),
+                  ),
+                );
+              }(),
+        ],
+      ),
+    );
+  }
+
   /// 处理调整大小的更新
   void _handleResizeUpdate(
     double totalDelta,
@@ -1693,7 +1802,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         ? Colors.white
         : dcs.onSurface;
     final Color detailColor = isNonCurrent
-        ? dcs.outline
+        ? (isDarkDrag ? Colors.grey[600]! : dcs.outline)
         : isDarkDrag
         ? Colors.white70
         : dcs.onSurfaceVariant;
@@ -2013,9 +2122,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
   /// 根据当前周次构建需展示的课程区块。
   List<_CourseBlock> _buildBlocks(Map<int, int> columnMap) {
-    final List<_CourseBlock> blocks = <_CourseBlock>[];
+    final List<_CourseBlock> rawBlocks = <_CourseBlock>[];
     if (sections.isEmpty) {
-      return blocks;
+      return rawBlocks;
     }
     for (final Course course in courses) {
       // 如果显示非本周课程，则遍历所有 session，否则只遍历本周 session
@@ -2053,7 +2162,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           (SectionTime info) => info.index == endIndex,
           orElse: () => startSection,
         );
-        blocks.add(
+        rawBlocks.add(
           _CourseBlock(
             course: course,
             session: session,
@@ -2065,17 +2174,121 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         );
       }
     }
-    // 将非本周课程排在前面（底层），本周课程排在后面（顶层）
-    blocks.sort((_CourseBlock a, _CourseBlock b) {
+    // 将非本周课程排在前面（底层），本周课程排在后面（顶层）。
+    // 同一层内，长课放在下层，短课放在上层，便于被覆盖时做分段展示。
+    rawBlocks.sort((_CourseBlock a, _CourseBlock b) {
       if (a.isNonCurrent && !b.isNonCurrent) {
         return -1;
       }
       if (!a.isNonCurrent && b.isNonCurrent) {
         return 1;
       }
-      return 0;
+      final int lenCmp = b.session.sectionCount.compareTo(
+        a.session.sectionCount,
+      );
+      if (lenCmp != 0) {
+        return lenCmp;
+      }
+      return a.session.startSection.compareTo(b.session.startSection);
     });
-    return blocks;
+
+    if (rawBlocks.isEmpty) {
+      return rawBlocks;
+    }
+
+    // 预计算每个课程块的重叠数量（用于右上角数字角标）。
+    final List<int> overlapCounts = List<int>.filled(rawBlocks.length, 1);
+    for (int i = 0; i < rawBlocks.length; i++) {
+      final _CourseBlock current = rawBlocks[i];
+      final int start = current.session.startSection;
+      final int end = start + current.session.sectionCount - 1;
+      int count = 1;
+      for (int j = 0; j < rawBlocks.length; j++) {
+        if (i == j) {
+          continue;
+        }
+        final _CourseBlock other = rawBlocks[j];
+        if (other.columnIndex != current.columnIndex) {
+          continue;
+        }
+        final int otherStart = other.session.startSection;
+        final int otherEnd = otherStart + other.session.sectionCount - 1;
+        if (start <= otherEnd && end >= otherStart) {
+          count++;
+        }
+      }
+      overlapCounts[i] = count;
+    }
+
+    // 将被上层覆盖的课程块按可见节次拆分显示，避免超长课被整体遮住。
+    final List<_CourseBlock> displayBlocks = <_CourseBlock>[];
+    for (int i = 0; i < rawBlocks.length; i++) {
+      final _CourseBlock block = rawBlocks[i];
+      final int start = block.session.startSection;
+      final int end = start + block.session.sectionCount - 1;
+      final Set<int> coveredSections = <int>{};
+
+      for (int j = i + 1; j < rawBlocks.length; j++) {
+        final _CourseBlock upper = rawBlocks[j];
+        if (upper.columnIndex != block.columnIndex) {
+          continue;
+        }
+        final int upperStart = upper.session.startSection;
+        final int upperEnd = upperStart + upper.session.sectionCount - 1;
+        if (upperStart > end || upperEnd < start) {
+          continue;
+        }
+        final int overlapStart = math.max(start, upperStart);
+        final int overlapEnd = math.min(end, upperEnd);
+        for (int section = overlapStart; section <= overlapEnd; section++) {
+          coveredSections.add(section);
+        }
+      }
+
+      int? runStart;
+      for (int section = start; section <= end; section++) {
+        final bool isVisible = !coveredSections.contains(section);
+        if (isVisible) {
+          runStart ??= section;
+          continue;
+        }
+        if (runStart != null) {
+          final int runEnd = section - 1;
+          displayBlocks.add(
+            _CourseBlock(
+              course: block.course,
+              session: block.session,
+              columnIndex: block.columnIndex,
+              startTime: block.startTime,
+              endTime: block.endTime,
+              isNonCurrent: block.isNonCurrent,
+              renderStartSection: runStart,
+              renderSectionCount: runEnd - runStart + 1,
+              overlapCount: overlapCounts[i],
+            ),
+          );
+          runStart = null;
+        }
+      }
+
+      if (runStart != null) {
+        displayBlocks.add(
+          _CourseBlock(
+            course: block.course,
+            session: block.session,
+            columnIndex: block.columnIndex,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            isNonCurrent: block.isNonCurrent,
+            renderStartSection: runStart,
+            renderSectionCount: end - runStart + 1,
+            overlapCount: overlapCounts[i],
+          ),
+        );
+      }
+    }
+
+    return displayBlocks;
   }
 
   /// 构建时间列，支持进入节次配置。
@@ -2432,14 +2645,27 @@ class _CourseBlock {
   /// 是否为非本周课程 (isNonCurrent)。
   final bool isNonCurrent;
 
-  const _CourseBlock({
+  /// 当前渲染片段的起始节次（用于被覆盖时拆分显示）。
+  final int renderStartSection;
+
+  /// 当前渲染片段的节次数（用于被覆盖时拆分显示）。
+  final int renderSectionCount;
+
+  /// 与当前块重叠的课程数量（用于右上角数字角标）。
+  final int overlapCount;
+
+  _CourseBlock({
     required this.course,
     required this.session,
     required this.columnIndex,
     required this.startTime,
     required this.endTime,
     this.isNonCurrent = false,
-  });
+    int? renderStartSection,
+    int? renderSectionCount,
+    this.overlapCount = 1,
+  }) : renderStartSection = renderStartSection ?? session.startSection,
+       renderSectionCount = renderSectionCount ?? session.sectionCount;
 }
 
 /// 课表的行槽信息，用于区分节次行与分隔行。
