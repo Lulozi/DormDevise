@@ -207,7 +207,9 @@ class FitScheduleScraper {
     for (final Map<String, dynamic> item in rawList) {
       final String courseName = (item['courseName'] as String?) ?? '';
       final String sectionWeekText = (item['sectionWeekText'] as String?) ?? '';
-      final String location = (item['location'] as String?) ?? '';
+      final String location = _normalizeImportedLocation(
+        (item['location'] as String?) ?? '',
+      );
       final String teacher = (item['teacher'] as String?) ?? '';
       final int weekday = (item['weekday'] as int?) ?? 0;
 
@@ -441,6 +443,28 @@ class FitScheduleScraper {
       }
     }
     return weeks;
+  }
+
+  /// 规范化导入教室文本：去掉开头“XX校区”前缀，仅保留实际上课地点。
+  ///
+  /// 示例：
+  /// - `连江校区博学楼105` -> `博学楼105`
+  /// - `连江校区 博学楼105` -> `博学楼105`
+  /// - `博学楼105` -> `博学楼105`
+  static String _normalizeImportedLocation(String rawLocation) {
+    final String text = rawLocation.trim();
+    if (text.isEmpty) {
+      return text;
+    }
+
+    final String stripped = text.replaceFirst(
+      RegExp(r'^[\u4e00-\u9fa5A-Za-z]{1,12}校区[\s\-—–·、，,]*'),
+      '',
+    );
+
+    final String normalized = stripped.trim();
+    // 若剥离后为空，则回退原值，避免误伤极端数据。
+    return normalized.isEmpty ? text : normalized;
   }
 
   // -------------------------------------------------------------------------
