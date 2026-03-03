@@ -16,18 +16,40 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   /// 开关预览的状态（可交互切换，仅做展示用）
   bool _previewSwitchValue = true;
 
-  /// 预设主色列表（差异化色系，每排五个）
+  /// 预设主色列表（差异化色系，每排五个）。
+  /// 标签根据 Material 3 派生的实际 primary 颜色命名，而非种子色。
+  /// M3 primary 色相分布：6°→44°→66°→118°→187°→220°→261°→295°
   static const List<_PresetColor> _presets = [
     _PresetColor(color: Colors.white, label: '洁白'),
-    _PresetColor(color: Colors.blueAccent, label: '蔚蓝'),
-    _PresetColor(color: Colors.teal, label: '青碧'),
-    _PresetColor(color: Colors.green, label: '翠绿'),
-    _PresetColor(color: Colors.orange, label: '暖橙'),
-    _PresetColor(color: Colors.redAccent, label: '活力红'),
-    _PresetColor(color: Colors.purple, label: '优雅紫'),
-    _PresetColor(color: Colors.indigo, label: '深靛青'),
-    _PresetColor(color: Color(0xFFFF6699), label: '少女粉'),
+    _PresetColor(color: Colors.red, label: '朱砂'),
+    _PresetColor(color: Colors.amber, label: '琥珀'),
+    _PresetColor(color: Colors.lime, label: '苔绿'),
+    _PresetColor(color: Colors.green, label: '松绿'),
+    _PresetColor(color: Colors.cyan, label: '碧波'),
+    _PresetColor(color: Colors.blueAccent, label: '雾蓝'),
+    _PresetColor(color: Colors.deepPurple, label: '堇紫'),
+    _PresetColor(color: Colors.purple, label: '紫藤'),
   ];
+
+  /// 缓存：每个预设种子色经 Material 3 转换后的浅色/深色 primary 对。
+  /// 色块展示色 = lerp(lightPrimary, darkPrimary, themeTransitionProgress)，
+  /// 与主按钮颜色保持完全一致。
+  static final List<(Color light, Color dark)> _presetPrimaries = _presets.map((
+    p,
+  ) {
+    // 洁白/乌黑由独立逻辑处理（白→黑 线性过渡）
+    if (p.color == Colors.white) return (Colors.white, Colors.black);
+    return (
+      ColorScheme.fromSeed(
+        seedColor: p.color,
+        brightness: Brightness.light,
+      ).primary,
+      ColorScheme.fromSeed(
+        seedColor: p.color,
+        brightness: Brightness.dark,
+      ).primary,
+    );
+  }).toList();
 
   /// 弹出 HSB 色轮取色对话框（与编辑课程的自定义颜色弹窗风格统一）。
   ///
@@ -63,7 +85,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     final currentColor = ThemeService.instance.primaryColor;
     final currentMode = ThemeService.instance.themeModeSetting;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final whitePresetDisplayColor = _resolveWhitePresetDisplayColor(context);
+    // 不再单独计算白色预设，改用通用方法
     final previewInputFillColor = _resolvePreviewInputFillColor(context);
 
     return Scaffold(
@@ -145,33 +167,43 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                     // +1 为末尾的"自定义"入口
                     itemCount: _presets.length + 1,
                     itemBuilder: (context, index) {
-                      final bool isPresetSelected = _presets.any(
-                        (p) => p.color.toARGB32() == currentColor.toARGB32(),
-                      );
-                      if (index == _presets.length) {
+                      if (index < _presets.length) {
+                        // 预设色块：使用 M3 派生的实际 primary 颜色展示
+                        final preset = _presets[index];
+                        return _ColorTile(
+                          preset: preset,
+                          isSelected:
+                              !ThemeService.instance.isCustomPreviewEnabled &&
+                              preset.color.toARGB32() ==
+                                  currentColor.toARGB32(),
+                          displayColor: _resolvePresetDisplayColor(
+                            context,
+                            index,
+                          ),
+                          selectedBorderColor: colorScheme.primary,
+                          onTap: () async {
+                            await ThemeService.instance.setPrimaryColor(
+                              preset.color,
+                            );
+                          },
+                        );
+                      } else {
+                        // 自定义入口：仅在自定义模式下选中
                         return _CustomColorTile(
-                          rainbowColors: _presets.map((p) => p.color).toList(),
+                          // 排除洁白，仅用其他 8 个预设的 M3 primary 组成过渡色
+                          // 深色模式用深色端 primary，浅色模式用浅色端
+                          rainbowColors: _presetPrimaries
+                              .skip(1) // 跳过洁白/乌黑
+                              .map((pair) => isDark ? pair.$2 : pair.$1)
+                              .toList(),
                           selectedColor: currentColor,
-                          isSelected: !isPresetSelected,
-                          onTap: () {
-                            _showCustomColorDialog();
+                          isSelected:
+                              ThemeService.instance.isCustomPreviewEnabled,
+                          onTap: () async {
+                            await _showCustomColorDialog();
                           },
                         );
                       }
-                      final preset = _presets[index];
-                      final isSelected =
-                          currentColor.toARGB32() == preset.color.toARGB32();
-                      return _ColorTile(
-                        preset: preset,
-                        isSelected: isSelected,
-                        whitePresetDisplayColor: whitePresetDisplayColor,
-                        selectedBorderColor: colorScheme.primary,
-                        onTap: () async {
-                          await ThemeService.instance.setPrimaryColor(
-                            preset.color,
-                          );
-                        },
-                      );
                     },
                   ),
                   const SizedBox(height: 4),
@@ -322,10 +354,14 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
         .toDouble();
   }
 
-  /// 洁白预设在主题切换时按同一进度从白色过渡到乌黑。
-  Color _resolveWhitePresetDisplayColor(BuildContext context) {
+  /// 解析指定预设色块的展示颜色（Material 3 派生的 primary）。
+  ///
+  /// 在亮暗主题过渡期间按 [_resolveThemeTransitionProgress] 线性插值，
+  /// 确保色块颜色变化与主按钮等主题组件完全同步。
+  Color _resolvePresetDisplayColor(BuildContext context, int index) {
     final progress = _resolveThemeTransitionProgress(context);
-    return Color.lerp(Colors.white, Colors.black, progress) ?? Colors.white;
+    final (light, dark) = _presetPrimaries[index];
+    return Color.lerp(light, dark, progress) ?? light;
   }
 
   /// 输入框预览底色与全局主题切换保持同速过渡。
@@ -1054,6 +1090,9 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               padding: const EdgeInsets.all(16),
+              // 裁剪子组件到圆角范围内，防止 SingleChildScrollView
+              // 滚动时内容从圆角处溢出导致视觉错乱
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
                 borderRadius: BorderRadius.circular(20),
@@ -1465,6 +1504,10 @@ class _SVPicker extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         return GestureDetector(
+          // onPanDown 让 PanGestureRecognizer 立即参与竞争，
+          // 赢过 SingleChildScrollView 的 VerticalDragGestureRecognizer，
+          // 确保手指在色板上滑动时只调色而不滚动弹窗页面。
+          onPanDown: (_) {},
           onPanStart: (d) =>
               _handleInteraction(d.localPosition, constraints.biggest),
           onPanUpdate: (d) =>
@@ -1759,14 +1802,16 @@ class _CompactTextFieldState extends State<_CompactTextField> {
 class _ColorTile extends StatelessWidget {
   final _PresetColor preset;
   final bool isSelected;
-  final Color whitePresetDisplayColor;
+
+  /// 实际展示的颜色（Material 3 派生的 primary，由父级计算并传入）
+  final Color displayColor;
   final Color selectedBorderColor;
   final VoidCallback onTap;
 
   const _ColorTile({
     required this.preset,
     required this.isSelected,
-    required this.whitePresetDisplayColor,
+    required this.displayColor,
     required this.selectedBorderColor,
     required this.onTap,
   });
@@ -1776,9 +1821,6 @@ class _ColorTile extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // 深色模式下白色预设展示为"乌黑"
     final bool isWhitePreset = preset.color == Colors.white;
-    final Color displayColor = isWhitePreset
-        ? whitePresetDisplayColor
-        : preset.color;
     final String displayLabel = (isDark && isWhitePreset) ? '乌黑' : preset.label;
 
     final brightness = ThemeData.estimateBrightnessForColor(displayColor);
@@ -1794,9 +1836,11 @@ class _ColorTile extends StatelessWidget {
         children: [
           AspectRatio(
             aspectRatio: 1.0,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
+            // 不使用 AnimatedContainer 包裹颜色，避免其内部 250ms 动画
+            // 与 MaterialApp 500ms 主题过渡叠加导致速率不同步。
+            // displayColor 每帧由 Theme.of(context) 驱动更新，
+            // 与主按钮等主题组件的过渡保持完全一致。
+            child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 color: displayColor,

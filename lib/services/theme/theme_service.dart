@@ -76,6 +76,9 @@ class ThemeService extends ChangeNotifier {
   /// 当前用户选择的主色调
   Color get primaryColor => _primaryColor;
 
+  /// 当前是否启用了自定义主题颜色预览
+  bool get isCustomPreviewEnabled => _isCustomPreviewEnabled;
+
   /// 当前用户选择的主题模式设置
   ThemeModeSetting get themeModeSetting => _themeModeSetting;
 
