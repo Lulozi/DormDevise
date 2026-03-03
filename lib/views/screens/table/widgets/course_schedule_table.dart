@@ -332,6 +332,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           sectionHeight,
         );
         final double tableHeight = geometry.totalHeight;
+        const double tableTopInset = 6;
         final Map<int, double> sectionOffsets = geometry.sectionOffsets;
 
         final Map<int, int> columnMap = <int, int>{
@@ -352,17 +353,21 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 behavior: _NoOverscrollBehavior(),
                 child: SingleChildScrollView(
                   controller: scrollController,
-                  clipBehavior: Clip.none,
+                  // 课表内容滚动时裁切在周行下方，避免卡片或角标覆盖周行
+                  clipBehavior: Clip.hardEdge,
                   physics: _selectedBlock != null || _draggingBlock != null
                       ? const NeverScrollableScrollPhysics()
                       : const ClampingScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: 16),
                   child: SizedBox(
-                    height: tableHeight,
+                    // 增加顶部间距，使角标不覆盖周行，同时时间列仍从顶部紧贴周选择器
+                    height: tableHeight + tableTopInset,
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: <Widget>[
                         Positioned.fill(
+                          // 课程网格区域向下偏移6px，为角标留出空间
+                          top: tableTopInset,
                           left: includeTimeColumn ? resolvedTimeWidth : 0,
                           child: shouldScroll
                               ? SingleChildScrollView(
@@ -514,7 +519,11 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                   context,
                                 ).colorScheme.surfaceContainerLow,
                               ),
-                              child: _buildTimeColumn(context, geometry.rows),
+                              child: _buildTimeColumn(
+                                context,
+                                geometry.rows,
+                                topInset: tableTopInset,
+                              ),
                             ),
                           ),
                       ],
@@ -589,7 +598,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
     final ns = _neutralScheme(context);
     return SizedBox(
-      height: 78,
+      height: 56,
       child: DecoratedBox(
         decoration: BoxDecoration(
           // 使用固定中性色，日期行不随主题色改变
@@ -619,7 +628,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: ns.surfaceContainerLow,
-                    border: Border(right: BorderSide(color: borderColor)),
+                    border: Border(
+                      right: BorderSide(color: borderColor),
+                      bottom: BorderSide(color: borderColor),
+                    ),
                   ),
                   child: _buildWeekSelectorCell(context),
                 ),
@@ -1110,7 +1122,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 ],
                 // 3. 教师/备注信息（独立一行，限制最大高度比例）
                 if (block.course.teacher.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   ConstrainedBox(
                     constraints: BoxConstraints(
                       maxHeight: blockHeight * 0.2, // 最多占用 20% 高度
@@ -2292,7 +2304,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   }
 
   /// 构建时间列，支持进入节次配置。
-  Widget _buildTimeColumn(BuildContext context, List<CourseTableRowSlot> rows) {
+  Widget _buildTimeColumn(
+    BuildContext context,
+    List<CourseTableRowSlot> rows, {
+    double topInset = 0,
+  }) {
+    final ns = _neutralScheme(context);
+    final Color borderColor = Theme.of(
+      context,
+    ).dividerColor.withValues(alpha: 0.12);
     return GestureDetector(
       onTap: () {
         if (_selectedBlock != null) {
@@ -2313,6 +2333,14 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       behavior: HitTestBehavior.translucent,
       child: Column(
         children: <Widget>[
+          if (topInset > 0)
+            Container(
+              height: topInset,
+              decoration: BoxDecoration(
+                color: ns.surfaceContainerLow,
+                border: Border(right: BorderSide(color: borderColor)),
+              ),
+            ),
           for (final CourseTableRowSlot slot in rows)
             slot.isBreak
                 ? _buildBreakCell(context, slot)
@@ -2610,7 +2638,7 @@ class _AnimatedHeaderCellState extends State<_AnimatedHeaderCell>
           children: <Widget>[
             Text(widget.label, style: labelStyle),
             if (widget.date != null) ...<Widget>[
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(_formatDate(widget.date!), style: dateStyle),
             ],
           ],
