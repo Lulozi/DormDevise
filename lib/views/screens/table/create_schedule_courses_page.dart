@@ -17,6 +17,9 @@ class CreateScheduleCoursesPage extends StatefulWidget {
   final bool showWeekend;
   final bool showNonCurrentWeek;
 
+  /// 预填充的课程列表（如从网页爬取导入），为空则从零手动添加。
+  final List<Course> initialCourses;
+
   const CreateScheduleCoursesPage({
     super.key,
     required this.scheduleName,
@@ -27,6 +30,7 @@ class CreateScheduleCoursesPage extends StatefulWidget {
     required this.tableName,
     required this.showWeekend,
     required this.showNonCurrentWeek,
+    this.initialCourses = const <Course>[],
   });
 
   @override
@@ -66,6 +70,11 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
     _pageController = PageController(initialPage: _currentWeek - 1);
     _scrollGroup = LinkedScrollControllerGroup();
     _timeColumnController = _scrollGroup.addAndGet();
+
+    // 预填充从外部传入的课程（如网页爬取导入的课程）
+    if (widget.initialCourses.isNotEmpty) {
+      _courses.addAll(widget.initialCourses);
+    }
   }
 
   @override

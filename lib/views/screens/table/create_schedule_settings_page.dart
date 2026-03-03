@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
 import 'widgets/schedule_settings_sheet.dart';
@@ -7,7 +8,37 @@ import 'widgets/section_config_sheet.dart';
 import 'create_schedule_courses_page.dart';
 
 class CreateScheduleSettingsPage extends StatefulWidget {
-  const CreateScheduleSettingsPage({super.key});
+  /// 预填充的课程表名称（如从网页爬取导入）。
+  final String? initialScheduleName;
+
+  /// 预填充的课表节次配置。
+  final CourseScheduleConfig? initialConfig;
+
+  /// 预填充的学期开始日期。
+  final DateTime? initialSemesterStart;
+
+  /// 预填充的最大周数。
+  final int? initialMaxWeek;
+
+  /// 预填充是否显示周末。
+  final bool? initialShowWeekend;
+
+  /// 预填充是否显示非本周课程。
+  final bool? initialShowNonCurrentWeek;
+
+  /// 从外部导入的课程列表（透传给下一步的课程页面）。
+  final List<Course> initialCourses;
+
+  const CreateScheduleSettingsPage({
+    super.key,
+    this.initialScheduleName,
+    this.initialConfig,
+    this.initialSemesterStart,
+    this.initialMaxWeek,
+    this.initialShowWeekend,
+    this.initialShowNonCurrentWeek,
+    this.initialCourses = const <Course>[],
+  });
 
   @override
   State<CreateScheduleSettingsPage> createState() =>
@@ -32,6 +63,31 @@ class _CreateScheduleSettingsPageState
   String _tableName = '我的课表';
   bool _showWeekend = false;
   bool _showNonCurrentWeek = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // 使用外部传入的初始值预填充（如网页爬取导入场景）
+    if (widget.initialScheduleName != null) {
+      _nameController.text = widget.initialScheduleName!;
+      _tableName = widget.initialScheduleName!;
+    }
+    if (widget.initialConfig != null) {
+      _scheduleConfig = widget.initialConfig!;
+    }
+    if (widget.initialSemesterStart != null) {
+      _semesterStart = widget.initialSemesterStart!;
+    }
+    if (widget.initialMaxWeek != null) {
+      _maxWeek = widget.initialMaxWeek!;
+    }
+    if (widget.initialShowWeekend != null) {
+      _showWeekend = widget.initialShowWeekend!;
+    }
+    if (widget.initialShowNonCurrentWeek != null) {
+      _showNonCurrentWeek = widget.initialShowNonCurrentWeek!;
+    }
+  }
 
   @override
   void dispose() {
@@ -71,6 +127,7 @@ class _CreateScheduleSettingsPageState
           tableName: name,
           showWeekend: _showWeekend,
           showNonCurrentWeek: _showNonCurrentWeek,
+          initialCourses: widget.initialCourses,
         ),
       ),
     );
