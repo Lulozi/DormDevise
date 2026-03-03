@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../models/web_school.dart';
 import '../../../services/web_school_service.dart';
 import '../../../utils/app_toast.dart';
+import 'web_import_auto_login_webview_page.dart';
 
 /// 网页导入课表的账号密码登录页面。
 ///
@@ -58,9 +59,10 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   }
 
   /// 保存凭据并提示用户。
-  Future<void> _saveCredentials() async {
+  Future<void> _saveCredentialsAndOpenWebLogin() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
+    final loginUrl = widget.school.url.trim();
 
     if (username.isEmpty) {
       AppToast.show(context, '请输入账号', variant: AppToastVariant.warning);
@@ -68,6 +70,14 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     }
     if (password.isEmpty) {
       AppToast.show(context, '请输入密码', variant: AppToastVariant.warning);
+      return;
+    }
+    if (loginUrl.isEmpty) {
+      AppToast.show(
+        context,
+        '请先在学校卡片中完善教务系统网址',
+        variant: AppToastVariant.warning,
+      );
       return;
     }
 
@@ -80,8 +90,21 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
         password: password,
       );
       if (mounted) {
-        AppToast.show(context, '账号密码已加密保存', variant: AppToastVariant.success);
-        Navigator.of(context).pop(true);
+        AppToast.show(
+          context,
+          '账号密码已加密保存，正在打开登录页',
+          variant: AppToastVariant.success,
+        );
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => WebImportAutoLoginWebViewPage(
+              schoolName: widget.school.name,
+              loginUrl: loginUrl,
+              username: username,
+              password: password,
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -317,7 +340,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                             ),
                           ),
                           textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _saveCredentials(),
+                          onSubmitted: (_) => _saveCredentialsAndOpenWebLogin(),
                         ),
                       ],
                     ),
@@ -350,7 +373,9 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                   SizedBox(
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: _isSaving ? null : _saveCredentials,
+                      onPressed: _isSaving
+                          ? null
+                          : _saveCredentialsAndOpenWebLogin,
                       child: _isSaving
                           ? SizedBox(
                               width: 22,
