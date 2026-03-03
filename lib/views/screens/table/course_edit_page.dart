@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/utils/index.dart';
@@ -1156,7 +1157,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildCounterButton(
-                        icon: Icons.remove,
+                        icon: FontAwesomeIcons.minus,
                         onTap: _decrementSessions,
                       ),
                       SizedBox(
@@ -1168,7 +1169,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                         ),
                       ),
                       _buildCounterButton(
-                        icon: Icons.add,
+                        icon: FontAwesomeIcons.plus,
                         onTap: _incrementSessions,
                       ),
                     ],

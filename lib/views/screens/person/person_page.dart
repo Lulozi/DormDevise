@@ -58,7 +58,7 @@ class _PersonPageState extends State<PersonPage> {
         builder: (context) => const MqttSettingsPage(),
       ),
       _buildSettingsEntry(
-        icon: Icons.lock_outline,
+        icon: Icons.http,
         title: 'HTTP配置',
         builder: (context) => const LocalDoorLockSettingsPage(),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// 文件导入课表页面。
 class FileImportSchedulePage extends StatelessWidget {
@@ -13,7 +14,11 @@ class FileImportSchedulePage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.folder_open, size: 56, color: colorScheme.primary),
+            Icon(
+              FontAwesomeIcons.folderOpen,
+              size: 56,
+              color: colorScheme.primary,
+            ),
             const SizedBox(height: 12),
             Text(
               '文件导入功能开发中',

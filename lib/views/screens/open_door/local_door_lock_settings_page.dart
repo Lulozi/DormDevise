@@ -4,6 +4,7 @@ import 'package:dormdevise/models/local_door_lock_config.dart';
 import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/wifi_info_service.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// HTTP配置页面。
 ///
@@ -922,7 +923,11 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.http, size: 20, color: colorScheme.primary),
+                Icon(
+                  FontAwesomeIcons.hubspot,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Post请求开门',
@@ -1041,7 +1046,6 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                     decoration: const InputDecoration(
                       labelText: 'Post请求地址',
                       hintText: '例如: http://192.168.1.1/open',
-                      prefixIcon: Icon(Icons.link),
                     ),
                   ),
                 ),
@@ -1055,7 +1059,6 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                           padding: const EdgeInsets.only(left: 8),
                           child: FilledButton.tonalIcon(
                             onPressed: _postEnabled ? _addSavedPostUrl : null,
-                            icon: const Icon(Icons.add_link_outlined),
                             label: const Text('新增'),
                           ),
                         )
@@ -1099,9 +1102,9 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                               children: [
                                 Icon(
                                   hasCurrentPostUrl
-                                      ? Icons.link
-                                      : Icons.link_off,
-                                  size: 18,
+                                      ? FontAwesomeIcons.link
+                                      : FontAwesomeIcons.linkSlash,
+                                  size: 16,
                                   color: _postEnabled
                                       ? (hasCurrentPostUrl
                                             ? colorScheme.primary

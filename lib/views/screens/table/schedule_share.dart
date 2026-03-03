@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
@@ -37,14 +38,14 @@ class ScheduleShare {
       anchorKey: anchorKey,
       controller: controller,
       content: SizedBox(
-        width: 180,
+        width: 160,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildShareMenuItem(
               context: context,
               text: '复制分享链接',
-              icon: Icons.link_outlined,
+              icon: FontAwesomeIcons.link,
               onTap: () => _copyShareLink(
                 context: context,
                 controller: controller,
@@ -55,7 +56,7 @@ class ScheduleShare {
             _buildShareMenuItem(
               context: context,
               text: '生成二维码',
-              icon: Icons.qr_code,
+              icon: FontAwesomeIcons.qrcode,
               onTap: () => _showQrCodeDialog(
                 context: context,
                 controller: controller,

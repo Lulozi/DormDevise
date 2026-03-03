@@ -10,6 +10,7 @@ import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 /// 应用根组件，负责注入基础主题与导航框架。
@@ -85,21 +86,21 @@ class ManagementScreen extends StatefulWidget {
 
 class ManagementScreenState extends State<ManagementScreen>
     with WidgetsBindingObserver {
-  /// 所有导航项的固定定义（按原始索引排列：0=课表, 1=开门, 2=我的）。
+  /// 所有导航项的固定定义（默认排列：0=课表, 1=开门, 2=我的）。
   static const _allDestinations = [
     NavigationDestination(
-      icon: Icon(Icons.calendar_today_outlined),
-      selectedIcon: Icon(Icons.calendar_today),
+      icon: Icon(FontAwesomeIcons.calendar),
+      selectedIcon: Icon(FontAwesomeIcons.solidCalendar),
       label: '课表',
     ),
     NavigationDestination(
-      icon: Icon(Icons.door_front_door_outlined),
-      selectedIcon: Icon(Icons.door_front_door),
+      icon: Icon(Icons.door_front_door_outlined, size: 28),
+      selectedIcon: Icon(Icons.door_front_door, size: 28),
       label: '开门',
     ),
     NavigationDestination(
-      icon: Icon(Icons.person_outline),
-      selectedIcon: Icon(Icons.person),
+      icon: Icon(FontAwesomeIcons.user),
+      selectedIcon: Icon(FontAwesomeIcons.solidUser),
       label: '我的',
     ),
   ];

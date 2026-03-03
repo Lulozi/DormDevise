@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// 拍照导入课表页面。
 class CameraImportSchedulePage extends StatelessWidget {
@@ -13,11 +14,7 @@ class CameraImportSchedulePage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(
-              Icons.camera_alt_outlined,
-              size: 56,
-              color: colorScheme.primary,
-            ),
+            Icon(FontAwesomeIcons.camera, size: 56, color: colorScheme.primary),
             const SizedBox(height: 12),
             Text(
               '拍照导入功能开发中',

@@ -123,7 +123,12 @@ class _TablePageState extends State<TablePage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+            if (value != 'web') const SizedBox(width: 2),
+            Icon(
+              icon,
+              size: value == 'web' ? 24 : 20,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -196,21 +201,21 @@ class _TablePageState extends State<TablePage> {
             _buildImportMenuItem(
               'camera',
               '拍照导入课表',
-              Icons.camera_alt_outlined,
+              FontAwesomeIcons.camera,
               controller,
             ),
             const Divider(height: 1, thickness: 0.5),
             _buildImportMenuItem(
               'scan',
               '扫码导入课表',
-              Icons.qr_code_scanner,
+              FontAwesomeIcons.qrcode,
               controller,
             ),
             const Divider(height: 1, thickness: 0.5),
             _buildImportMenuItem(
               'file',
               '文件导入课表',
-              Icons.folder_open,
+              FontAwesomeIcons.folderOpen,
               controller,
             ),
           ],
@@ -366,7 +371,7 @@ class _TablePageState extends State<TablePage> {
             await _showImportMenu();
           },
           useFaIcon: true,
-          iconSize: 16,
+          iconSize: 18,
         ),
         const SizedBox(width: 8),
         _ToolbarIconButton(
@@ -378,7 +383,7 @@ class _TablePageState extends State<TablePage> {
             await _showShareMenu();
           },
           useFaIcon: true,
-          iconSize: 16,
+          iconSize: 18,
         ),
         const SizedBox(width: 8),
         _ToolbarIconButton(
@@ -389,7 +394,7 @@ class _TablePageState extends State<TablePage> {
             _openScheduleSettings();
           },
           useFaIcon: true,
-          iconSize: 16,
+          iconSize: 18,
         ),
       ],
     );

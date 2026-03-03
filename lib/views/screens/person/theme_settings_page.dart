@@ -1,5 +1,6 @@
 import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter/services.dart';
 
 /// 个性主题设置页，提供主题模式（浅色/跟随系统/深色）切换、
@@ -511,18 +512,19 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   /// 0=课表, 1=开门, 2=我的
   static const List<_NavDestination> _allDestinations = [
     _NavDestination(
-      icon: Icons.calendar_today_outlined,
-      selectedIcon: Icons.calendar_today,
+      icon: FontAwesomeIcons.calendar,
+      selectedIcon: FontAwesomeIcons.solidCalendar,
       label: '课表',
     ),
     _NavDestination(
       icon: Icons.door_front_door_outlined,
       selectedIcon: Icons.door_front_door,
       label: '开门',
+      iconScale: 1.18,
     ),
     _NavDestination(
-      icon: Icons.person_outline,
-      selectedIcon: Icons.person,
+      icon: FontAwesomeIcons.user,
+      selectedIcon: FontAwesomeIcons.solidUser,
       label: '我的',
     ),
   ];
@@ -746,7 +748,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                                 children: [
                                   Icon(
                                     dest.icon,
-                                    size: 22,
+                                    size: 22 * dest.iconScale,
                                     color: panelColors.navBlockForegroundColor,
                                   ),
                                   const SizedBox(height: 4),
@@ -890,6 +892,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                   child: _buildHomePageOption(
                     icon: dest.icon,
                     label: dest.label,
+                    iconSize: 16 * dest.iconScale,
                     isSelected: isSelected,
                     selectedColor: panelColors.optionSelectedColor,
                     unselectedColor: panelColors.optionUnselectedColor,
@@ -911,6 +914,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   Widget _buildHomePageOption({
     required IconData icon,
     required String label,
+    required double iconSize,
     required bool isSelected,
     required Color selectedColor,
     required Color unselectedColor,
@@ -927,7 +931,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
           children: [
             Icon(
               icon,
-              size: 16,
+              size: iconSize,
               color: isSelected ? selectedColor : unselectedColor,
             ),
             const SizedBox(width: 4),
@@ -1944,11 +1948,13 @@ class _NavDestination {
   final IconData icon;
   final IconData selectedIcon;
   final String label;
+  final double iconScale;
 
   const _NavDestination({
     required this.icon,
     required this.selectedIcon,
     required this.label,
+    this.iconScale = 1,
   });
 }
 

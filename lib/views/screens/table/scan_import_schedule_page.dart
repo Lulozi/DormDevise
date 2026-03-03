@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// 扫码导入课表页面。
 class ScanImportSchedulePage extends StatelessWidget {
@@ -13,7 +14,7 @@ class ScanImportSchedulePage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.qr_code_scanner, size: 56, color: colorScheme.primary),
+            Icon(FontAwesomeIcons.qrcode, size: 56, color: colorScheme.primary),
             const SizedBox(height: 12),
             Text(
               '扫码导入功能开发中',
