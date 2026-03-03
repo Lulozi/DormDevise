@@ -115,9 +115,13 @@ class _TablePageState extends State<TablePage> {
           'file' => const FileImportSchedulePage(),
           _ => const WebImportSchedulePage(),
         };
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (BuildContext context) => page));
+        final bool? result = await Navigator.of(context).push<bool>(
+          MaterialPageRoute<bool>(builder: (BuildContext context) => page),
+        );
+        // 课表创建成功后刷新课表数据
+        if (result == true && mounted) {
+          _loadData();
+        }
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
