@@ -67,24 +67,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
     );
   }
 
-  final List<Color> _presetColors = [
-    const Color(0xFFFFCDD2),
-    const Color(0xFFF8BBD0),
-    const Color(0xFFE1BEE7),
-    const Color(0xFFD1C4E9),
-    const Color(0xFFC5CAE9),
-    const Color(0xFFBBDEFB),
-    const Color(0xFFB3E5FC),
-    const Color(0xFFB2EBF2),
-    const Color(0xFFB2DFDB),
-    const Color(0xFFC8E6C9),
-    const Color(0xFFDCEDC8),
-    const Color(0xFFF0F4C3),
-    const Color(0xFFFFF9C4),
-    const Color(0xFFFFECB3),
-    const Color(0xFFFFE0B2),
-    const Color(0xFFFFCCBC),
-  ];
+  /// 预设背景色池，引用共享常量。
+  final List<Color> _presetColors = List<Color>.of(kCoursePresetColors);
 
   @override
   void initState() {
@@ -427,18 +411,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
       // 2. 计算拆分结果
       List<CourseSession> splits = _calculateSplits(updatedSession);
 
-      // 3. 重建列表
-      _sessions = [...keptSessions, ...splits];
+      // 3. 重建并合并列表
+      _sessions = _mergeAdjacentSessions([...keptSessions, ...splits]);
 
-      // 4. 重新排序：按周几、开始节次排序，确保列表顺序正确
-      _sessions.sort((a, b) {
-        if (a.weekday != b.weekday) {
-          return a.weekday.compareTo(b.weekday);
-        }
-        return a.startSection.compareTo(b.startSection);
-      });
-
-      // 5. 保持展开状态
+      // 4. 保持展开状态
       // 找到包含原开始节次的那个会话的新索引，保持用户焦点
       final newIndex = _sessions.indexWhere(
         (s) =>
@@ -744,11 +720,12 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   void _incrementSessions() {
     setState(() {
+      final next = _findNextAvailableSlot();
       _sessions.add(
         CourseSession(
-          weekday: 1,
-          startSection: 1,
-          sectionCount: 2,
+          weekday: next.weekday,
+          startSection: next.startSection,
+          sectionCount: next.sectionCount,
           location: _classroomController.text,
           startWeek: _startWeek,
           endWeek: _endWeek,
@@ -756,7 +733,238 @@ class _CourseEditPageState extends State<CourseEditPage> {
           customWeeks: _customWeeks,
         ),
       );
+      _sessions = _mergeAdjacentSessions(_sessions);
     });
+  }
+
+  /// 根据已有时段自动计算下一个可用槽位，避免重复。
+  /// 优先在同一天的下一个时段，天满则顺延到下一天。
+  /// 每个教学时段按 2 节一组分配，奇数时段最后一组为 3 节（如 3→3，5→2+3，7→2+2+3）。
+  ({int weekday, int startSection, int sectionCount}) _findNextAvailableSlot() {
+    // 收集各天已占用的节次区间
+    final Map<int, List<({int start, int end})>> occupied =
+        <int, List<({int start, int end})>>{};
+    for (final CourseSession s in _sessions) {
+      occupied.putIfAbsent(s.weekday, () => <({int start, int end})>[]);
+      occupied[s.weekday]!.add((
+        start: s.startSection,
+        end: s.startSection + s.sectionCount - 1,
+      ));
+    }
+
+    // 获取所有教学时段边界
+    final List<({int start, int end, int classCount})> segmentRanges =
+        <({int start, int end, int classCount})>[];
+    if (_scheduleConfig != null) {
+      int segStart = 1;
+      for (final seg in _scheduleConfig!.segments) {
+        final int segEnd = segStart + seg.classCount - 1;
+        segmentRanges.add((
+          start: segStart,
+          end: segEnd,
+          classCount: seg.classCount,
+        ));
+        segStart += seg.classCount;
+      }
+    }
+    // 无配置时回退为单段
+    if (segmentRanges.isEmpty) {
+      segmentRanges.add((
+        start: 1,
+        end: _totalSections,
+        classCount: _totalSections,
+      ));
+    }
+
+    final List<({int start, int count})> daySlotTemplate =
+        <({int start, int count})>[];
+    for (final seg in segmentRanges) {
+      daySlotTemplate.addAll(_computeSegmentSlots(seg.start, seg.classCount));
+    }
+    if (daySlotTemplate.isEmpty) {
+      daySlotTemplate.add((start: 1, count: 2));
+    }
+
+    // 确定起始搜索天：最后一个 session 所在天
+    int startDay = 1;
+    int anchorStart = 1;
+    int anchorEnd = 1;
+    if (_sessions.isNotEmpty) {
+      startDay = _sessions.last.weekday;
+      anchorStart = _sessions.last.startSection;
+      anchorEnd = anchorStart + _sessions.last.sectionCount - 1;
+    }
+
+    int startSlotIndex = 0;
+    if (_sessions.isNotEmpty) {
+      for (int i = 0; i < daySlotTemplate.length; i++) {
+        final slot = daySlotTemplate[i];
+        final int slotEnd = slot.start + slot.count - 1;
+        if (anchorStart <= slotEnd && anchorEnd >= slot.start) {
+          startSlotIndex = i + 1;
+          break;
+        }
+        if (anchorEnd < slot.start) {
+          startSlotIndex = i;
+          break;
+        }
+      }
+      if (startSlotIndex >= daySlotTemplate.length) {
+        startSlotIndex = 0;
+      }
+    }
+
+    bool canUseSlot(int weekday, ({int start, int count}) slot) {
+      final List<({int start, int end})> daySlots =
+          occupied[weekday] ?? <({int start, int end})>[];
+      return !daySlots.any(
+        (({int start, int end}) s) =>
+            slot.start <= s.end && slot.start + slot.count - 1 >= s.start,
+      );
+    }
+
+    // 先从基准会话的“下一槽位”开始在同一天搜索，避免从头开始。
+    for (int i = startSlotIndex; i < daySlotTemplate.length; i++) {
+      final slot = daySlotTemplate[i];
+      if (canUseSlot(startDay, slot)) {
+        return (
+          weekday: startDay,
+          startSection: slot.start,
+          sectionCount: slot.count,
+        );
+      }
+    }
+
+    // 基准当天无可用时，顺延到下一天。
+    for (int d = 1; d < 7; d++) {
+      final int weekday = (startDay - 1 + d) % 7 + 1;
+      for (final slot in daySlotTemplate) {
+        if (canUseSlot(weekday, slot)) {
+          return (
+            weekday: weekday,
+            startSection: slot.start,
+            sectionCount: slot.count,
+          );
+        }
+      }
+    }
+
+    // 全部占满时回退默认值
+    return (weekday: 1, startSection: 1, sectionCount: 2);
+  }
+
+  /// 将时段按规则切分为槽位：每组 2 节，奇数时段最后一组为 3 节。
+  /// 例如：3→[3]，4→[2,2]，5→[2,3]，7→[2,2,3]。
+  static List<({int start, int count})> _computeSegmentSlots(
+    int segStart,
+    int classCount,
+  ) {
+    final List<({int start, int count})> slots = <({int start, int count})>[];
+    int pos = segStart;
+    int remaining = classCount;
+    while (remaining > 0) {
+      if (remaining <= 3) {
+        slots.add((start: pos, count: remaining));
+        break;
+      }
+      slots.add((start: pos, count: 2));
+      pos += 2;
+      remaining -= 2;
+    }
+    return slots;
+  }
+
+  /// 合并同一天相邻或重叠的会话，减少重复时间段。
+  /// 仅在周次一致、地点一致（或其一为空）且合并后不跨时段时合并。
+  List<CourseSession> _mergeAdjacentSessions(List<CourseSession> source) {
+    if (source.length <= 1) {
+      return source;
+    }
+
+    final List<CourseSession> sorted = <CourseSession>[...source]
+      ..sort((a, b) {
+        if (a.weekday != b.weekday) {
+          return a.weekday.compareTo(b.weekday);
+        }
+        return a.startSection.compareTo(b.startSection);
+      });
+
+    final List<CourseSession> merged = <CourseSession>[];
+    for (final CourseSession current in sorted) {
+      if (merged.isEmpty) {
+        merged.add(current);
+        continue;
+      }
+
+      final CourseSession last = merged.last;
+      final int lastEnd = last.startSection + last.sectionCount - 1;
+      final int currentEnd = current.startSection + current.sectionCount - 1;
+
+      final bool canMergeByRange =
+          current.weekday == last.weekday &&
+          current.startSection <= lastEnd + 1;
+      final bool sameWeekRule = _hasSameWeekRule(last, current);
+      final bool canMergeLocation = _canMergeLocation(
+        last.location,
+        current.location,
+      );
+
+      if (!canMergeByRange || !sameWeekRule || !canMergeLocation) {
+        merged.add(current);
+        continue;
+      }
+
+      final int newStart = min(last.startSection, current.startSection);
+      final int newEnd = max(lastEnd, currentEnd);
+      final CourseSession candidate = CourseSession(
+        weekday: last.weekday,
+        startSection: newStart,
+        sectionCount: newEnd - newStart + 1,
+        location: _mergeLocation(last.location, current.location),
+        startWeek: last.startWeek,
+        endWeek: last.endWeek,
+        weekType: last.weekType,
+        customWeeks: last.customWeeks,
+      );
+
+      if (_isCrossSegment(candidate)) {
+        merged.add(current);
+        continue;
+      }
+
+      merged[merged.length - 1] = candidate;
+    }
+
+    return merged;
+  }
+
+  /// 判断两个会话的周次规则是否一致。
+  bool _hasSameWeekRule(CourseSession a, CourseSession b) {
+    if (a.startWeek != b.startWeek ||
+        a.endWeek != b.endWeek ||
+        a.weekType != b.weekType) {
+      return false;
+    }
+    final Set<int> customA = a.customWeeks.toSet();
+    final Set<int> customB = b.customWeeks.toSet();
+    return customA.length == customB.length && customA.containsAll(customB);
+  }
+
+  /// 地点允许合并：相同或其中一个为空。
+  bool _canMergeLocation(String a, String b) {
+    final String locationA = a.trim();
+    final String locationB = b.trim();
+    return locationA.isEmpty || locationB.isEmpty || locationA == locationB;
+  }
+
+  /// 合并后的地点优先保留非空值。
+  String _mergeLocation(String a, String b) {
+    final String locationA = a.trim();
+    final String locationB = b.trim();
+    if (locationA.isNotEmpty) {
+      return locationA;
+    }
+    return locationB;
   }
 
   void _decrementSessions() {
@@ -965,10 +1173,12 @@ class _CourseEditPageState extends State<CourseEditPage> {
           const SizedBox(height: 100),
         ],
       ),
-      bottomNavigationBar: widget.course != null
-          ? SafeArea(
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: widget.course != null
+          ? SizedBox(
+              width: MediaQuery.of(context).size.width - 96,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.only(bottom: 8),
                 child: _buildDeleteButton(),
               ),
             )
@@ -980,7 +1190,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     return GestureDetector(
       onTap: _deleteCourse,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 48),
+        width: double.infinity,
         height: 72,
         decoration: BoxDecoration(
           color:

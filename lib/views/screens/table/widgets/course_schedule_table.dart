@@ -408,14 +408,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                             dayWidth,
                                             sectionOffsets,
                                           ),
-                                        for (final _CourseBlock block in blocks)
+                                        for (int i = 0; i < blocks.length; i++)
                                           _buildCourseBlock(
                                             context,
-                                            block,
+                                            blocks[i],
                                             dayWidth,
                                             sectionOffsets,
                                             viewportWidth,
                                             tableHeight,
+                                            blockIndex: i,
                                           ),
                                         // 拖拽时的悬浮卡片
                                         if (_draggingBlock != null)
@@ -465,14 +466,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                           dayWidth,
                                           sectionOffsets,
                                         ),
-                                      for (final _CourseBlock block in blocks)
+                                      for (int i = 0; i < blocks.length; i++)
                                         _buildCourseBlock(
                                           context,
-                                          block,
+                                          blocks[i],
                                           dayWidth,
                                           sectionOffsets,
                                           viewportWidth,
                                           tableHeight,
+                                          blockIndex: i,
                                         ),
                                       // 拖拽时的悬浮卡片
                                       if (_draggingBlock != null)
@@ -915,8 +917,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     double dayWidth,
     Map<int, double> sectionOffsets,
     double viewportWidth,
-    double tableHeight,
-  ) {
+    double tableHeight, {
+    required int blockIndex,
+  }) {
     final bool isNonCurrent = block.isNonCurrent;
     final bool isDragging =
         _draggingBlock != null &&
@@ -1107,7 +1110,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     if (isSelected) {
       return Positioned(
         key: ValueKey(
-          '${block.course.name}_${block.session.weekday}_${block.session.startSection}',
+          // 使用列表索引确保 key 绝对唯一
+          'block_$blockIndex',
         ),
         left: block.columnIndex * dayWidth,
         top: startOffset - 10,
@@ -1262,7 +1266,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     // 非选中状态
     return Positioned(
       key: ValueKey(
-        '${block.course.name}_${block.session.weekday}_${block.session.startSection}',
+        // 使用列表索引确保 key 绝对唯一
+        'block_$blockIndex',
       ),
       left: block.columnIndex * dayWidth,
       top: startOffset,
@@ -2025,6 +2030,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         }
 
         final bool isCurrentWeek = session.occursInWeek(currentWeek);
+        // 显示非本周课程时，仅保留本周与未来周次；已结束周次直接隐藏。
+        if (showNonCurrentWeek && !isCurrentWeek) {
+          final bool hasFutureWeeks = session.customWeeks.isNotEmpty
+              ? session.customWeeks.any((int week) => week > currentWeek)
+              : session.endWeek >= currentWeek;
+          if (!hasFutureWeeks) {
+            continue;
+          }
+        }
         // 如果不显示非本周课程，且当前 session 不在本周，则跳过（虽然 candidateSessions 已经过滤了，但如果是 showNonCurrentWeek=true，这里需要判断状态）
         if (!showNonCurrentWeek && !isCurrentWeek) {
           continue;
