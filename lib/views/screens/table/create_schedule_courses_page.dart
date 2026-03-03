@@ -236,7 +236,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final double timeColumnWidth = constraints.maxWidth / 8;
+          final double timeColumnWidth = constraints.maxWidth / 9.5;
           return Row(
             children: [
               SizedBox(

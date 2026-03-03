@@ -768,10 +768,8 @@ class _TablePageState extends State<TablePage> {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         // 计算时间列宽度：
-        // 1. 保持与周末有课模式（7天）下的列宽一致
-        // 2. 布局结构为：时间列 + 7个课程列
-        // 3. 因此总宽度 = 8 * 列宽
-        final double timeColumnWidth = constraints.maxWidth / 8;
+        // 紧凑布局，时间列尽量窄以留更多空间给课程卡片
+        final double timeColumnWidth = constraints.maxWidth / 9.5;
 
         return Row(
           children: <Widget>[

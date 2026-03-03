@@ -96,7 +96,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.weekdays = const <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
     this.weekdayIndexes = const <int>[1, 2, 3, 4, 5, 6, 7],
     this.weekDates,
-    this.timeColumnWidth = 64,
+    this.timeColumnWidth = 48,
     this.sectionHeight = 76,
     this.maxWeek = 20,
     this.onWeekChanged,
@@ -125,7 +125,7 @@ class CourseScheduleTable extends StatefulWidget {
   static double resolveTimeColumnWidth(
     BuildContext context,
     List<SectionTime> sections, {
-    double minWidth = 64,
+    double minWidth = 48,
   }) {
     if (sections.isEmpty) {
       return minWidth;
@@ -162,7 +162,7 @@ class CourseScheduleTable extends StatefulWidget {
             indexPainter.width,
             math.max(startPainter.width, endPainter.width),
           ) +
-          24;
+          14;
 
       maxWidth = math.max(maxWidth, candidate);
     }
@@ -691,23 +691,23 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           }
           onWeekHeaderTap?.call();
         },
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
-          width: 44,
-          height: 44,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             // 使用固定中性色，不随主题色改变
             color: ns.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 '$clampedWeek 周',
-                style: textStyle.copyWith(fontSize: 11, height: 1),
+                style: textStyle.copyWith(fontSize: 10, height: 1),
               ),
-              Icon(Icons.arrow_drop_down, size: 16, color: ns.onSurfaceVariant),
+              Icon(Icons.arrow_drop_down, size: 14, color: ns.onSurfaceVariant),
             ],
           ),
         ),
@@ -1066,7 +1066,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         clipBehavior: Clip.none,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -1927,8 +1927,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
+                        horizontal: 4,
+                        vertical: 4,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2334,15 +2334,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     final TextStyle indexStyle = textTheme.titleSmall!.copyWith(
       fontWeight: FontWeight.w600,
       color: ns.onSurface,
-      letterSpacing: 0.3,
-      // 降低字体大小以适应较窄/较短的时间列单元
-      fontSize: 12,
+      letterSpacing: 0,
+      // 紧凑字体以适应较窄的时间列
+      fontSize: 11,
     );
     final TextStyle timeStyle = textTheme.bodySmall!.copyWith(
       color: ns.onSurfaceVariant,
-      height: 1.05,
-      // 更小字体以避免竖直溢出
-      fontSize: 11,
+      height: 1.0,
+      // 紧凑字体避免溢出
+      fontSize: 10,
     );
 
     return Container(
@@ -2355,7 +2355,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 4),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -2364,7 +2364,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 fit: BoxFit.scaleDown,
                 child: Text('${section.index} 节', style: indexStyle),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(_formatTime(section.start), style: timeStyle),
