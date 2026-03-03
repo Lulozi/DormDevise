@@ -221,7 +221,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
     if (exactMatches.isNotEmpty) {
       final exactMatch = exactMatches.first;
       final bool isTeacherSame = exactMatch.teacher == _teacherController.text;
-      final bool isColorSame = exactMatch.color.value == _selectedColor.value;
+      final bool isColorSame =
+          exactMatch.color.toARGB32() == _selectedColor.toARGB32();
 
       if (isTeacherSame && isColorSame) {
         if (_suggestions.isNotEmpty) {

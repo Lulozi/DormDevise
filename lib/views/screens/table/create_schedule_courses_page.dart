@@ -148,7 +148,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
 
         // 只有当颜色和教师信息都一致时才合并，否则视为不同课程（即使同名）
         final bool isSameColor =
-            existingCourse.color.value == newCourse.color.value;
+            existingCourse.color.toARGB32() == newCourse.color.toARGB32();
         final bool isSameTeacher = existingCourse.teacher == newCourse.teacher;
 
         if (isSameColor && isSameTeacher) {

@@ -95,10 +95,25 @@ class _DownloadSourceConfigPageState extends State<DownloadSourceConfigPage> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _buildRadioItem('自动', 'auto'),
-                  _buildRadioItem('GitHub', 'github'),
-                  _buildRadioItem('Gitee', 'gitee'),
-                  _buildRadioItem('自定义', 'custom'),
+                  RadioGroup<String>(
+                    groupValue: _sourceType,
+                    onChanged: (String? newValue) {
+                      if (newValue == null) {
+                        return;
+                      }
+                      setState(() {
+                        _sourceType = newValue;
+                      });
+                    },
+                    child: Column(
+                      children: [
+                        _buildRadioItem('自动', 'auto'),
+                        _buildRadioItem('GitHub', 'github'),
+                        _buildRadioItem('Gitee', 'gitee'),
+                        _buildRadioItem('自定义', 'custom'),
+                      ],
+                    ),
+                  ),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
                     switchInCurve: Curves.easeOut,
@@ -234,13 +249,7 @@ class _DownloadSourceConfigPageState extends State<DownloadSourceConfigPage> {
     return RadioListTile<String>(
       title: Text(title),
       value: value,
-      groupValue: _sourceType,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      onChanged: (newValue) {
-        setState(() {
-          _sourceType = newValue!;
-        });
-      },
     );
   }
 }

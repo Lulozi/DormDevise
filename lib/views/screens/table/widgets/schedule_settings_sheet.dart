@@ -445,13 +445,19 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       return content;
     }
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) async {
+        if (didPop) {
+          return;
+        }
         if (!widget.saveNotificationImmediately && _hasReminderChanged) {
           await _saveNotificationSettings();
           _hasReminderChanged = false;
         }
-        return true;
+        if (context.mounted) {
+          Navigator.of(context).pop(result);
+        }
       },
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -881,7 +887,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               Icon(
                 Icons.arrow_forward_ios,
                 size: 16,
-                color: colorScheme.onSurface.withOpacity(0.26),
+                color: colorScheme.onSurface.withValues(alpha: 0.26),
               ),
           ],
         ),
@@ -903,7 +909,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         Icon(
           Icons.arrow_forward_ios,
           size: 16,
-          color: colorScheme.onSurface.withOpacity(0.26),
+          color: colorScheme.onSurface.withValues(alpha: 0.26),
         ),
       ],
     );

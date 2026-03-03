@@ -165,7 +165,7 @@ class ThemeService extends ChangeNotifier {
       // ignore: deprecated_member_use
       await prefs.setInt(
         _prefKeyCustomSwitchThumbColor,
-        _customSwitchThumbColor!.value,
+        _customSwitchThumbColor!.toARGB32(),
       );
     }
 

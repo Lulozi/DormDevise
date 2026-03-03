@@ -452,7 +452,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                                 4 * flashInput * (1 - flashInput);
                             flashColor = Color.lerp(
                               colorScheme.surface,
-                              Theme.of(context).primaryColor.withOpacity(0.3),
+                              Theme.of(
+                                context,
+                              ).primaryColor.withValues(alpha: 0.3),
                               flashIntensity,
                             );
                           }
@@ -496,7 +498,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             if (_isLoading)
               Positioned.fill(
                 child: Container(
-                  color: colorScheme.surface.withOpacity(0.6),
+                  color: colorScheme.surface.withValues(alpha: 0.6),
                   child: const Center(child: CircularProgressIndicator()),
                 ),
               ),

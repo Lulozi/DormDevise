@@ -762,6 +762,9 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     if (result == null) {
       return;
     }
+    if (!mounted) {
+      return;
+    }
 
     final TimeOfDay newStart = result.updatedStart ?? preview.start;
     final Duration newDuration = result.classDuration;
@@ -849,7 +852,7 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                 boxShadow: [
                   // 轻微边缘阴影，帮助边框更清晰
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 6,
                     spreadRadius: 0.5,
                     offset: const Offset(0, 3),
@@ -1902,14 +1905,14 @@ class _WheelSheet extends StatelessWidget {
             boxShadow: <BoxShadow>[
               // 轻微的边缘阴影，便于边框突出
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 6,
                 spreadRadius: 0.5,
                 offset: const Offset(0, 3),
               ),
               // 现有较大的背景阴影，保留以模拟浮起感
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 16),
               ),
