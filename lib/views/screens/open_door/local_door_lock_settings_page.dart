@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:dormdevise/models/local_door_lock_config.dart';
 import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/wifi_info_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// HTTP配置页面。
@@ -31,12 +33,10 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
   bool _preferPostWhenWifiMatched = true;
   bool _multiPostEnabled = false;
   late final TextEditingController _postUrlController;
-  final GlobalKey<AnimatedListState> _savedWifiListKey =
+  GlobalKey<AnimatedListState> _savedWifiListKey =
       GlobalKey<AnimatedListState>();
-  final GlobalKey<AnimatedListState> _mappingListKey =
-      GlobalKey<AnimatedListState>();
-  final GlobalKey<AnimatedListState> _postUrlListKey =
-      GlobalKey<AnimatedListState>();
+  GlobalKey<AnimatedListState> _mappingListKey = GlobalKey<AnimatedListState>();
+  GlobalKey<AnimatedListState> _postUrlListKey = GlobalKey<AnimatedListState>();
   StateSetter? _postOverlaySetState;
   final GlobalKey _wifiCardKey = GlobalKey();
   final GlobalKey _wifiDropdownTargetKey = GlobalKey();
@@ -383,6 +383,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
     final wifi = await WifiInfoService.instance.getCurrentWifi();
     if (!mounted) return;
     setState(() {
+      _resetAnimatedListKeys();
       _postEnabled = config.postEnabled;
       _preferPostWhenWifiMatched = config.preferPostWhenWifiMatched;
       _multiPostEnabled = config.multiPostEnabled;
@@ -497,6 +498,167 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       urls.add(normalized);
     }
     return urls;
+  }
+
+  void _resetAnimatedListKeys() {
+    _savedWifiListKey = GlobalKey<AnimatedListState>();
+    _mappingListKey = GlobalKey<AnimatedListState>();
+    _postUrlListKey = GlobalKey<AnimatedListState>();
+  }
+
+  Map<String, dynamic> _buildSharePayload() {
+    return <String, dynamic>{
+      'local_post_enabled': _postEnabled,
+      'local_post_url': _normalizePostUrl(_postUrlController.text),
+      'local_post_prefer_on_wifi': _preferPostWhenWifiMatched,
+      'local_multi_post_enabled': _multiPostEnabled,
+      'local_wifi_post_enabled': _multiPostEnabled,
+      'local_saved_post_urls': _collectSavedPostUrls(),
+      'local_saved_wifis': _savedWifis
+          .map(
+            (wifi) => <String, String>{'ssid': wifi.ssid, 'bssid': wifi.bssid},
+          )
+          .toList(growable: false),
+      'local_wifi_post_mappings': _wifiPostMappings
+          .map(
+            (mapping) => <String, String>{
+              'ssid': mapping.wifi.ssid,
+              'bssid': mapping.wifi.bssid,
+              'postUrl': mapping.normalizedPostUrl,
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
+  Future<void> _exportConfigToClipboard() async {
+    final String jsonText = const JsonEncoder.withIndent(
+      '  ',
+    ).convert(_buildSharePayload());
+    await Clipboard.setData(ClipboardData(text: jsonText));
+    if (!mounted) {
+      return;
+    }
+    _showStatus('配置已复制到剪贴板，可分享给其他设备');
+  }
+
+  Future<void> _importConfigFromClipboard() async {
+    final ClipboardData? data = await Clipboard.getData('text/plain');
+    final String raw = data?.text?.trim() ?? '';
+    if (raw.isEmpty) {
+      _showStatus('剪贴板内容为空', isError: true, icon: Icons.info_outline);
+      return;
+    }
+
+    try {
+      final dynamic decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        throw const FormatException('不是有效的配置对象');
+      }
+
+      final List<String> importedPostUrls =
+          (decoded['local_saved_post_urls'] as List<dynamic>? ?? <dynamic>[])
+              .map((dynamic item) => item.toString().trim())
+              .where((String item) => item.isNotEmpty)
+              .toSet()
+              .toList();
+
+      final List<SavedWifiInfo> importedWifis =
+          (decoded['local_saved_wifis'] as List<dynamic>? ?? <dynamic>[])
+              .whereType<Map>()
+              .map(
+                (Map item) => SavedWifiInfo(
+                  ssid: LocalDoorLockConfig.normalizeWifiValue(
+                    item['ssid']?.toString(),
+                  ),
+                  bssid: LocalDoorLockConfig.normalizeWifiValue(
+                    item['bssid']?.toString(),
+                  ),
+                ),
+              )
+              .where((SavedWifiInfo wifi) => wifi.identity.isNotEmpty)
+              .toList();
+
+      final List<WifiPostMapping> importedMappings =
+          (decoded['local_wifi_post_mappings'] as List<dynamic>? ?? <dynamic>[])
+              .whereType<Map>()
+              .map(
+                (Map item) => WifiPostMapping(
+                  wifi: SavedWifiInfo(
+                    ssid: LocalDoorLockConfig.normalizeWifiValue(
+                      item['ssid']?.toString(),
+                    ),
+                    bssid: LocalDoorLockConfig.normalizeWifiValue(
+                      item['bssid']?.toString(),
+                    ),
+                  ),
+                  postUrl: item['postUrl']?.toString() ?? '',
+                ),
+              )
+              .where(
+                (WifiPostMapping mapping) =>
+                    mapping.identity.isNotEmpty &&
+                    mapping.normalizedPostUrl.isNotEmpty,
+              )
+              .toList();
+
+      final LocalDoorLockConfig importedConfig = LocalDoorLockConfig(
+        postEnabled: decoded['local_post_enabled'] == true,
+        postUrl: _normalizePostUrl(decoded['local_post_url']?.toString() ?? ''),
+        preferPostWhenWifiMatched:
+            decoded['local_post_prefer_on_wifi'] != false,
+        multiPostEnabled: decoded['local_multi_post_enabled'] == true,
+        wifiPostEnabled: decoded['local_wifi_post_enabled'] != false,
+        savedPostUrls: importedPostUrls,
+        savedWifis: importedWifis,
+        wifiPostMappings: importedMappings,
+      );
+
+      await LocalDoorLockConfigService.instance.saveConfig(importedConfig);
+      if (!mounted) {
+        return;
+      }
+      await _loadConfig();
+      if (!mounted) {
+        return;
+      }
+      _showStatus('配置已导入并保存');
+    } catch (error) {
+      _showStatus('导入失败：$error', isError: true);
+    }
+  }
+
+  Future<void> _openShareImportMenu() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.share_outlined),
+                title: const Text('分享配置（复制到剪贴板）'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await _exportConfigToClipboard();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('导入配置（从剪贴板）'),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await _importConfigFromClipboard();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _selectSavedPostUrl(String postUrl) {
@@ -902,6 +1064,38 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       sizeFactor: animation,
       axisAlignment: -1,
       child: FadeTransition(opacity: animation, child: tile),
+    );
+  }
+
+  Widget _buildConfigActionButtons(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _saving ? null : _openShareImportMenu,
+            icon: const Icon(Icons.ios_share_outlined),
+            label: const Text('分享/导入'),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: _saving
+                ? null
+                : () async {
+                    await _saveConfig(successMessage: 'HTTP配置已保存');
+                  },
+            icon: _saving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_outlined),
+            label: Text(_saving ? '保存中...' : '保存配置'),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1420,7 +1614,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
             ),
             const SizedBox(height: 10),
             Row(
-              children: [
+              children: <Widget>[
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed:
@@ -1431,24 +1625,6 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
                         : null,
                     icon: const Icon(Icons.bookmark_add_outlined),
                     label: const Text('保存当前WiFi'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _saving
-                        ? null
-                        : () async {
-                            await _saveConfig(successMessage: 'HTTP配置已保存');
-                          },
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save_outlined),
-                    label: Text(_saving ? '保存中...' : '保存配置'),
                   ),
                 ),
               ],
@@ -1518,17 +1694,57 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       );
     }
 
+    final bool showButtonsUnderWifi = _postEnabled && _multiPostEnabled;
+
     return Scaffold(
       appBar: widget.showAppBar ? AppBar(title: const Text('HTTP配置')) : null,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _buildPostConfigCard(context),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return SizeTransition(
+                sizeFactor: animation,
+                axisAlignment: -1,
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
+            child: showButtonsUnderWifi
+                ? const SizedBox.shrink()
+                : Padding(
+                    key: const ValueKey('buttons_under_post_card'),
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _buildConfigActionButtons(context),
+                  ),
+          ),
           const SizedBox(height: 12),
           AnimatedOpacity(
             duration: const Duration(milliseconds: 250),
             opacity: _postEnabled && _multiPostEnabled ? 1.0 : 0.45,
             child: _buildWifiCard(context),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return SizeTransition(
+                sizeFactor: animation,
+                axisAlignment: -1,
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
+            child: showButtonsUnderWifi
+                ? Padding(
+                    key: const ValueKey('buttons_under_wifi_card'),
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _buildConfigActionButtons(context),
+                  )
+                : const SizedBox.shrink(),
           ),
           _buildStatusMessage(context),
         ],
