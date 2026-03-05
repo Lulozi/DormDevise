@@ -463,24 +463,39 @@ class _WebImportAutoLoginWebViewPageState
     return CourseScheduleConfig(
       defaultClassDuration: const Duration(minutes: 45),
       defaultBreakDuration: const Duration(minutes: 10),
-      segments: const <ScheduleSegmentConfig>[
+      segments: <ScheduleSegmentConfig>[
         ScheduleSegmentConfig(
           name: '上午',
-          startTime: TimeOfDay(hour: 8, minute: 20),
+          startTime: TimeOfDay(hour: 8, minute: 30),
           classCount: 4,
+          perBreakDurations: <Duration>[
+            Duration(minutes: 5),
+            Duration(minutes: 10),
+            Duration(minutes: 5),
+          ],
         ),
         ScheduleSegmentConfig(
           name: '下午',
           startTime: TimeOfDay(hour: 14, minute: 0),
           classCount: 4,
+          perBreakDurations: <Duration>[
+            Duration(minutes: 5),
+            Duration(minutes: 10),
+            Duration(minutes: 5),
+          ],
         ),
         ScheduleSegmentConfig(
           name: '晚上',
-          startTime: TimeOfDay(hour: 19, minute: 0),
+          startTime: TimeOfDay(hour: 18, minute: 30),
           classCount: 3,
           classDuration: Duration(minutes: 45),
+          perBreakDurations: <Duration>[
+            Duration(minutes: 10),
+            Duration(minutes: 10),
+          ],
         ),
       ],
+      useSegmentBreakDurations: true,
     );
   }
 
