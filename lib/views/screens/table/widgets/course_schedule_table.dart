@@ -238,6 +238,180 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     }
   }
 
+  _CourseCardTypography _resolveCourseCardTypography(
+    BuildContext context, {
+    required double contentWidth,
+    required double contentHeight,
+    required bool isNonCurrent,
+    required bool hasLocation,
+    required bool hasTeacher,
+  }) {
+    final Size screenSize = MediaQuery.sizeOf(context);
+    final double screenScale = math
+        .min(screenSize.width / 390.0, screenSize.height / 844.0)
+        .clamp(0.86, 1.18)
+        .toDouble();
+
+    final double safeWidth = math.max(contentWidth, 18);
+    final double safeHeight = math.max(contentHeight, 20);
+
+    // 至少保证当前宽度可展示 3 个中文字符。
+    final double titleWidthLimit = safeWidth / 3.0;
+    final double titleFontSize = math
+        .min(12.0 * screenScale, titleWidthLimit)
+        .clamp(7.0, 14.0)
+        .toDouble();
+    final double detailFontSize = (titleFontSize * 0.84)
+        .clamp(6.5, 11.0)
+        .toDouble();
+    final double badgeFontSize = (detailFontSize - 0.2)
+        .clamp(6.5, 10.0)
+        .toDouble();
+
+    final double titleLineHeight = titleFontSize * 1.2;
+    final double detailLineHeight = detailFontSize * 1.22;
+    final double nonCurrentBadgeHeight = isNonCurrent
+        ? (badgeFontSize * 1.25 + 2)
+        : 0.0;
+
+    double availableHeight = safeHeight - nonCurrentBadgeHeight;
+    if (availableHeight < titleLineHeight) {
+      availableHeight = titleLineHeight;
+    }
+
+    int titleMaxLines = (availableHeight / titleLineHeight)
+        .floor()
+        .clamp(1, 4)
+        .toInt();
+    if ((hasLocation || hasTeacher) && titleMaxLines > 1) {
+      while (titleMaxLines > 1 &&
+          availableHeight - titleMaxLines * titleLineHeight <
+              detailLineHeight) {
+        titleMaxLines--;
+      }
+    }
+
+    final double detailBudget = math.max(
+      availableHeight - titleMaxLines * titleLineHeight,
+      0.0,
+    );
+    int locationMaxLines = 0;
+    int teacherMaxLines = 0;
+    if (hasLocation && hasTeacher) {
+      final int totalDetailLines = math.max(
+        2,
+        (detailBudget / detailLineHeight).floor(),
+      );
+      locationMaxLines = (totalDetailLines / 2).ceil().clamp(1, 6).toInt();
+      teacherMaxLines = (totalDetailLines - locationMaxLines)
+          .clamp(1, 6)
+          .toInt();
+    } else if (hasLocation || hasTeacher) {
+      final int lines = math.max(1, (detailBudget / detailLineHeight).floor());
+      if (hasLocation) {
+        locationMaxLines = lines.clamp(1, 6).toInt();
+      } else {
+        teacherMaxLines = lines.clamp(1, 6).toInt();
+      }
+    }
+
+    return _CourseCardTypography(
+      titleFontSize: titleFontSize,
+      detailFontSize: detailFontSize,
+      badgeFontSize: badgeFontSize,
+      titleMaxLines: titleMaxLines,
+      locationMaxLines: locationMaxLines,
+      teacherMaxLines: teacherMaxLines,
+    );
+  }
+
+  Widget _buildAdaptiveCourseTextContent(
+    BuildContext context, {
+    required _CourseBlock block,
+    required bool isNonCurrent,
+    required TextStyle titleStyle,
+    required TextStyle detailStyle,
+    required double contentWidth,
+    required double contentHeight,
+    bool showLocationPrefix = true,
+  }) {
+    final bool hasLocation = block.session.location.isNotEmpty;
+    final bool hasTeacher = block.course.teacher.isNotEmpty;
+    final _CourseCardTypography typography = _resolveCourseCardTypography(
+      context,
+      contentWidth: contentWidth,
+      contentHeight: contentHeight,
+      isNonCurrent: isNonCurrent,
+      hasLocation: hasLocation,
+      hasTeacher: hasTeacher,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (isNonCurrent)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              '[非本周]',
+              style: detailStyle.copyWith(
+                fontSize: typography.badgeFontSize,
+                height: 1.1,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        Flexible(
+          fit: FlexFit.loose,
+          child: Text(
+            block.course.name,
+            style: titleStyle.copyWith(
+              fontSize: typography.titleFontSize,
+              height: 1.15,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: typography.titleMaxLines,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (hasLocation && typography.locationMaxLines > 0) ...<Widget>[
+          const SizedBox(height: 2),
+          Flexible(
+            fit: FlexFit.loose,
+            child: Text(
+              showLocationPrefix
+                  ? '@${block.session.location}'
+                  : block.session.location,
+              style: detailStyle.copyWith(
+                fontSize: typography.detailFontSize,
+                height: 1.2,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: typography.locationMaxLines,
+            ),
+          ),
+        ],
+        if (hasTeacher && typography.teacherMaxLines > 0) ...<Widget>[
+          const SizedBox(height: 4),
+          Flexible(
+            fit: FlexFit.loose,
+            child: Text(
+              block.course.teacher,
+              style: detailStyle.copyWith(
+                fontSize: typography.detailFontSize,
+                height: 1.2,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: typography.teacherMaxLines,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1074,71 +1248,31 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           ),
         ],
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: <Widget>[
-          Padding(
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints cardConstraints) {
+          final double contentWidth = math.max(
+            cardConstraints.maxWidth - 8,
+            18,
+          );
+          final double contentHeight = math.max(
+            cardConstraints.maxHeight - 8,
+            20,
+          );
+
+          return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                if (isNonCurrent)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      '[非本周]',
-                      style: detailStyle.copyWith(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                // 1. 自适应课程名（标题）
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Text(
-                    block.course.name,
-                    style: titleStyle.copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.fade,
-                  ),
-                ),
-                // 2. 教室信息（独立一行，限制最大高度比例）
-                if (block.session.location.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: blockHeight * 0.3, // 最多占用 30% 高度
-                    ),
-                    child: Text(
-                      '@${block.session.location}',
-                      style: detailStyle.copyWith(fontSize: 10),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 10, // 允许显示多行，由高度限制
-                    ),
-                  ),
-                ],
-                // 3. 教师/备注信息（独立一行，限制最大高度比例）
-                if (block.course.teacher.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: blockHeight * 0.2, // 最多占用 20% 高度
-                    ),
-                    child: Text(
-                      block.course.teacher,
-                      style: detailStyle.copyWith(fontSize: 10),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 10,
-                    ),
-                  ),
-                ],
-              ],
+            child: _buildAdaptiveCourseTextContent(
+              context,
+              block: block,
+              isNonCurrent: isNonCurrent,
+              titleStyle: titleStyle,
+              detailStyle: detailStyle,
+              contentWidth: contentWidth,
+              contentHeight: contentHeight,
+              showLocationPrefix: true,
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
 
@@ -1942,34 +2076,29 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                         horizontal: 4,
                         vertical: 4,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          if (isNonCurrent)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Text(
-                                '[非本周]',
-                                style: detailStyle.copyWith(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          Text(
-                            block.course.name,
-                            style: titleStyle.copyWith(fontSize: 12),
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            block.session.location,
-                            style: detailStyle.copyWith(fontSize: 10),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                      child: LayoutBuilder(
+                        builder:
+                            (BuildContext context, BoxConstraints constraints) {
+                              final double contentWidth = math.max(
+                                constraints.maxWidth - 8,
+                                18,
+                              );
+                              final double contentHeight = math.max(
+                                constraints.maxHeight - 8,
+                                20,
+                              );
+
+                              return _buildAdaptiveCourseTextContent(
+                                context,
+                                block: block,
+                                isNonCurrent: isNonCurrent,
+                                titleStyle: titleStyle,
+                                detailStyle: detailStyle,
+                                contentWidth: contentWidth,
+                                contentHeight: contentHeight,
+                                showLocationPrefix: false,
+                              );
+                            },
                       ),
                     ),
                   ),
@@ -2651,6 +2780,24 @@ class _AnimatedHeaderCellState extends State<_AnimatedHeaderCell>
 /// 判断两个日期是否属于同一天。
 bool _isSameDate(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+class _CourseCardTypography {
+  const _CourseCardTypography({
+    required this.titleFontSize,
+    required this.detailFontSize,
+    required this.badgeFontSize,
+    required this.titleMaxLines,
+    required this.locationMaxLines,
+    required this.teacherMaxLines,
+  });
+
+  final double titleFontSize;
+  final double detailFontSize;
+  final double badgeFontSize;
+  final int titleMaxLines;
+  final int locationMaxLines;
+  final int teacherMaxLines;
 }
 
 /// 内部的课程区块数据模型。
