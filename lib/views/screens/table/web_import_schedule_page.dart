@@ -918,7 +918,7 @@ class _AddSchoolDialogState extends State<_AddSchoolDialog> {
                               : Icon(
                                   Icons.school_rounded,
                                   color: colorScheme.primary,
-                                  size: 44,
+                                  size: 38,
                                 )),
                   ),
                 ),
