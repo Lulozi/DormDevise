@@ -34,6 +34,18 @@ class DormDeviseApp extends StatelessWidget {
           theme: ThemeService.instance.lightTheme,
           darkTheme: ThemeService.instance.darkTheme,
           themeMode: ThemeService.instance.themeMode,
+          builder: (BuildContext context, Widget? child) {
+            final MediaQueryData mediaQuery = MediaQuery.of(context);
+            final double rawScale = mediaQuery.textScaler.scale(14) / 14;
+            final double clampedScale = rawScale.clamp(0.85, 1.15).toDouble();
+            final TextScaler clampedTextScaler = TextScaler.linear(
+              clampedScale,
+            );
+            return MediaQuery(
+              data: mediaQuery.copyWith(textScaler: clampedTextScaler),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
           themeAnimationDuration: const Duration(
             milliseconds: 500,
           ), // 延长渐变时间使其更平滑
