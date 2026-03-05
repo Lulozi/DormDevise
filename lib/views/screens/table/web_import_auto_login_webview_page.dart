@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../../../models/course_schedule_config.dart';
 import '../../../services/web_login/fit/fit_china_ocr_service.dart';
 import '../../../services/web_login/fit/fit_login_web_automation.dart';
 import '../../../services/web_login/fit/fit_schedule_scraper.dart';
+import '../../../services/web_school_service.dart';
 import '../../../utils/app_toast.dart';
 import '../../../utils/course_utils.dart';
 import 'create_schedule_settings_page.dart';
@@ -52,6 +54,7 @@ class _WebImportAutoLoginWebViewPageState
   bool _isPreparingWebView = true;
   bool _isAutoLoginRunning = false;
   bool _isScraping = false;
+  bool _didRestoreAccountWebData = false;
 
   /// 记录上一次尝试自动登录的 URL，避免同一页面重复执行，
   /// 但允许在重定向到新 URL 后重新触发。
@@ -65,23 +68,106 @@ class _WebImportAutoLoginWebViewPageState
     _prepareWebLoginEnvironment();
   }
 
-  /// 进入登录页前清理 Web 缓存，确保修改账号后使用最新凭据重新登录。
+  @override
+  void dispose() {
+    unawaited(_persistAccountWebData());
+    super.dispose();
+  }
+
+  /// 进入登录页前准备账号级网页数据：
+  /// 1. 清理当前 Cookie；
+  /// 2. 按学校+账号恢复此前保存的 Cookie。
   Future<void> _prepareWebLoginEnvironment() async {
     try {
-      _updateStatus('正在清理登录缓存...');
-      await CookieManager.instance().deleteAllCookies();
-      await WebStorageManager.instance().deleteAllData();
+      _updateStatus('正在准备账号登录数据...');
+      _didRestoreAccountWebData = await WebSchoolService.instance
+          .restoreAccountWebData(
+            schoolName: widget.schoolName,
+            username: widget.username,
+            loginUrl: widget.loginUrl,
+          );
     } catch (error) {
-      debugPrint('[自动登录] 清理缓存失败: $error');
+      debugPrint('[自动登录] 准备账号数据失败: $error');
     } finally {
       if (mounted) {
         setState(() {
           _isPreparingWebView = false;
           _isLoading = true;
-          _statusText = '正在加载页面...';
+          _statusText = _didRestoreAccountWebData
+              ? '已恢复该账号登录状态，正在加载页面...'
+              : '正在加载页面...';
         });
       }
     }
+  }
+
+  Future<void> _persistAccountWebData({WebUri? currentUrl}) async {
+    final InAppWebViewController? controller = _webViewController;
+    if (controller == null) {
+      return;
+    }
+
+    final Set<String> candidateUrls = <String>{widget.loginUrl};
+    final String? currentUrlString =
+        currentUrl?.toString() ?? (await controller.getUrl())?.toString();
+    if (currentUrlString != null && currentUrlString.trim().isNotEmpty) {
+      candidateUrls.add(currentUrlString.trim());
+    }
+
+    final CookieManager cookieManager = CookieManager.instance();
+    final List<Cookie> mergedCookies = <Cookie>[];
+    final Set<String> cookieKeys = <String>{};
+
+    for (final String url in candidateUrls) {
+      final Uri? parsed = Uri.tryParse(url);
+      if (parsed == null ||
+          (parsed.scheme != 'http' && parsed.scheme != 'https')) {
+        continue;
+      }
+
+      try {
+        final List<Cookie> cookies = await cookieManager.getCookies(
+          url: WebUri(url),
+        );
+        for (final Cookie cookie in cookies) {
+          final String key =
+              '${cookie.name}|${cookie.domain ?? ''}|${cookie.path ?? '/'}';
+          if (cookieKeys.add(key)) {
+            mergedCookies.add(cookie);
+          }
+        }
+      } catch (error) {
+        debugPrint('[自动登录] 读取 Cookie 失败: $error');
+      }
+    }
+
+    if (mergedCookies.isEmpty) {
+      return;
+    }
+
+    await WebSchoolService.instance.saveAccountWebData(
+      schoolName: widget.schoolName,
+      username: widget.username,
+      loginUrl: widget.loginUrl,
+      cookies: mergedCookies,
+    );
+  }
+
+  PageRouteBuilder<T> _buildNoAnimationRoute<T>({
+    required WidgetBuilder builder,
+  }) {
+    return PageRouteBuilder<T>(
+      pageBuilder:
+          (
+            BuildContext context,
+            Animation<double> animation,
+            Animation<double> secondaryAnimation,
+          ) {
+            return builder(context);
+          },
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -251,6 +337,7 @@ class _WebImportAutoLoginWebViewPageState
       AppToast.show(context, '页面未就绪', variant: AppToastVariant.warning);
       return;
     }
+    final NavigatorState navigator = Navigator.of(context);
 
     setState(() {
       _isScraping = true;
@@ -291,7 +378,7 @@ class _WebImportAutoLoginWebViewPageState
         return;
       }
 
-      // 3. 按教学时段拆分跨时段课程（如 1-8 节 → 上午 1-4 + 下午 5-8）
+      // 3. 按教学时段拆分跨时段课程（如 1-8 节 -> 上午 1-4 + 下午 5-8）
       final CourseScheduleConfig fitConfig = _buildFitScheduleConfig();
       final List<Course> courses = splitCrossSegmentSessions(
         rawCourses,
@@ -304,12 +391,14 @@ class _WebImportAutoLoginWebViewPageState
 
       if (!mounted) return;
 
-      // 4. 跳转到基本信息页面（预填充 FIT 默认配置 + 课程数据）
+      await _persistAccountWebData();
+
+      // 4. 跳转到基本信息页面（预填 FIT 默认配置 + 课程数据）
       //    用户可在该页面修改配置后，再进入课程表页面。
       final String scheduleName = '${widget.schoolName}课表';
 
-      final bool? result = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(
+      final bool? result = await navigator.push<bool>(
+        _buildNoAnimationRoute<bool>(
           builder: (BuildContext context) => CreateScheduleSettingsPage(
             initialScheduleName: scheduleName,
             initialConfig: fitConfig,
@@ -324,7 +413,8 @@ class _WebImportAutoLoginWebViewPageState
 
       // 用户在后续页面完成创建后一路返回
       if (result == true && mounted) {
-        Navigator.of(context).pop(true);
+        await _persistAccountWebData();
+        navigator.pop(true);
       }
     } catch (error) {
       debugPrint('[FIT 爬取] 异常: $error');
@@ -418,9 +508,9 @@ class _WebImportAutoLoginWebViewPageState
           style: TextStyle(color: colorScheme.onSurface, fontSize: 12),
           children: <InlineSpan>[
             TextSpan(text: prefix),
-            TextSpan(
+            const TextSpan(
               text: '点击右上角 ',
-              style: const TextStyle(color: Colors.red),
+              style: TextStyle(color: Colors.red),
             ),
             WidgetSpan(
               alignment: PlaceholderAlignment.middle,
@@ -527,9 +617,9 @@ class _WebImportAutoLoginWebViewPageState
                       mixedContentMode:
                           MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
                       safeBrowsingEnabled: false,
-                      clearCache: true,
-                      clearSessionCache: true,
-                      cacheEnabled: false,
+                      clearCache: false,
+                      clearSessionCache: false,
+                      cacheEnabled: true,
                     ),
                     onWebViewCreated: (InAppWebViewController controller) {
                       _webViewController = controller;
@@ -548,6 +638,7 @@ class _WebImportAutoLoginWebViewPageState
                         _statusText = '加载完成！';
                       });
                       await _tryAutoLogin();
+                      await _persistAccountWebData(currentUrl: url);
                     },
                     // 拦截 JS alert 弹窗，检测密码错误提示
                     onJsAlert:

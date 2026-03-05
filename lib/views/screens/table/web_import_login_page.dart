@@ -30,6 +30,9 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   final FocusNode _usernameFocusNode = FocusNode();
   final FocusNode _passwordFocusNode = FocusNode();
   final FocusNode _idleFocusNode = FocusNode(skipTraversal: true);
+
+  List<WebSchoolCredential> _savedAccounts = <WebSchoolCredential>[];
+  bool _isAccountListExpanded = false;
   bool _obscurePassword = true;
   bool _isSaving = false;
   bool _isLoading = true;
@@ -65,23 +68,138 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
   /// 加载已保存的凭据（如果有）。
   Future<void> _loadSavedCredentials() async {
-    final credentials = await WebSchoolService.instance.loadCredentials(
-      widget.school.name,
-    );
-    if (mounted) {
-      if (credentials != null) {
-        _usernameController.text = credentials.username;
-        _passwordController.text = credentials.password;
-      }
-      setState(() => _isLoading = false);
+    await _reloadSavedAccounts();
+    if (!mounted) {
+      return;
     }
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _reloadSavedAccounts({
+    String? preferredUsername,
+    bool clearIfNoAccount = false,
+    bool keepExpanded = false,
+  }) async {
+    final List<WebSchoolCredential> accounts = await WebSchoolService.instance
+        .loadCredentialAccounts(widget.school.name);
+    if (!mounted) {
+      return;
+    }
+
+    final WebSchoolCredential? selected = _resolvePreferredAccount(
+      accounts,
+      preferredUsername: preferredUsername,
+    );
+
+    setState(() {
+      _savedAccounts = accounts;
+      _isAccountListExpanded = keepExpanded && accounts.isNotEmpty;
+      if (selected != null) {
+        _usernameController.text = selected.username;
+        _passwordController.text = selected.password;
+      } else if (clearIfNoAccount) {
+        _usernameController.clear();
+        _passwordController.clear();
+      }
+    });
+  }
+
+  WebSchoolCredential? _resolvePreferredAccount(
+    List<WebSchoolCredential> accounts, {
+    String? preferredUsername,
+  }) {
+    if (accounts.isEmpty) {
+      return null;
+    }
+
+    final String explicit = (preferredUsername ?? '').trim();
+    if (explicit.isNotEmpty) {
+      for (final WebSchoolCredential account in accounts) {
+        if (account.username == explicit) {
+          return account;
+        }
+      }
+    }
+
+    final String current = _usernameController.text.trim();
+    if (current.isNotEmpty) {
+      for (final WebSchoolCredential account in accounts) {
+        if (account.username == current) {
+          return account;
+        }
+      }
+    }
+
+    return accounts.first;
+  }
+
+  void _toggleAccountList() {
+    if (_savedAccounts.isEmpty) {
+      return;
+    }
+    setState(() {
+      _isAccountListExpanded = !_isAccountListExpanded;
+    });
+  }
+
+  void _selectAccount(WebSchoolCredential account) {
+    setState(() {
+      _usernameController.text = account.username;
+      _passwordController.text = account.password;
+      _isAccountListExpanded = false;
+    });
+    _usernameController.selection = TextSelection.collapsed(
+      offset: _usernameController.text.length,
+    );
+    _passwordController.selection = TextSelection.collapsed(
+      offset: _passwordController.text.length,
+    );
+    _passwordFocusNode.requestFocus();
+  }
+
+  Future<void> _deleteSavedAccount(String username) async {
+    final String currentUsername = _usernameController.text.trim();
+    await WebSchoolService.instance.deleteCredentials(
+      widget.school.name,
+      username: username,
+    );
+
+    await _reloadSavedAccounts(
+      preferredUsername: currentUsername == username ? null : currentUsername,
+      clearIfNoAccount: currentUsername == username,
+      keepExpanded: true,
+    );
+
+    if (!mounted) {
+      return;
+    }
+    AppToast.show(context, '已删除账号：$username', variant: AppToastVariant.success);
+  }
+
+  PageRouteBuilder<T> _buildNoAnimationRoute<T>({
+    required WidgetBuilder builder,
+  }) {
+    return PageRouteBuilder<T>(
+      pageBuilder:
+          (
+            BuildContext context,
+            Animation<double> animation,
+            Animation<double> secondaryAnimation,
+          ) {
+            return builder(context);
+          },
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+    );
   }
 
   /// 保存凭据并提示用户。
   Future<void> _saveCredentialsAndOpenWebLogin() async {
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text.trim();
-    final loginUrl = widget.school.url.trim();
+    final String username = _usernameController.text.trim();
+    final String password = _passwordController.text.trim();
+    final String loginUrl = widget.school.url.trim();
 
     if (username.isEmpty) {
       AppToast.show(context, '请输入账号', variant: AppToastVariant.warning);
@@ -100,7 +218,10 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _isAccountListExpanded = false;
+    });
 
     try {
       await WebSchoolService.instance.saveCredentials(
@@ -108,15 +229,19 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
         username: username,
         password: password,
       );
+
+      await _reloadSavedAccounts(preferredUsername: username);
+
       if (mounted) {
         AppToast.show(
           context,
           '账号密码已加密保存，正在打开登录页',
           variant: AppToastVariant.success,
         );
+
         final bool? result = await Navigator.of(context).push<bool>(
-          MaterialPageRoute<bool>(
-            builder: (context) => WebImportAutoLoginWebViewPage(
+          _buildNoAnimationRoute<bool>(
+            builder: (BuildContext context) => WebImportAutoLoginWebViewPage(
               schoolName: widget.school.name,
               loginUrl: loginUrl,
               username: username,
@@ -139,7 +264,9 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isSaving = false);
+        setState(() {
+          _isSaving = false;
+        });
       }
     }
   }
@@ -186,9 +313,75 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     }
   }
 
+  Widget _buildSavedAccountPanel(ColorScheme colorScheme) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      child: !_isAccountListExpanded || _savedAccounts.isEmpty
+          ? const SizedBox.shrink()
+          : Container(
+              margin: const EdgeInsets.only(top: 8),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withAlpha(90),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: Column(
+                children: List<Widget>.generate(_savedAccounts.length, (
+                  int index,
+                ) {
+                  final WebSchoolCredential account = _savedAccounts[index];
+                  final bool isLast = index == _savedAccounts.length - 1;
+                  return Column(
+                    children: <Widget>[
+                      ListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 0,
+                        ),
+                        leading: Icon(
+                          Icons.account_circle_outlined,
+                          color: colorScheme.primary,
+                          size: 20,
+                        ),
+                        title: Text(
+                          account.username,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        onTap: () => _selectAccount(account),
+                        trailing: IconButton(
+                          tooltip: '删除账号',
+                          onPressed: () =>
+                              _deleteSavedAccount(account.username),
+                          icon: Icon(
+                            Icons.delete_outline,
+                            size: 20,
+                            color: colorScheme.error,
+                          ),
+                        ),
+                      ),
+                      if (!isLast)
+                        Divider(
+                          height: 1,
+                          color: colorScheme.outlineVariant.withAlpha(160),
+                        ),
+                    ],
+                  );
+                }),
+              ),
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -215,7 +408,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+                children: <Widget>[
                   // 学校图标与提示
                   Center(
                     child: SizedBox(
@@ -243,7 +436,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                           Theme.of(context).cardTheme.color ??
                           colorScheme.surface,
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
+                      boxShadow: <BoxShadow>[
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.02),
                           blurRadius: 10,
@@ -254,7 +447,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                      children: <Widget>[
                         // 账号输入
                         Text(
                           '账号',
@@ -272,6 +465,14 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                             fontSize: 15,
                             color: colorScheme.onSurface,
                           ),
+                          onTap: _toggleAccountList,
+                          onChanged: (_) {
+                            if (_isAccountListExpanded) {
+                              setState(() {
+                                _isAccountListExpanded = false;
+                              });
+                            }
+                          },
                           decoration: InputDecoration(
                             hintText: '请输入学号或用户名',
                             hintStyle: TextStyle(
@@ -283,6 +484,19 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                               color: colorScheme.primary,
                               size: 22,
                             ),
+                            suffixIcon: _savedAccounts.isEmpty
+                                ? null
+                                : IconButton(
+                                    onPressed: _toggleAccountList,
+                                    icon: Icon(
+                                      _isAccountListExpanded
+                                          ? Icons.keyboard_arrow_up_rounded
+                                          : Icons.keyboard_arrow_down_rounded,
+                                      color: colorScheme.onSurface.withAlpha(
+                                        153,
+                                      ),
+                                    ),
+                                  ),
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 14,
                               vertical: 14,
@@ -304,6 +518,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                           ),
                           textInputAction: TextInputAction.next,
                         ),
+                        _buildSavedAccountPanel(colorScheme),
                         const SizedBox(height: 20),
 
                         // 密码输入
@@ -378,7 +593,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
                   // 安全提示
                   Row(
-                    children: [
+                    children: <Widget>[
                       Icon(
                         Icons.shield_outlined,
                         size: 14,
