@@ -45,7 +45,7 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('全部设置'),
+        title: const Text('门锁配置'),
         bottom: TabBar(
           controller: _tabController,
           tabs: _tabs,
