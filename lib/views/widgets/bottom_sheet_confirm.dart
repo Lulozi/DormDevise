@@ -22,24 +22,60 @@ class BottomSheetConfirm extends StatelessWidget {
     String confirmText = '删除',
     String cancelText = '取消',
   }) {
-    return showModalBottomSheet<bool>(
+    return showGeneralDialog<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => BottomSheetConfirm(
-        title: title,
-        confirmText: confirmText,
-        cancelText: cancelText,
-        onConfirm: () => Navigator.of(context).pop(true),
-        onCancel: () => Navigator.of(context).pop(false),
-      ),
+      useRootNavigator: true,
+      barrierDismissible: true,
+      barrierLabel: 'dismiss',
+      barrierColor: Colors.black.withValues(alpha: 0.38),
+      transitionDuration: const Duration(milliseconds: 260),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final Animation<double> fadeAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+          reverseCurve: Curves.easeIn,
+        );
+        final Animation<Offset> slideAnimation =
+            Tween<Offset>(
+              begin: const Offset(0, 1.15),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              ),
+            );
+
+        return FadeTransition(
+          opacity: fadeAnimation,
+          child: SlideTransition(position: slideAnimation, child: child),
+        );
+      },
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Material(
+            color: Colors.transparent,
+            child: BottomSheetConfirm(
+              title: title,
+              confirmText: confirmText,
+              cancelText: cancelText,
+              onConfirm: () => Navigator.of(dialogContext).pop(true),
+              onCancel: () => Navigator.of(dialogContext).pop(false),
+            ),
+          ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // 底部弹窗不需要顶部安全区域内边距，否则会导致关闭动画距离过长、下滑不完全
     return SafeArea(
+      top: false,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
         decoration: BoxDecoration(

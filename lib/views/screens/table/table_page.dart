@@ -137,6 +137,9 @@ class _TablePageState extends State<TablePage> {
             Expanded(
               child: Text(
                 text,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 14,
                   color: Theme.of(context).colorScheme.onSurface,
@@ -781,6 +784,7 @@ class _TablePageState extends State<TablePage> {
                 sections: _sections,
                 weekdays: const <String>[],
                 weekdayIndexes: const <int>[],
+                adaptiveDayCount: _visibleWeekdays.length,
                 maxWeek: _maxWeek,
                 onWeekChanged: _updateWeek,
                 onWeekHeaderTap: () {
@@ -801,6 +805,8 @@ class _TablePageState extends State<TablePage> {
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
+                // 周视图按页裁剪，避免跨页溢出的角标在滑动时被相邻页覆盖
+                clipBehavior: Clip.hardEdge,
                 physics: _isEditing
                     ? const NeverScrollableScrollPhysics()
                     : const PageScrollPhysics(),
@@ -819,6 +825,7 @@ class _TablePageState extends State<TablePage> {
                     courses: _courses,
                     currentWeek: targetWeek,
                     sections: _sections,
+                    adaptiveDayCount: _visibleWeekdays.length,
                     weekdays: _visibleWeekdays
                         .map((int day) => _weekdayLabels[day - 1])
                         .toList(),

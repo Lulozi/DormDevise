@@ -247,6 +247,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                   sections: _sections,
                   weekdays: const [],
                   weekdayIndexes: const [],
+                  adaptiveDayCount: widget.showWeekend ? 7 : 5,
                   maxWeek: widget.maxWeek,
                   includeTimeColumn: true,
                   applySurface: false,
@@ -257,6 +258,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
+                  clipBehavior: Clip.none,
                   onPageChanged: (index) {
                     setState(() {
                       _currentWeek = index + 1;
@@ -270,6 +272,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                       courses: _courses,
                       currentWeek: week,
                       sections: _sections,
+                      adaptiveDayCount: widget.showWeekend ? 7 : 5,
                       maxWeek: widget.maxWeek,
                       showNonCurrentWeek: widget.showNonCurrentWeek,
                       weekDates: _resolveWeekDates(week),

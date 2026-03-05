@@ -86,6 +86,9 @@ class ScheduleShare {
             Expanded(
               child: Text(
                 text,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 14,
                   color: Theme.of(context).colorScheme.onSurface,

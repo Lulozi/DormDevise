@@ -41,6 +41,9 @@ Future<void> showBubblePopup({
   // 计算位置：右上角对齐
   final double rightOffset = overlayBox.size.width - buttonBottomRight.dx;
   final double topOffset = buttonBottomRight.dy + verticalOffset;
+  final MediaQueryData mediaQuery = MediaQuery.of(context);
+  final double rawScale = mediaQuery.textScaler.scale(14) / 14;
+  final double bubbleScale = rawScale.clamp(0.9, 1.0).toDouble();
 
   final completer = Completer<void>();
   late OverlayEntry barrierEntry;
@@ -97,7 +100,12 @@ Future<void> showBubblePopup({
             color:
                 Theme.of(context).cardTheme.color ??
                 Theme.of(context).colorScheme.surface,
-            child: content,
+            child: MediaQuery(
+              data: mediaQuery.copyWith(
+                textScaler: TextScaler.linear(bubbleScale),
+              ),
+              child: content,
+            ),
           ),
         ),
       ),
