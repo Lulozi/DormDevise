@@ -168,6 +168,8 @@ class UpdateDownloadService {
   final ValueNotifier<DownloadResult?> resultNotifier =
       ValueNotifier<DownloadResult?>(null);
   bool _cancelRequested = false;
+  http.Client? _activeClient;
+  bool _activeClientOwned = false;
 
   /// 初始化通知插件并请求权限
   Future<void> initializeNotifications() async {
@@ -307,6 +309,8 @@ class UpdateDownloadService {
     );
 
     resultNotifier.value = result;
+    _activeClient = null;
+    _activeClientOwned = false;
 
     if (result.isSuccess) {
       await _showResultNotification('下载完成', '正在尝试安装更新...');
@@ -326,6 +330,12 @@ class UpdateDownloadService {
   void cancelDownload() {
     if (coordinator.isDownloading) {
       _cancelRequested = true;
+      // 立即中断当前 HTTP 请求，避免“准备下载”阶段取消延迟。
+      if (_activeClientOwned) {
+        _activeClient?.close();
+      }
+      _activeClient = null;
+      _activeClientOwned = false;
     }
   }
 
@@ -438,9 +448,15 @@ class UpdateDownloadService {
 
         final http.Client client = request.client ?? http.Client();
         final bool ownsLocalClient = request.client == null;
+        _activeClient = client;
+        _activeClientOwned = ownsLocalClient;
         try {
           final http.Request httpRequest = http.Request('GET', uri);
           final http.StreamedResponse response = await client.send(httpRequest);
+
+          if (shouldCancel?.call() ?? false) {
+            throw const DownloadCancelled();
+          }
 
           if (response.statusCode != 200) {
             // 如果不是最后一个源，则尝试下一个
@@ -485,11 +501,18 @@ class UpdateDownloadService {
           return const DownloadResult.cancelled();
         } catch (error) {
           await safeDelete(targetFile);
+          if (shouldCancel?.call() ?? false) {
+            return const DownloadResult.cancelled();
+          }
           // 如果是最后一个源，则返回失败
           if (uri == sources.last) {
             return DownloadResult.failure(error);
           }
         } finally {
+          if (identical(_activeClient, client)) {
+            _activeClient = null;
+            _activeClientOwned = false;
+          }
           if (ownsLocalClient) {
             client.close();
           }
