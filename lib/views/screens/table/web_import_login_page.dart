@@ -159,6 +159,18 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     _passwordFocusNode.requestFocus();
   }
 
+  void _handleUsernameChanged(String _) {
+    // 用户修改账号时清空密码，避免误用旧账号的密码。
+    if (_passwordController.text.isNotEmpty) {
+      _passwordController.clear();
+    }
+    if (_isAccountListExpanded) {
+      setState(() {
+        _isAccountListExpanded = false;
+      });
+    }
+  }
+
   Future<void> _deleteSavedAccount(String username) async {
     final String currentUsername = _usernameController.text.trim();
     await WebSchoolService.instance.deleteCredentials(
@@ -466,13 +478,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                             color: colorScheme.onSurface,
                           ),
                           onTap: _toggleAccountList,
-                          onChanged: (_) {
-                            if (_isAccountListExpanded) {
-                              setState(() {
-                                _isAccountListExpanded = false;
-                              });
-                            }
-                          },
+                          onChanged: _handleUsernameChanged,
                           decoration: InputDecoration(
                             hintText: '请输入学号或用户名',
                             hintStyle: TextStyle(
