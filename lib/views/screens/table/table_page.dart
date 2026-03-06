@@ -774,6 +774,25 @@ class _TablePageState extends State<TablePage> {
         // 紧凑布局，时间列尽量窄以留更多空间给课程卡片
         final double timeColumnWidth = constraints.maxWidth / 9.5;
 
+        // 计算课程区域的列宽
+        final double gridWidth = constraints.maxWidth - timeColumnWidth;
+        final double dayWidth = gridWidth / _visibleWeekdays.length;
+
+        // 统一计算节高：基于字号和课程内容动态决定，
+        // 保证左侧时间列和右侧课程表使用相同节高。
+        final double effectiveSectionHeight =
+            CourseScheduleTable.resolveEffectiveSectionHeight(
+          context: context,
+          dayWidth: dayWidth,
+          courses: _courses,
+          sections: _sections,
+          currentWeek: _currentWeek,
+          showNonCurrentWeek: _showNonCurrentWeek,
+          weekdayIndexes: _visibleWeekdays,
+          maxWeek: _maxWeek,
+          adaptiveDayCount: _visibleWeekdays.length,
+        );
+
         return Row(
           children: <Widget>[
             SizedBox(
@@ -785,6 +804,7 @@ class _TablePageState extends State<TablePage> {
                 weekdays: const <String>[],
                 weekdayIndexes: const <int>[],
                 adaptiveDayCount: _visibleWeekdays.length,
+                sectionHeight: effectiveSectionHeight,
                 maxWeek: _maxWeek,
                 onWeekChanged: _updateWeek,
                 onWeekHeaderTap: () {
@@ -826,6 +846,7 @@ class _TablePageState extends State<TablePage> {
                     currentWeek: targetWeek,
                     sections: _sections,
                     adaptiveDayCount: _visibleWeekdays.length,
+                    sectionHeight: effectiveSectionHeight,
                     weekdays: _visibleWeekdays
                         .map((int day) => _weekdayLabels[day - 1])
                         .toList(),

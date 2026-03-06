@@ -237,6 +237,26 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final double timeColumnWidth = constraints.maxWidth / 9.5;
+          final int adaptiveDayCount = widget.showWeekend ? 7 : 5;
+          final double gridWidth = constraints.maxWidth - timeColumnWidth;
+          final double dayWidth = gridWidth / adaptiveDayCount;
+
+          // 统一计算节高（sectionHeight），确保左侧时间列与右侧课程网格对齐
+          final double effectiveSectionHeight =
+              CourseScheduleTable.resolveEffectiveSectionHeight(
+            context: context,
+            dayWidth: dayWidth,
+            courses: _courses,
+            sections: _sections,
+            currentWeek: _currentWeek,
+            showNonCurrentWeek: widget.showNonCurrentWeek,
+            weekdayIndexes: widget.showWeekend
+                ? const [1, 2, 3, 4, 5, 6, 7]
+                : const [1, 2, 3, 4, 5],
+            maxWeek: widget.maxWeek,
+            adaptiveDayCount: adaptiveDayCount,
+          );
+
           return Row(
             children: [
               SizedBox(
@@ -247,11 +267,12 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                   sections: _sections,
                   weekdays: const [],
                   weekdayIndexes: const [],
-                  adaptiveDayCount: widget.showWeekend ? 7 : 5,
+                  adaptiveDayCount: adaptiveDayCount,
                   maxWeek: widget.maxWeek,
                   includeTimeColumn: true,
                   applySurface: false,
                   timeColumnWidth: timeColumnWidth,
+                  sectionHeight: effectiveSectionHeight,
                   scrollController: _timeColumnController,
                 ),
               ),
@@ -272,9 +293,10 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                       courses: _courses,
                       currentWeek: week,
                       sections: _sections,
-                      adaptiveDayCount: widget.showWeekend ? 7 : 5,
+                      adaptiveDayCount: adaptiveDayCount,
                       maxWeek: widget.maxWeek,
                       showNonCurrentWeek: widget.showNonCurrentWeek,
+                      sectionHeight: effectiveSectionHeight,
                       weekDates: _resolveWeekDates(week),
                       weekdayIndexes: widget.showWeekend
                           ? const [1, 2, 3, 4, 5, 6, 7]
