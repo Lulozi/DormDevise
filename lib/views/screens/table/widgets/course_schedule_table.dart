@@ -173,69 +173,58 @@ class CourseScheduleTable extends StatefulWidget {
     return math.max(maxWidth, minWidth);
   }
 
-  /// 返回固定的逻辑字号（不含系统缩放因子）。
-  /// Text widget 会自动应用系统文字缩放；TextPainter 测量时需手动传入 textScaler。
-  static CourseCardTypography resolveTypography() {
-    const double titleFontSize = 13.0;
-    const double detailFontSize = 10.7;
-    const double badgeFontSize = 10.7;
-
-    return const CourseCardTypography(
-      titleFontSize: titleFontSize,
-      detailFontSize: detailFontSize,
-      badgeFontSize: badgeFontSize,
-    );
-  }
-
+  static const String _courseTitleWidthReferenceTextForSevenDays = '课程表';
+  static const String _courseTitleWidthReferenceTextForFiveDays = '课程名称';
+  static const double _courseCardMargin = 2.0;
+  static const double _courseCardHorizontalPadding = 4.0;
+  static const double _courseCardVerticalPaddingMin = 1.8;
+  static const double _courseCardVerticalPaddingMax = 3.2;
+  static const double _cardContentMinWidth = 18.0;
   static const String _nonCurrentBadgeText = '[非本周]';
-  static const double _nonCurrentBadgeHorizontalPadding = 4.0;
-  static const double _nonCurrentBadgeVerticalPadding = 0.8;
+  static const double _nonCurrentBadgeTargetEdgeGap =
+      _courseCardHorizontalPadding;
   static const double _nonCurrentBadgeBottomGap = 2.0;
 
-  /// 按当前卡片可用宽度独立计算 [非本周] 字号，确保始终单行显示。
-  /// 这里允许在窄卡片时仅缩小徽章字号，不影响课程正文的固定字号策略。
-  static double resolveNonCurrentBadgeFontSize({
-    required double contentWidth,
-    required CourseCardTypography typography,
+  static double _resolveSingleLineFontSize({
+    required String sampleText,
+    required double maxWidth,
+    required double minFontSize,
+    required double maxFontSize,
+    required double lineHeight,
+    required FontWeight fontWeight,
     TextScaler textScaler = TextScaler.noScaling,
     TextDirection direction = TextDirection.ltr,
   }) {
-    // 预留 1px 安全冗余，避免不同分辨率/像素舍入导致临界裁切。
-    final double availableTextWidth = math.max(
-      contentWidth - _nonCurrentBadgeHorizontalPadding * 2 - 1,
-      4,
-    );
-    final double maxFont = typography.badgeFontSize;
-    const double minFont = 3.5;
+    final double safeWidth = math.max(maxWidth - 1, 4);
 
     bool fits(double fontSize) {
       final TextPainter painter = TextPainter(
         text: TextSpan(
-          text: _nonCurrentBadgeText,
+          text: sampleText,
           style: TextStyle(
             fontSize: fontSize,
-            height: 1.1,
-            fontWeight: FontWeight.w700,
+            height: lineHeight,
+            fontWeight: fontWeight,
           ),
         ),
         textDirection: direction,
         textScaler: textScaler,
         maxLines: 1,
-      )..layout(maxWidth: availableTextWidth);
-      return !painter.didExceedMaxLines && painter.width <= availableTextWidth;
+      )..layout(maxWidth: safeWidth);
+      return !painter.didExceedMaxLines && painter.width <= safeWidth;
     }
 
-    if (fits(maxFont)) {
-      return maxFont;
+    if (fits(maxFontSize)) {
+      return (maxFontSize * 0.98).clamp(minFontSize, maxFontSize).toDouble();
     }
 
-    if (!fits(minFont)) {
-      return minFont;
+    if (!fits(minFontSize)) {
+      return minFontSize;
     }
 
-    double low = minFont;
-    double high = maxFont;
-    for (int i = 0; i < 12; i++) {
+    double low = minFontSize;
+    double high = maxFontSize;
+    for (int i = 0; i < 14; i++) {
       final double mid = (low + high) / 2;
       if (fits(mid)) {
         low = mid;
@@ -243,8 +232,81 @@ class CourseScheduleTable extends StatefulWidget {
         high = mid;
       }
     }
-    // 再留少量安全系数，避免设备字体渲染差异带来的边界截断。
-    return (low * 0.98).clamp(minFont, maxFont).toDouble();
+
+    return (low * 0.98).clamp(minFontSize, maxFontSize).toDouble();
+  }
+
+  static String _resolveCourseTitleReferenceText(int visibleDayCount) {
+    if (visibleDayCount <= 5) {
+      return _courseTitleWidthReferenceTextForFiveDays;
+    }
+    return _courseTitleWidthReferenceTextForSevenDays;
+  }
+
+  /// 根据实际卡片宽度统一求解课程卡片字号。
+  /// 5 列时标题以“4 个中文字符 + 左右边距对称”为基准，
+  /// 其他列数维持“3 个中文字符 + 左右边距对称”的基准，细节文字按比例联动，
+  /// 以保证不同分辨率下的整体一致性。
+  static CourseCardTypography resolveTypography({
+    required double contentWidth,
+    required int visibleDayCount,
+    TextScaler textScaler = TextScaler.noScaling,
+    TextDirection direction = TextDirection.ltr,
+  }) {
+    final double titleFontSize = _resolveSingleLineFontSize(
+      sampleText: _resolveCourseTitleReferenceText(visibleDayCount),
+      maxWidth: contentWidth,
+      minFontSize: 8.6,
+      maxFontSize: 15.0,
+      lineHeight: 1.16,
+      fontWeight: FontWeight.w700,
+      textScaler: textScaler,
+      direction: direction,
+    );
+    final double detailFontSize = math
+        .min(10.7, titleFontSize * (10.7 / 13.0))
+        .clamp(7.1, 10.7)
+        .toDouble();
+    final double badgeFontSize = math
+        .min(10.7, titleFontSize * (10.7 / 13.0))
+        .clamp(7.1, 10.7)
+        .toDouble();
+
+    return CourseCardTypography(
+      titleFontSize: titleFontSize,
+      detailFontSize: detailFontSize,
+      badgeFontSize: badgeFontSize,
+    );
+  }
+
+  static double resolveNonCurrentBadgeTopCompensation(
+    double outerVerticalPadding,
+  ) {
+    return math
+        .max(_nonCurrentBadgeTargetEdgeGap - outerVerticalPadding, 0)
+        .toDouble();
+  }
+
+  /// 按当前卡片可用宽度独立计算 [非本周] 字号，确保始终单行显示。
+  /// 将 [非本周] 视为一个整体，以卡片实际可用宽度为基准，
+  /// 让左右边距与顶部边距保持同一规则。
+  static double resolveNonCurrentBadgeFontSize({
+    required double contentWidth,
+    required CourseCardTypography typography,
+    TextScaler textScaler = TextScaler.noScaling,
+    TextDirection direction = TextDirection.ltr,
+  }) {
+    final double maxFont = math.min(typography.titleFontSize, 13.0);
+    return _resolveSingleLineFontSize(
+      sampleText: _nonCurrentBadgeText,
+      maxWidth: contentWidth,
+      minFontSize: 3.5,
+      maxFontSize: maxFont,
+      lineHeight: 1.1,
+      fontWeight: FontWeight.w700,
+      textScaler: textScaler,
+      direction: direction,
+    );
   }
 
   /// 计算给定课程列表中，每节最少需要多高才能让所有卡片文字不溢出。
@@ -256,12 +318,21 @@ class CourseScheduleTable extends StatefulWidget {
     required int currentWeek,
     required bool showNonCurrentWeek,
     required List<int> weekdayIndexes,
-    required CourseCardTypography typography,
     TextScaler textScaler = TextScaler.noScaling,
     TextDirection direction = TextDirection.ltr,
   }) {
     // 卡片内容宽度 = 列宽 - margin(2×2) - padding(4×2)
-    final double contentWidth = math.max(dayWidth - 12, 18);
+    final double contentWidth = math.max(
+      dayWidth - (_courseCardMargin + _courseCardHorizontalPadding) * 2,
+      _cardContentMinWidth,
+    );
+    final int visibleDayCount = weekdayIndexes.isEmpty ? 7 : weekdayIndexes.length;
+    final CourseCardTypography typography = resolveTypography(
+      contentWidth: contentWidth,
+      visibleDayCount: visibleDayCount,
+      textScaler: textScaler,
+      direction: direction,
+    );
     final double nameToLocationGap = math.max(
       4,
       typography.detailFontSize * 0.5,
@@ -276,6 +347,9 @@ class CourseScheduleTable extends StatefulWidget {
       typography: typography,
       textScaler: textScaler,
       direction: direction,
+    );
+    final double badgeTopCompensation = resolveNonCurrentBadgeTopCompensation(
+      _courseCardVerticalPaddingMin,
     );
 
     double maxSectionHeight = 0;
@@ -346,8 +420,8 @@ class CourseScheduleTable extends StatefulWidget {
             maxLines: 1,
           )..layout(maxWidth: contentWidth);
           totalHeight +=
+              badgeTopCompensation +
               badgePainter.height +
-              _nonCurrentBadgeVerticalPadding * 2 +
               _nonCurrentBadgeBottomGap;
         }
 
@@ -394,7 +468,6 @@ class CourseScheduleTable extends StatefulWidget {
             .toDouble();
     final double baseHeight = baseSectionHeight * heightFactor;
 
-    final CourseCardTypography typography = resolveTypography();
     final TextDirection direction = Directionality.of(context);
 
     // 遍历所有周次，计算单节最少需要多高才能让所有卡片文字不溢出
@@ -406,7 +479,6 @@ class CourseScheduleTable extends StatefulWidget {
         currentWeek: week,
         showNonCurrentWeek: showNonCurrentWeek,
         weekdayIndexes: weekdayIndexes,
-        typography: typography,
         textScaler: scaler,
         direction: direction,
       );
@@ -498,20 +570,33 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     required TextStyle detailStyle,
     required double contentWidth,
     required double contentHeight,
+    required double outerVerticalPadding,
     bool showLocationPrefix = true,
   }) {
-    // 排版参数：固定逻辑字号，Text widget 自动应用系统文字缩放
-    final CourseCardTypography typography =
-        CourseScheduleTable.resolveTypography();
     final TextScaler textScaler =
         MediaQuery.maybeTextScalerOf(context) ?? const TextScaler.linear(1.0);
     final TextDirection textDirection = Directionality.of(context);
+    final int visibleDayCount =
+        widget.adaptiveDayCount ??
+        (weekdayIndexes.isEmpty ? 7 : weekdayIndexes.length);
+    // 排版参数：按实际卡片宽度统一求解逻辑字号，Text widget 自动应用系统文字缩放
+    final CourseCardTypography typography =
+        CourseScheduleTable.resolveTypography(
+          contentWidth: contentWidth,
+          visibleDayCount: visibleDayCount,
+          textScaler: textScaler,
+          direction: textDirection,
+        );
     final double badgeFontSize =
         CourseScheduleTable.resolveNonCurrentBadgeFontSize(
           contentWidth: contentWidth,
           typography: typography,
           textScaler: textScaler,
           direction: textDirection,
+        );
+    final double badgeTopCompensation =
+        CourseScheduleTable.resolveNonCurrentBadgeTopCompensation(
+          outerVerticalPadding,
         );
 
     final String locationText = showLocationPrefix
@@ -532,23 +617,21 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           padding: const EdgeInsets.only(
             bottom: CourseScheduleTable._nonCurrentBadgeBottomGap,
           ),
-          child: Container(
-            width: double.infinity,
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(
-              horizontal: CourseScheduleTable._nonCurrentBadgeHorizontalPadding,
-              vertical: CourseScheduleTable._nonCurrentBadgeVerticalPadding,
-            ),
-            child: Text(
-              CourseScheduleTable._nonCurrentBadgeText,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.clip,
-              textAlign: TextAlign.center,
-              style: detailStyle.copyWith(
-                fontSize: badgeFontSize,
-                height: 1.1,
-                fontWeight: FontWeight.w700,
+          child: Padding(
+            padding: EdgeInsets.only(top: badgeTopCompensation),
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                CourseScheduleTable._nonCurrentBadgeText,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.clip,
+                textAlign: TextAlign.center,
+                style: detailStyle.copyWith(
+                  fontSize: badgeFontSize,
+                  height: 1.1,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -1445,13 +1528,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       ),
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints cardConstraints) {
-          const double horizontalPadding = 4;
+          const double horizontalPadding =
+              CourseScheduleTable._courseCardHorizontalPadding;
           final double verticalPadding = (cardConstraints.maxHeight * 0.03)
-              .clamp(1.8, 3.2)
+              .clamp(
+                CourseScheduleTable._courseCardVerticalPaddingMin,
+                CourseScheduleTable._courseCardVerticalPaddingMax,
+              )
               .toDouble();
           final double contentWidth = math.max(
             cardConstraints.maxWidth - horizontalPadding * 2,
-            18,
+            CourseScheduleTable._cardContentMinWidth,
           );
           final double contentHeight = math.max(
             cardConstraints.maxHeight - verticalPadding * 2,
@@ -1471,6 +1558,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
               detailStyle: detailStyle,
               contentWidth: contentWidth,
               contentHeight: contentHeight,
+              outerVerticalPadding: verticalPadding,
               showLocationPrefix: true,
             ),
           );
@@ -2285,14 +2373,20 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                     child: LayoutBuilder(
                       builder:
                           (BuildContext context, BoxConstraints constraints) {
-                            const double horizontalPadding = 4;
+                            const double horizontalPadding = CourseScheduleTable
+                                ._courseCardHorizontalPadding;
                             final double verticalPadding =
                                 (constraints.maxHeight * 0.03)
-                                    .clamp(1.8, 3.2)
+                                    .clamp(
+                                      CourseScheduleTable
+                                          ._courseCardVerticalPaddingMin,
+                                      CourseScheduleTable
+                                          ._courseCardVerticalPaddingMax,
+                                    )
                                     .toDouble();
                             final double contentWidth = math.max(
                               constraints.maxWidth - horizontalPadding * 2,
-                              18,
+                              CourseScheduleTable._cardContentMinWidth,
                             );
                             final double contentHeight = math.max(
                               constraints.maxHeight - verticalPadding * 2,
@@ -2312,6 +2406,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                                 detailStyle: detailStyle,
                                 contentWidth: contentWidth,
                                 contentHeight: contentHeight,
+                                outerVerticalPadding: verticalPadding,
                                 showLocationPrefix: false,
                               ),
                             );
