@@ -2730,6 +2730,29 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     }
   }
 
+  /// 计算 session 最近的未来周次（用于非本周卡片排序）。
+  static int _nearestFutureWeek(CourseSession session, int currentWeek) {
+    if (session.customWeeks.isNotEmpty) {
+      int nearest = 999;
+      for (final int w in session.customWeeks) {
+        if (w > currentWeek && w < nearest) {
+          nearest = w;
+        }
+      }
+      return nearest;
+    }
+    if (session.startWeek > currentWeek) {
+      return session.startWeek;
+    }
+    // session 跨越了当前周但不在本周（例如单双周），找下一个匹配周。
+    for (int w = currentWeek + 1; w <= session.endWeek; w++) {
+      if (session.occursInWeek(w)) {
+        return w;
+      }
+    }
+    return 999;
+  }
+
   /// 根据当前周次构建需展示的课程区块。
   List<_CourseBlock> _buildBlocks(Map<int, int> columnMap) {
     final List<_CourseBlock> rawBlocks = <_CourseBlock>[];
@@ -2785,13 +2808,23 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       }
     }
     // 将非本周课程排在前面（底层），本周课程排在后面（顶层）。
-    // 同一层内，长课放在下层，短课放在上层，便于被覆盖时做分段展示。
+    // 非本周课程中，距离当前周更远的排在下层，最近就能变成本周的排在上层。
+    // 同一层内，长课放在下层，短课放在上层。
     rawBlocks.sort((_CourseBlock a, _CourseBlock b) {
       if (a.isNonCurrent && !b.isNonCurrent) {
         return -1;
       }
       if (!a.isNonCurrent && b.isNonCurrent) {
         return 1;
+      }
+      // 非本周卡片：按最近未来周次排序（远的在底层，近的在上层）
+      if (a.isNonCurrent && b.isNonCurrent) {
+        final int aNearest = _nearestFutureWeek(a.session, currentWeek);
+        final int bNearest = _nearestFutureWeek(b.session, currentWeek);
+        if (aNearest != bNearest) {
+          // 远的排前面（底层），近的排后面（上层）
+          return bNearest.compareTo(aNearest);
+        }
       }
       final int lenCmp = b.session.sectionCount.compareTo(
         a.session.sectionCount,
@@ -2830,13 +2863,13 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       overlapCounts[i] = count;
     }
 
-    // 将被上层覆盖的课程块按可见节次拆分显示，避免超长课被整体遮住。
+    // 被上层卡片有任何节次重叠的课程块整体隐藏，不做碎片拆分。
+    // 重叠数量角标会提示用户有隐藏课程。
     final List<_CourseBlock> displayBlocks = <_CourseBlock>[];
     for (int i = 0; i < rawBlocks.length; i++) {
       final _CourseBlock block = rawBlocks[i];
       final int start = block.session.startSection;
       final int end = start + block.session.sectionCount - 1;
-      final Set<int> coveredSections = <int>{};
       bool hideWholeBlock = false;
 
       for (int j = i + 1; j < rawBlocks.length; j++) {
@@ -2850,65 +2883,26 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           continue;
         }
 
-        // 非本周课程一旦被本周课程覆盖，直接整块隐藏。
-        // 这样在 5-8 被 6-7 覆盖时，不会再残留 5 和 8 的灰色碎片。
-        if (block.isNonCurrent && !upper.isNonCurrent) {
-          hideWholeBlock = true;
-          break;
-        }
-
-        final int overlapStart = math.max(start, upperStart);
-        final int overlapEnd = math.min(end, upperEnd);
-        for (int section = overlapStart; section <= overlapEnd; section++) {
-          coveredSections.add(section);
-        }
+        // 有任何节次重叠，直接整块隐藏。
+        hideWholeBlock = true;
+        break;
       }
 
       if (hideWholeBlock) {
         continue;
       }
 
-      int? runStart;
-      for (int section = start; section <= end; section++) {
-        final bool isVisible = !coveredSections.contains(section);
-        if (isVisible) {
-          runStart ??= section;
-          continue;
-        }
-        if (runStart != null) {
-          final int runEnd = section - 1;
-          displayBlocks.add(
-            _CourseBlock(
-              course: block.course,
-              session: block.session,
-              columnIndex: block.columnIndex,
-              startTime: block.startTime,
-              endTime: block.endTime,
-              isNonCurrent: block.isNonCurrent,
-              renderStartSection: runStart,
-              renderSectionCount: runEnd - runStart + 1,
-              overlapCount: overlapCounts[i],
-            ),
-          );
-          runStart = null;
-        }
-      }
-
-      if (runStart != null) {
-        displayBlocks.add(
-          _CourseBlock(
-            course: block.course,
-            session: block.session,
-            columnIndex: block.columnIndex,
-            startTime: block.startTime,
-            endTime: block.endTime,
-            isNonCurrent: block.isNonCurrent,
-            renderStartSection: runStart,
-            renderSectionCount: end - runStart + 1,
-            overlapCount: overlapCounts[i],
-          ),
-        );
-      }
+      displayBlocks.add(
+        _CourseBlock(
+          course: block.course,
+          session: block.session,
+          columnIndex: block.columnIndex,
+          startTime: block.startTime,
+          endTime: block.endTime,
+          isNonCurrent: block.isNonCurrent,
+          overlapCount: overlapCounts[i],
+        ),
+      );
     }
 
     return displayBlocks;
