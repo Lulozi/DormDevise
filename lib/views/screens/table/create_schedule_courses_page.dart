@@ -312,7 +312,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
-                  clipBehavior: Clip.none,
+                  clipBehavior: Clip.hardEdge,
                   onPageChanged: (index) {
                     setState(() {
                       _currentWeek = index + 1;
