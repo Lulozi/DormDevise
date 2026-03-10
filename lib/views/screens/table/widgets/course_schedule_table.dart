@@ -380,7 +380,6 @@ class CourseScheduleTable extends StatefulWidget {
     required List<int> weekdayIndexes,
     double? contentWidth,
     CourseCardTypography? typography,
-    double? badgeFontSize,
     TextScaler textScaler = TextScaler.noScaling,
     TextDirection direction = TextDirection.ltr,
   }) {
@@ -410,17 +409,6 @@ class CourseScheduleTable extends StatefulWidget {
       resolvedTypography.detailFontSize * 0.35,
     );
     final Set<int> weekdaySet = weekdayIndexes.toSet();
-    final double resolvedBadgeFontSize =
-        badgeFontSize ??
-        resolveNonCurrentBadgeFontSize(
-          contentWidth: resolvedContentWidth,
-          typography: resolvedTypography,
-          textScaler: textScaler,
-          direction: direction,
-        );
-    final double badgeTopCompensation = resolveNonCurrentBadgeTopCompensation(
-      _courseCardVerticalPaddingMin,
-    );
 
     double maxSectionHeight = 0;
     for (final Course course in courses) {
@@ -429,8 +417,6 @@ class CourseScheduleTable extends StatefulWidget {
           : course.sessionsForWeek(currentWeek);
       for (final CourseSession session in sessions) {
         if (!weekdaySet.contains(session.weekday)) continue;
-
-        final bool isNonCurrent = !session.occursInWeek(currentWeek);
 
         // 测量课程名（使用系统 textScaler 模拟 Text widget 的实际渲染大小）
         final TextPainter namePainter = TextPainter(
@@ -478,34 +464,18 @@ class CourseScheduleTable extends StatefulWidget {
           totalHeight += locationToTeacherGap + teacherPainter.height;
         }
 
-        // 非本周卡片还有 [非本周] 徽章高度（含底部间距 2）
-        if (isNonCurrent) {
-          final TextPainter badgePainter = TextPainter(
-            text: TextSpan(
-              text: _nonCurrentBadgeText,
-              style: TextStyle(
-                fontSize: resolvedBadgeFontSize,
-                height: 1.1,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            textDirection: direction,
-            textScaler: textScaler,
-            maxLines: 1,
-          )..layout(maxWidth: resolvedContentWidth);
-          totalHeight +=
-              badgeTopCompensation +
-              badgePainter.height +
-              _nonCurrentBadgeBottomGap;
-        }
+        final double squareSectionHeight = _resolveMinimumSquareSectionHeight(
+          dayWidth,
+        );
 
-        // 单节卡片先保证最小为正方形；多节卡片默认沿用这个基准。
-        // 只有当长卡自身内容超出时，才继续拉长整张卡片，避免长卡反向抬高短卡高度。
+        // [非本周] 徽章不参与 section 高度计算。
+        // 徽章仅是视觉装饰，溢出时由 OverflowBox + ClipRect 裁剪。
         final double requiredCardHeight = _resolveRequiredCardHeight(
           totalContentHeight: totalHeight,
           sectionCount: session.sectionCount,
-          squareSectionHeight: _resolveMinimumSquareSectionHeight(dayWidth),
+          squareSectionHeight: squareSectionHeight,
         );
+
         final double neededPerSection =
             requiredCardHeight / session.sectionCount;
         maxSectionHeight = math.max(maxSectionHeight, neededPerSection);
@@ -530,7 +500,6 @@ class CourseScheduleTable extends StatefulWidget {
     int? adaptiveDayCount,
     double? contentWidth,
     CourseCardTypography? typography,
-    double? badgeFontSize,
     TextScaler? textScaler,
     TextDirection? direction,
   }) {
@@ -560,15 +529,6 @@ class CourseScheduleTable extends StatefulWidget {
           textScaler: scaler,
           direction: textDirection,
         );
-    final double resolvedBadgeFontSize =
-        badgeFontSize ??
-        resolveNonCurrentBadgeFontSize(
-          contentWidth: resolvedContentWidth,
-          typography: resolvedTypography,
-          textScaler: scaler,
-          direction: textDirection,
-        );
-
     // 遍历所有周次，计算单节最少需要多高才能让所有卡片文字不溢出
     double globalMinSectionHeight = 0;
     for (int week = 1; week <= maxWeek; week++) {
@@ -580,7 +540,6 @@ class CourseScheduleTable extends StatefulWidget {
         weekdayIndexes: weekdayIndexes,
         contentWidth: resolvedContentWidth,
         typography: resolvedTypography,
-        badgeFontSize: resolvedBadgeFontSize,
         textScaler: scaler,
         direction: textDirection,
       );
@@ -639,7 +598,6 @@ class CourseScheduleTable extends StatefulWidget {
       adaptiveDayCount: adaptiveDayCount,
       contentWidth: contentWidth,
       typography: typography,
-      badgeFontSize: badgeFontSize,
       textScaler: textScaler,
       direction: direction,
     );
@@ -833,11 +791,20 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       ],
     ];
 
-    // 字体大小固定不缩放，节高由父级动态拉长以容纳文字
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: textLines,
+    // 字体大小固定不缩放，节高由父级动态拉长以容纳文字。
+    // 非本周卡片的 [非本周] 徽章不参与高度计算，可能超出卡片高度。
+    // 使用 OverflowBox 解除高度约束 + ClipRect 裁剪溢出部分，
+    // 避免 RenderFlex overflow assertion。
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.topLeft,
+        maxHeight: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: textLines,
+        ),
+      ),
     );
   }
 
