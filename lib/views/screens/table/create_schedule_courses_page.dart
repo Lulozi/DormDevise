@@ -49,6 +49,11 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
   final Map<int, ScrollController> _weekScrollControllers = {};
   late int _currentWeek;
 
+  // 自适应布局缓存（与 table_page 相同的缓存策略）
+  CourseTableAdaptiveLayout? _adaptiveLayoutCache;
+  AdaptiveLayoutCacheKey? _adaptiveLayoutCacheKey;
+  int _adaptiveLayoutGeneration = 0;
+
   DateTime get _firstWeekStart {
     return widget.semesterStart.subtract(
       Duration(days: widget.semesterStart.weekday - 1),
@@ -75,6 +80,12 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
     if (widget.initialCourses.isNotEmpty) {
       _courses.addAll(widget.initialCourses);
     }
+  }
+
+  void _invalidateAdaptiveLayoutCache() {
+    _adaptiveLayoutCache = null;
+    _adaptiveLayoutCacheKey = null;
+    _adaptiveLayoutGeneration++;
   }
 
   @override
@@ -148,6 +159,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
 
   void _handleCourseAdded(Course newCourse) {
     setState(() {
+      _invalidateAdaptiveLayoutCache();
       // 检查是否存在同名课程
       final existingIndex = _courses.indexWhere(
         (c) => c.name == newCourse.name,
@@ -236,26 +248,46 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final MediaQueryData mediaQuery = MediaQuery.of(context);
+          final double textScale = mediaQuery.textScaler.scale(14) / 14;
           final double timeColumnWidth = constraints.maxWidth / 9.5;
           final int adaptiveDayCount = widget.showWeekend ? 7 : 5;
           final double gridWidth = constraints.maxWidth - timeColumnWidth;
           final double dayWidth = gridWidth / adaptiveDayCount;
+          final List<int> weekdayIndexes = widget.showWeekend
+              ? const [1, 2, 3, 4, 5, 6, 7]
+              : const [1, 2, 3, 4, 5];
 
-          // 统一计算节高（sectionHeight），确保左侧时间列与右侧课程网格对齐
-          final double effectiveSectionHeight =
-              CourseScheduleTable.resolveEffectiveSectionHeight(
-            context: context,
+          // 自适应布局缓存（与 table_page 相同的策略）
+          final AdaptiveLayoutCacheKey layoutCacheKey = AdaptiveLayoutCacheKey(
+            logicalWidth: constraints.maxWidth,
+            logicalHeight: constraints.maxHeight,
             dayWidth: dayWidth,
-            courses: _courses,
-            sections: _sections,
-            currentWeek: _currentWeek,
-            showNonCurrentWeek: widget.showNonCurrentWeek,
-            weekdayIndexes: widget.showWeekend
-                ? const [1, 2, 3, 4, 5, 6, 7]
-                : const [1, 2, 3, 4, 5],
-            maxWeek: widget.maxWeek,
-            adaptiveDayCount: adaptiveDayCount,
+            devicePixelRatio: mediaQuery.devicePixelRatio,
+            textScale: textScale,
+            visibleDayCount: adaptiveDayCount,
+            generation: _adaptiveLayoutGeneration,
           );
+
+          if (_adaptiveLayoutCache == null ||
+              _adaptiveLayoutCacheKey != layoutCacheKey) {
+            _adaptiveLayoutCache = CourseScheduleTable.resolveAdaptiveLayout(
+              context: context,
+              dayWidth: dayWidth,
+              courses: _courses,
+              sections: _sections,
+              currentWeek: _currentWeek,
+              showNonCurrentWeek: widget.showNonCurrentWeek,
+              weekdayIndexes: weekdayIndexes,
+              maxWeek: widget.maxWeek,
+              adaptiveDayCount: adaptiveDayCount,
+            );
+            _adaptiveLayoutCacheKey = layoutCacheKey;
+          }
+
+          final CourseTableAdaptiveLayout adaptiveLayout =
+              _adaptiveLayoutCache!;
+          final double effectiveSectionHeight = adaptiveLayout.sectionHeight;
 
           return Row(
             children: [
@@ -268,6 +300,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                   weekdays: const [],
                   weekdayIndexes: const [],
                   adaptiveDayCount: adaptiveDayCount,
+                  adaptiveLayout: adaptiveLayout,
                   maxWeek: widget.maxWeek,
                   includeTimeColumn: true,
                   applySurface: false,
@@ -294,13 +327,12 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                       currentWeek: week,
                       sections: _sections,
                       adaptiveDayCount: adaptiveDayCount,
+                      adaptiveLayout: adaptiveLayout,
                       maxWeek: widget.maxWeek,
                       showNonCurrentWeek: widget.showNonCurrentWeek,
                       sectionHeight: effectiveSectionHeight,
                       weekDates: _resolveWeekDates(week),
-                      weekdayIndexes: widget.showWeekend
-                          ? const [1, 2, 3, 4, 5, 6, 7]
-                          : const [1, 2, 3, 4, 5],
+                      weekdayIndexes: weekdayIndexes,
                       weekdays: widget.showWeekend
                           ? const ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
                           : const ['周一', '周二', '周三', '周四', '周五'],
@@ -313,6 +345,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                       onAddCourseTap: _addCourse,
                       onCourseChanged: (oldCourse, newCourse) {
                         setState(() {
+                          _invalidateAdaptiveLayoutCache();
                           final index = _courses.indexOf(oldCourse);
                           if (index != -1) {
                             _courses[index] = newCourse;
@@ -321,6 +354,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                       },
                       onCourseDeleted: (course) {
                         setState(() {
+                          _invalidateAdaptiveLayoutCache();
                           _courses.remove(course);
                         });
                       },

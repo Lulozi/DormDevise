@@ -438,6 +438,7 @@ class CourseScheduleTable extends StatefulWidget {
             text: course.name,
             style: TextStyle(
               fontSize: resolvedTypography.titleFontSize,
+              fontWeight: FontWeight.bold,
               height: 1.16,
             ),
           ),
@@ -1683,7 +1684,6 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
-        border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: gradientColors.first.withValues(alpha: 0.25),
@@ -1880,6 +1880,21 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   _resetDragInteraction();
                 },
                 child: cardContent,
+              ),
+            ),
+            // 选中边框：作为独立叠层渲染，不影响卡片内容的布局约束
+            Positioned(
+              top: 10 + 2, // margin
+              left: 2, // margin
+              right: 2, // margin
+              height: blockHeight - 4, // blockHeight minus margin
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
               ),
             ),
             buildDotHandle(true),
@@ -2524,7 +2539,6 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
-                    border: Border.all(color: Colors.white, width: 2),
                     boxShadow: <BoxShadow>[
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.3),
@@ -2574,6 +2588,21 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                             ),
                           );
                         },
+                  ),
+                ),
+              ),
+              // 拖拽边框叠层
+              Positioned(
+                left: 2, // margin
+                right: 2,
+                top: 2,
+                bottom: 2,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
                   ),
                 ),
               ),
@@ -2987,6 +3016,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       fontWeight: FontWeight.w600,
       color: ns.onSurface,
       letterSpacing: 0,
+      height: 1.2,
       // 固定基础字号，避免节次列文字被压缩。
       fontSize: indexFontSize,
     );
@@ -3297,6 +3327,61 @@ class CourseTableAdaptiveLayout {
   final double sectionHeight;
   final CourseCardTypography typography;
   final double badgeFontSize;
+}
+
+/// 自适应布局缓存 key，用于判断布局参数是否发生变化。
+///
+/// 将浮点值量化为整数进行比较，避免微小精度差异导致频繁重算。
+class AdaptiveLayoutCacheKey {
+  const AdaptiveLayoutCacheKey({
+    required this.logicalWidth,
+    required this.logicalHeight,
+    required this.dayWidth,
+    required this.devicePixelRatio,
+    required this.textScale,
+    required this.visibleDayCount,
+    required this.generation,
+  });
+
+  final double logicalWidth;
+  final double logicalHeight;
+  final double dayWidth;
+  final double devicePixelRatio;
+  final double textScale;
+  final int visibleDayCount;
+  final int generation;
+
+  int get _logicalWidthKey => (logicalWidth * 100).round();
+  int get _logicalHeightKey => (logicalHeight * 100).round();
+  int get _dayWidthKey => (dayWidth * 100).round();
+  int get _devicePixelRatioKey => (devicePixelRatio * 1000).round();
+  int get _textScaleKey => (textScale * 1000).round();
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is AdaptiveLayoutCacheKey &&
+        other._logicalWidthKey == _logicalWidthKey &&
+        other._logicalHeightKey == _logicalHeightKey &&
+        other._dayWidthKey == _dayWidthKey &&
+        other._devicePixelRatioKey == _devicePixelRatioKey &&
+        other._textScaleKey == _textScaleKey &&
+        other.visibleDayCount == visibleDayCount &&
+        other.generation == generation;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    _logicalWidthKey,
+    _logicalHeightKey,
+    _dayWidthKey,
+    _devicePixelRatioKey,
+    _textScaleKey,
+    visibleDayCount,
+    generation,
+  );
 }
 
 /// 内部的课程区块数据模型。

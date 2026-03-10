@@ -70,7 +70,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   Object _editModeResetToken = Object();
   DateTime? _highlightDate;
   CourseTableAdaptiveLayout? _adaptiveLayoutCache;
-  _AdaptiveLayoutCacheKey? _adaptiveLayoutCacheKey;
+  AdaptiveLayoutCacheKey? _adaptiveLayoutCacheKey;
   int _adaptiveLayoutGeneration = 0;
 
   final GlobalKey _importBtnKey = GlobalKey();
@@ -825,7 +825,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         final double gridWidth = constraints.maxWidth - timeColumnWidth;
         final double dayWidth = gridWidth / _visibleWeekdays.length;
 
-        final _AdaptiveLayoutCacheKey layoutCacheKey = _AdaptiveLayoutCacheKey(
+        final AdaptiveLayoutCacheKey layoutCacheKey = AdaptiveLayoutCacheKey(
           logicalWidth: constraints.maxWidth,
           logicalHeight: constraints.maxHeight,
           dayWidth: dayWidth,
@@ -1047,56 +1047,4 @@ class _ToolbarIconButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _AdaptiveLayoutCacheKey {
-  const _AdaptiveLayoutCacheKey({
-    required this.logicalWidth,
-    required this.logicalHeight,
-    required this.dayWidth,
-    required this.devicePixelRatio,
-    required this.textScale,
-    required this.visibleDayCount,
-    required this.generation,
-  });
-
-  final double logicalWidth;
-  final double logicalHeight;
-  final double dayWidth;
-  final double devicePixelRatio;
-  final double textScale;
-  final int visibleDayCount;
-  final int generation;
-
-  int get _logicalWidthKey => (logicalWidth * 100).round();
-  int get _logicalHeightKey => (logicalHeight * 100).round();
-  int get _dayWidthKey => (dayWidth * 100).round();
-  int get _devicePixelRatioKey => (devicePixelRatio * 1000).round();
-  int get _textScaleKey => (textScale * 1000).round();
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) {
-      return true;
-    }
-    return other is _AdaptiveLayoutCacheKey &&
-        other._logicalWidthKey == _logicalWidthKey &&
-        other._logicalHeightKey == _logicalHeightKey &&
-        other._dayWidthKey == _dayWidthKey &&
-        other._devicePixelRatioKey == _devicePixelRatioKey &&
-        other._textScaleKey == _textScaleKey &&
-        other.visibleDayCount == visibleDayCount &&
-        other.generation == generation;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    _logicalWidthKey,
-    _logicalHeightKey,
-    _dayWidthKey,
-    _devicePixelRatioKey,
-    _textScaleKey,
-    visibleDayCount,
-    generation,
-  );
 }
