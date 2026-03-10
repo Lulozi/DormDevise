@@ -29,7 +29,7 @@ class TablePage extends StatefulWidget {
   State<TablePage> createState() => _TablePageState();
 }
 
-class _TablePageState extends State<TablePage> {
+class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   static final DateTime _defaultSemesterStart = DateTime(2025, 9, 1); // 默认周一
   static const List<String> _weekdayLabels = <String>[
     '周一',
@@ -69,6 +69,9 @@ class _TablePageState extends State<TablePage> {
   bool _isEditing = false;
   Object _editModeResetToken = Object();
   DateTime? _highlightDate;
+  CourseTableAdaptiveLayout? _adaptiveLayoutCache;
+  _AdaptiveLayoutCacheKey? _adaptiveLayoutCacheKey;
+  int _adaptiveLayoutGeneration = 0;
 
   final GlobalKey _importBtnKey = GlobalKey();
   final GlobalKey _shareBtnKey = GlobalKey();
@@ -243,12 +246,67 @@ class _TablePageState extends State<TablePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scheduleConfig = CourseScheduleConfig.njuDefaults();
     _sections = _scheduleConfig.generateSections();
     _pageController = PageController(initialPage: 0);
     _scrollGroup = LinkedScrollControllerGroup();
     _timeColumnController = _scrollGroup.addAndGet();
     _loadData();
+  }
+
+  void _invalidateAdaptiveLayoutCache() {
+    _adaptiveLayoutCache = null;
+    _adaptiveLayoutCacheKey = null;
+    _adaptiveLayoutGeneration++;
+  }
+
+  int _resolveCurrentWeekFromNow() {
+    final int diffDays = DateTime.now().difference(_firstWeekStart).inDays;
+    int resolvedWeek = (diffDays / 7).floor() + 1;
+    if (resolvedWeek < 1) {
+      resolvedWeek = 1;
+    }
+    if (resolvedWeek > _maxWeek) {
+      resolvedWeek = _maxWeek;
+    }
+    return resolvedWeek;
+  }
+
+  void _syncPageToCurrentWeek({bool animate = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) {
+        return;
+      }
+      final int targetPage = (_currentWeek - 1).clamp(0, _maxWeek - 1);
+      final int currentPage =
+          (_pageController.page ?? _pageController.initialPage).round();
+      if (currentPage == targetPage) {
+        return;
+      }
+      if (animate) {
+        _pageController.animateToPage(
+          targetPage,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+        );
+        return;
+      }
+      _pageController.jumpToPage(targetPage);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed || !mounted) {
+      return;
+    }
+    setState(() {
+      _currentWeek = _resolveCurrentWeekFromNow();
+      _invalidateAdaptiveLayoutCache();
+    });
+    _syncPageToCurrentWeek();
   }
 
   Future<void> _loadData() async {
@@ -273,25 +331,18 @@ class _TablePageState extends State<TablePage> {
       _showWeekend = showWeekend;
       _showNonCurrentWeek = showNonCurrentWeek;
 
-      // 计算当前周
-      final int diffDays = DateTime.now().difference(_firstWeekStart).inDays;
-      _currentWeek = (diffDays / 7).floor() + 1;
-      if (_currentWeek < 1) _currentWeek = 1;
-      if (_currentWeek > _maxWeek) _currentWeek = _maxWeek;
+      _currentWeek = _resolveCurrentWeekFromNow();
+      _invalidateAdaptiveLayoutCache();
 
       _isLoading = false;
     });
 
-    // 跳转到当前周
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(_currentWeek - 1);
-      }
-    });
+    _syncPageToCurrentWeek();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _toolbarBubbleController?.dismiss();
     _timeColumnController.dispose();
     for (final ScrollController controller in _weekScrollControllers.values) {
@@ -571,6 +622,7 @@ class _TablePageState extends State<TablePage> {
       setState(() {
         _scheduleConfig = result;
         _sections = _scheduleConfig.generateSections();
+        _invalidateAdaptiveLayoutCache();
       });
     }
   }
@@ -621,6 +673,7 @@ class _TablePageState extends State<TablePage> {
 
   Future<void> _handleCourseAdded(Course newCourse) async {
     setState(() {
+      _invalidateAdaptiveLayoutCache();
       // 查找是否存在同名课程
       final int existingIndex = _courses.indexWhere(
         (c) => c.name == newCourse.name,
@@ -698,30 +751,17 @@ class _TablePageState extends State<TablePage> {
               setState(() {
                 _scheduleConfig = config;
                 _sections = _scheduleConfig.generateSections();
+                _invalidateAdaptiveLayoutCache();
               });
             },
             onSemesterStartChanged: (DateTime date) async {
               await CourseService.instance.saveSemesterStart(date);
               setState(() {
                 _currentSemesterStart = date;
-                // 更新当前周，基于新的第一周起始日期
-                final int diffDays = DateTime.now()
-                    .difference(_firstWeekStart)
-                    .inDays;
-                int newCurrent = (diffDays / 7).floor() + 1;
-                if (newCurrent < 1) newCurrent = 1;
-                if (newCurrent > _maxWeek) newCurrent = _maxWeek;
-                _currentWeek = newCurrent;
+                _currentWeek = _resolveCurrentWeekFromNow();
+                _invalidateAdaptiveLayoutCache();
               });
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (_pageController.hasClients) {
-                  _pageController.animateToPage(
-                    _currentWeek - 1,
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                  );
-                }
-              });
+              _syncPageToCurrentWeek(animate: true);
             },
             onCurrentWeekChanged: (int week) {
               _updateWeek(week);
@@ -730,7 +770,10 @@ class _TablePageState extends State<TablePage> {
               await CourseService.instance.saveMaxWeek(max);
               setState(() {
                 _maxWeek = max;
+                _currentWeek = _resolveCurrentWeekFromNow();
+                _invalidateAdaptiveLayoutCache();
               });
+              _syncPageToCurrentWeek();
             },
             onTableNameChanged: (String name) async {
               await CourseService.instance.saveTableName(name);
@@ -742,12 +785,14 @@ class _TablePageState extends State<TablePage> {
               await CourseService.instance.saveShowWeekend(show);
               setState(() {
                 _showWeekend = show;
+                _invalidateAdaptiveLayoutCache();
               });
             },
             onShowNonCurrentWeekChanged: (bool show) async {
               await CourseService.instance.saveShowNonCurrentWeek(show);
               setState(() {
                 _showNonCurrentWeek = show;
+                _invalidateAdaptiveLayoutCache();
               });
             },
             onOpenSectionSettings: () {
@@ -770,6 +815,8 @@ class _TablePageState extends State<TablePage> {
   Widget _buildPagedTable(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
+        final MediaQueryData mediaQuery = MediaQuery.of(context);
+        final double textScale = mediaQuery.textScaler.scale(14) / 14;
         // 计算时间列宽度：
         // 紧凑布局，时间列尽量窄以留更多空间给课程卡片
         final double timeColumnWidth = constraints.maxWidth / 9.5;
@@ -778,20 +825,34 @@ class _TablePageState extends State<TablePage> {
         final double gridWidth = constraints.maxWidth - timeColumnWidth;
         final double dayWidth = gridWidth / _visibleWeekdays.length;
 
-        // 统一计算节高：基于字号和课程内容动态决定，
-        // 保证左侧时间列和右侧课程表使用相同节高。
-        final double effectiveSectionHeight =
-            CourseScheduleTable.resolveEffectiveSectionHeight(
-          context: context,
+        final _AdaptiveLayoutCacheKey layoutCacheKey = _AdaptiveLayoutCacheKey(
+          logicalWidth: constraints.maxWidth,
+          logicalHeight: constraints.maxHeight,
           dayWidth: dayWidth,
-          courses: _courses,
-          sections: _sections,
-          currentWeek: _currentWeek,
-          showNonCurrentWeek: _showNonCurrentWeek,
-          weekdayIndexes: _visibleWeekdays,
-          maxWeek: _maxWeek,
-          adaptiveDayCount: _visibleWeekdays.length,
+          devicePixelRatio: mediaQuery.devicePixelRatio,
+          textScale: textScale,
+          visibleDayCount: _visibleWeekdays.length,
+          generation: _adaptiveLayoutGeneration,
         );
+
+        if (_adaptiveLayoutCache == null ||
+            _adaptiveLayoutCacheKey != layoutCacheKey) {
+          _adaptiveLayoutCache = CourseScheduleTable.resolveAdaptiveLayout(
+            context: context,
+            dayWidth: dayWidth,
+            courses: _courses,
+            sections: _sections,
+            currentWeek: _currentWeek,
+            showNonCurrentWeek: _showNonCurrentWeek,
+            weekdayIndexes: _visibleWeekdays,
+            maxWeek: _maxWeek,
+            adaptiveDayCount: _visibleWeekdays.length,
+          );
+          _adaptiveLayoutCacheKey = layoutCacheKey;
+        }
+
+        final CourseTableAdaptiveLayout adaptiveLayout = _adaptiveLayoutCache!;
+        final double effectiveSectionHeight = adaptiveLayout.sectionHeight;
 
         return Row(
           children: <Widget>[
@@ -804,6 +865,7 @@ class _TablePageState extends State<TablePage> {
                 weekdays: const <String>[],
                 weekdayIndexes: const <int>[],
                 adaptiveDayCount: _visibleWeekdays.length,
+                adaptiveLayout: adaptiveLayout,
                 sectionHeight: effectiveSectionHeight,
                 maxWeek: _maxWeek,
                 onWeekChanged: _updateWeek,
@@ -846,6 +908,7 @@ class _TablePageState extends State<TablePage> {
                     currentWeek: targetWeek,
                     sections: _sections,
                     adaptiveDayCount: _visibleWeekdays.length,
+                    adaptiveLayout: adaptiveLayout,
                     sectionHeight: effectiveSectionHeight,
                     weekdays: _visibleWeekdays
                         .map((int day) => _weekdayLabels[day - 1])
@@ -880,6 +943,7 @@ class _TablePageState extends State<TablePage> {
                         _addCourse(weekday: weekday, section: section),
                     onCourseChanged: (oldCourse, newCourse) async {
                       setState(() {
+                        _invalidateAdaptiveLayoutCache();
                         final index = _courses.indexOf(oldCourse);
                         if (index != -1) {
                           _courses[index] = newCourse;
@@ -889,6 +953,7 @@ class _TablePageState extends State<TablePage> {
                     },
                     onCourseDeleted: (course) async {
                       setState(() {
+                        _invalidateAdaptiveLayoutCache();
                         _courses.remove(course);
                       });
                       await CourseService.instance.saveCourses(_courses);
@@ -982,4 +1047,56 @@ class _ToolbarIconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AdaptiveLayoutCacheKey {
+  const _AdaptiveLayoutCacheKey({
+    required this.logicalWidth,
+    required this.logicalHeight,
+    required this.dayWidth,
+    required this.devicePixelRatio,
+    required this.textScale,
+    required this.visibleDayCount,
+    required this.generation,
+  });
+
+  final double logicalWidth;
+  final double logicalHeight;
+  final double dayWidth;
+  final double devicePixelRatio;
+  final double textScale;
+  final int visibleDayCount;
+  final int generation;
+
+  int get _logicalWidthKey => (logicalWidth * 100).round();
+  int get _logicalHeightKey => (logicalHeight * 100).round();
+  int get _dayWidthKey => (dayWidth * 100).round();
+  int get _devicePixelRatioKey => (devicePixelRatio * 1000).round();
+  int get _textScaleKey => (textScale * 1000).round();
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is _AdaptiveLayoutCacheKey &&
+        other._logicalWidthKey == _logicalWidthKey &&
+        other._logicalHeightKey == _logicalHeightKey &&
+        other._dayWidthKey == _dayWidthKey &&
+        other._devicePixelRatioKey == _devicePixelRatioKey &&
+        other._textScaleKey == _textScaleKey &&
+        other.visibleDayCount == visibleDayCount &&
+        other.generation == generation;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    _logicalWidthKey,
+    _logicalHeightKey,
+    _dayWidthKey,
+    _devicePixelRatioKey,
+    _textScaleKey,
+    visibleDayCount,
+    generation,
+  );
 }
