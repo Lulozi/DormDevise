@@ -187,10 +187,63 @@ class CourseScheduleTable extends StatefulWidget {
   static const double _courseCardVerticalPaddingMin = 1.8;
   static const double _courseCardVerticalPaddingMax = 3.2;
   static const double _cardContentMinWidth = 18.0;
+  static const double _courseCardMinLogicalSize = 48.0;
   static const String _nonCurrentBadgeText = '[非本周]';
   static const double _nonCurrentBadgeTargetEdgeGap =
       _courseCardHorizontalPadding;
   static const double _nonCurrentBadgeBottomGap = 2.0;
+
+  static double _resolveMinimumSquareSectionHeight(double dayWidth) {
+    return math.max(dayWidth, _courseCardMinLogicalSize);
+  }
+
+  static double _resolveVerticalPaddingForCardHeight(double cardHeight) {
+    return (cardHeight * 0.03)
+        .clamp(_courseCardVerticalPaddingMin, _courseCardVerticalPaddingMax)
+        .toDouble();
+  }
+
+  static double _resolveRequiredCardHeight({
+    required double totalContentHeight,
+    required int sectionCount,
+    required double squareSectionHeight,
+  }) {
+    final double minCardHeight = squareSectionHeight * sectionCount;
+
+    double requiredHeight(double cardHeight) {
+      final double verticalPadding = _resolveVerticalPaddingForCardHeight(
+        cardHeight,
+      );
+      return totalContentHeight + _courseCardMargin * 2 + verticalPadding * 2;
+    }
+
+    if (requiredHeight(minCardHeight) <= minCardHeight) {
+      return minCardHeight;
+    }
+
+    double low = minCardHeight;
+    double high = math.max(
+      minCardHeight,
+      totalContentHeight +
+          _courseCardMargin * 2 +
+          _courseCardVerticalPaddingMax * 2,
+    );
+
+    while (requiredHeight(high) > high) {
+      high += 8;
+    }
+
+    for (int i = 0; i < 14; i++) {
+      final double mid = (low + high) / 2;
+      if (requiredHeight(mid) <= mid) {
+        high = mid;
+      } else {
+        low = mid;
+      }
+    }
+
+    return high;
+  }
 
   static double _resolveSingleLineFontSize({
     required String sampleText,
@@ -445,13 +498,15 @@ class CourseScheduleTable extends StatefulWidget {
               _nonCurrentBadgeBottomGap;
         }
 
-        // 卡片整体高度 = sectionCount * sectionHeight
-        // 卡片内可用于文字的高度 = sectionCount * sectionHeight - margin(4) - verticalPadding(最大 3.2×2)
-        // 要求：可用高度 >= totalHeight
-        // → sectionCount * sectionHeight >= totalHeight + 4 + 6.4
-        // → sectionHeight >= (totalHeight + 10.4) / sectionCount
+        // 单节卡片先保证最小为正方形；多节卡片默认沿用这个基准。
+        // 只有当长卡自身内容超出时，才继续拉长整张卡片，避免长卡反向抬高短卡高度。
+        final double requiredCardHeight = _resolveRequiredCardHeight(
+          totalContentHeight: totalHeight,
+          sectionCount: session.sectionCount,
+          squareSectionHeight: _resolveMinimumSquareSectionHeight(dayWidth),
+        );
         final double neededPerSection =
-            (totalHeight + 10.4) / session.sectionCount;
+            requiredCardHeight / session.sectionCount;
         maxSectionHeight = math.max(maxSectionHeight, neededPerSection);
       }
     }
@@ -482,18 +537,13 @@ class CourseScheduleTable extends StatefulWidget {
         textScaler ??
         MediaQuery.maybeTextScalerOf(context) ??
         const TextScaler.linear(1.0);
-    final double textScale = (scaler.scale(14) / 14).clamp(0.85, 1.15);
     final int visibleDayCount =
         adaptiveDayCount ??
         (weekdayIndexes.isEmpty ? 7 : weekdayIndexes.length);
-    final double dayCountFactor = (visibleDayCount / 7)
-        .clamp(0.9, 1.0)
-        .toDouble();
-    final double heightFactor =
-        ((0.98 + (textScale - 1.0) * 0.7) * dayCountFactor)
-            .clamp(0.84, 1.08)
-            .toDouble();
-    final double baseHeight = baseSectionHeight * heightFactor;
+    final double squareSectionHeight = _resolveMinimumSquareSectionHeight(
+      dayWidth,
+    );
+    final double baseHeight = squareSectionHeight;
 
     final TextDirection textDirection = direction ?? Directionality.of(context);
     final double resolvedContentWidth = math.max(
@@ -536,7 +586,7 @@ class CourseScheduleTable extends StatefulWidget {
       globalMinSectionHeight = math.max(globalMinSectionHeight, h);
     }
 
-    // measureMinSectionHeightForContent 已包含 margin + padding 开销
+    // 默认先满足单节正方形，再仅在内容溢出时增大高度。
     return math.max(baseHeight, globalMinSectionHeight);
   }
 
