@@ -296,6 +296,31 @@ class CourseScheduleTable extends StatefulWidget {
     return (low * 0.98).clamp(minFontSize, maxFontSize).toDouble();
   }
 
+  /// 返回给定 CourseSession 的实际发生周次集合（受 customWeeks 与 weekType 影响）。
+  /// 用于判断两个 session 是否存在周次交集。
+  static Set<int> _weeksForSession(CourseSession s) {
+    if (s.customWeeks.isNotEmpty) {
+      return s.customWeeks.toSet();
+    }
+    final Set<int> weeks = <int>{};
+    for (int w = s.startWeek; w <= s.endWeek; w++) {
+      if (s.occursInWeek(w)) {
+        weeks.add(w);
+      }
+    }
+    return weeks;
+  }
+
+  /// 判断两个 CourseSession 是否在任意周次上有交集。
+  static bool _sessionsHaveWeekOverlap(CourseSession a, CourseSession b) {
+    final Set<int> aWeeks = _weeksForSession(a);
+    final Set<int> bWeeks = _weeksForSession(b);
+    for (final int w in aWeeks) {
+      if (bWeeks.contains(w)) return true;
+    }
+    return false;
+  }
+
   /// 计算并返回在页面渲染时实际会被展示的课程片段（已拆分被覆盖的区块）。
   /// 返回的每个 _CourseBlock 包含 `renderStartSection` 与 `renderSectionCount`，
   /// 可直接用于布局与高度测量。
@@ -410,6 +435,16 @@ class CourseScheduleTable extends StatefulWidget {
         final int upperStart = upper.session.startSection;
         final int upperEnd = upperStart + upper.session.sectionCount - 1;
         if (upperStart <= end && upperEnd >= start) {
+          // 对于非本周卡片：若节次有重叠且两者周次也有交集，则不应被上层覆盖（按要求不允许覆盖）
+          if (block.isNonCurrent && upper.isNonCurrent) {
+            if (CourseScheduleTable._sessionsHaveWeekOverlap(
+              block.session,
+              upper.session,
+            )) {
+              // 不将该上层视为覆盖
+              continue;
+            }
+          }
           covered.add(<int>[
             math.max(start, upperStart),
             math.min(end, upperEnd),
@@ -2695,12 +2730,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         // 只检查同一天的课程
         if (session.weekday != weekday) continue;
 
-        // 检查是否在当前周有课
-        if (!session.occursInWeek(currentWeek)) continue;
+        // 只有当两个 session 在某些周次上有交集时，才视为有可能的冲突（否则允许覆盖显示最近的）
+        if (!CourseScheduleTable._sessionsHaveWeekOverlap(
+          excludeSession,
+          session,
+        )) {
+          continue;
+        }
 
         final int sessionEnd = session.startSection + session.sectionCount - 1;
 
-        // 检查是否重叠
+        // 检查是否重叠节次
         if (startSection <= sessionEnd && endSection >= session.startSection) {
           return true;
         }
