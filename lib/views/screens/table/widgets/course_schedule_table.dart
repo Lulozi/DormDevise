@@ -296,6 +296,243 @@ class CourseScheduleTable extends StatefulWidget {
     return (low * 0.98).clamp(minFontSize, maxFontSize).toDouble();
   }
 
+  /// 计算并返回在页面渲染时实际会被展示的课程片段（已拆分被覆盖的区块）。
+  /// 返回的每个 _CourseBlock 包含 `renderStartSection` 与 `renderSectionCount`，
+  /// 可直接用于布局与高度测量。
+  static List<_CourseBlock> _computeDisplayBlocks({
+    required List<Course> courses,
+    required List<SectionTime> sections,
+    required int currentWeek,
+    required bool showNonCurrentWeek,
+    required List<int> weekdayIndexes,
+  }) {
+    final Map<int, int> columnMap = <int, int>{
+      for (int i = 0; i < weekdayIndexes.length; i++) weekdayIndexes[i]: i,
+    };
+
+    final List<_CourseBlock> rawBlocks = <_CourseBlock>[];
+    if (sections.isEmpty) return rawBlocks;
+
+    for (final Course course in courses) {
+      final List<CourseSession> candidateSessions = showNonCurrentWeek
+          ? course.sessions
+          : course.sessionsForWeek(currentWeek);
+
+      for (final CourseSession session in candidateSessions) {
+        final int? columnIndex = columnMap[session.weekday];
+        if (columnIndex == null) continue;
+
+        final bool isCurrentWeek = session.occursInWeek(currentWeek);
+        if (showNonCurrentWeek && !isCurrentWeek) {
+          final bool hasFutureWeeks = session.customWeeks.isNotEmpty
+              ? session.customWeeks.any((int week) => week > currentWeek)
+              : session.endWeek >= currentWeek;
+          if (!hasFutureWeeks) continue;
+        }
+        if (!showNonCurrentWeek && !isCurrentWeek) continue;
+
+        final SectionTime startSection = sections.firstWhere(
+          (SectionTime info) => info.index == session.startSection,
+          orElse: () => sections.first,
+        );
+        final int endIndex = session.startSection + session.sectionCount - 1;
+        final SectionTime endSection = sections.firstWhere(
+          (SectionTime info) => info.index == endIndex,
+          orElse: () => startSection,
+        );
+
+        rawBlocks.add(
+          _CourseBlock(
+            course: course,
+            session: session,
+            columnIndex: columnIndex,
+            startTime: startSection.start,
+            endTime: endSection.end,
+            isNonCurrent: !isCurrentWeek,
+          ),
+        );
+      }
+    }
+
+    // 与原逻辑一致的排序规则：非本周在下层，本周在上层；长度/起始作为次级排序条件。
+    rawBlocks.sort((_CourseBlock a, _CourseBlock b) {
+      if (a.isNonCurrent && !b.isNonCurrent) return -1;
+      if (!a.isNonCurrent && b.isNonCurrent) return 1;
+      if (a.isNonCurrent && b.isNonCurrent) {
+        final int aNearest = _CourseScheduleTableState._nearestFutureWeek(
+          a.session,
+          currentWeek,
+        );
+        final int bNearest = _CourseScheduleTableState._nearestFutureWeek(
+          b.session,
+          currentWeek,
+        );
+        if (aNearest != bNearest) {
+          return bNearest.compareTo(aNearest);
+        }
+      }
+      final int lenCmp = b.session.sectionCount.compareTo(
+        a.session.sectionCount,
+      );
+      if (lenCmp != 0) return lenCmp;
+      return a.session.startSection.compareTo(b.session.startSection);
+    });
+
+    // 计算每个原始区块的重叠数量（保持与旧逻辑一致，用于角标）
+    final List<int> overlapCounts = List<int>.filled(rawBlocks.length, 1);
+    for (int i = 0; i < rawBlocks.length; i++) {
+      final _CourseBlock current = rawBlocks[i];
+      final int start = current.session.startSection;
+      final int end = start + current.session.sectionCount - 1;
+      int count = 1;
+      for (int j = 0; j < rawBlocks.length; j++) {
+        if (i == j) continue;
+        final _CourseBlock other = rawBlocks[j];
+        if (other.columnIndex != current.columnIndex) continue;
+        final int otherStart = other.session.startSection;
+        final int otherEnd = otherStart + other.session.sectionCount - 1;
+        if (start <= otherEnd && end >= otherStart) count++;
+      }
+      overlapCounts[i] = count;
+    }
+
+    // 将原始区块根据上层遮盖范围拆分为不被遮盖的片段，保留原始 overlapCount
+    final List<_CourseBlock> fragments = <_CourseBlock>[];
+    for (int i = 0; i < rawBlocks.length; i++) {
+      final _CourseBlock block = rawBlocks[i];
+      final int start = block.session.startSection;
+      final int end = start + block.session.sectionCount - 1;
+
+      final List<List<int>> covered = <List<int>>[];
+      for (int j = i + 1; j < rawBlocks.length; j++) {
+        final _CourseBlock upper = rawBlocks[j];
+        if (upper.columnIndex != block.columnIndex) continue;
+        final int upperStart = upper.session.startSection;
+        final int upperEnd = upperStart + upper.session.sectionCount - 1;
+        if (upperStart <= end && upperEnd >= start) {
+          covered.add(<int>[
+            math.max(start, upperStart),
+            math.min(end, upperEnd),
+          ]);
+        }
+      }
+
+      if (covered.isEmpty) {
+        fragments.add(
+          _CourseBlock(
+            course: block.course,
+            session: block.session,
+            columnIndex: block.columnIndex,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            isNonCurrent: block.isNonCurrent,
+            renderStartSection: block.session.startSection,
+            renderSectionCount: block.session.sectionCount,
+            overlapCount: overlapCounts[i],
+          ),
+        );
+        continue;
+      }
+
+      // 合并覆盖区间并取补集
+      covered.sort((a, b) => a[0].compareTo(b[0]));
+      final List<List<int>> merged = <List<int>>[];
+      for (final r in covered) {
+        if (merged.isEmpty) {
+          merged.add([r[0], r[1]]);
+        } else {
+          final last = merged.last;
+          if (r[0] <= last[1] + 1) {
+            last[1] = math.max(last[1], r[1]);
+          } else {
+            merged.add([r[0], r[1]]);
+          }
+        }
+      }
+
+      int cursor = start;
+      for (final r in merged) {
+        final int covStart = r[0];
+        final int covEnd = r[1];
+        if (covStart > cursor) {
+          final int fragStart = cursor;
+          final int fragEnd = covStart - 1;
+          final int fragCount = fragEnd - fragStart + 1;
+          final CourseSession fragSession = CourseSession(
+            weekday: block.session.weekday,
+            startSection: fragStart,
+            sectionCount: fragCount,
+            location: block.session.location,
+            startWeek: block.session.startWeek,
+            endWeek: block.session.endWeek,
+            weekType: block.session.weekType,
+            customWeeks: block.session.customWeeks,
+          );
+          final SectionTime fragStartInfo = sections.firstWhere(
+            (SectionTime s) => s.index == fragStart,
+            orElse: () => sections.first,
+          );
+          final SectionTime fragEndInfo = sections.firstWhere(
+            (SectionTime s) => s.index == fragEnd,
+            orElse: () => fragStartInfo,
+          );
+          fragments.add(
+            _CourseBlock(
+              course: block.course,
+              session: fragSession,
+              columnIndex: block.columnIndex,
+              startTime: fragStartInfo.start,
+              endTime: fragEndInfo.end,
+              isNonCurrent: block.isNonCurrent,
+              renderStartSection: fragStart,
+              renderSectionCount: fragCount,
+              overlapCount: overlapCounts[i],
+            ),
+          );
+        }
+        cursor = covEnd + 1;
+      }
+      if (cursor <= end) {
+        final int fragStart = cursor;
+        final int fragEnd = end;
+        final int fragCount = fragEnd - fragStart + 1;
+        final CourseSession fragSession = CourseSession(
+          weekday: block.session.weekday,
+          startSection: fragStart,
+          sectionCount: fragCount,
+          location: block.session.location,
+          startWeek: block.session.startWeek,
+          endWeek: block.session.endWeek,
+          weekType: block.session.weekType,
+          customWeeks: block.session.customWeeks,
+        );
+        final SectionTime fragStartInfo = sections.firstWhere(
+          (SectionTime s) => s.index == fragStart,
+          orElse: () => sections.first,
+        );
+        final SectionTime fragEndInfo = sections.firstWhere(
+          (SectionTime s) => s.index == fragEnd,
+          orElse: () => fragStartInfo,
+        );
+        fragments.add(
+          _CourseBlock(
+            course: block.course,
+            session: fragSession,
+            columnIndex: block.columnIndex,
+            startTime: fragStartInfo.start,
+            endTime: fragEndInfo.end,
+            isNonCurrent: block.isNonCurrent,
+            renderStartSection: fragStart,
+            renderSectionCount: fragCount,
+            overlapCount: overlapCounts[i],
+          ),
+        );
+      }
+    }
+
+    return fragments;
+  }
+
   static String _resolveCourseTitleReferenceText(int visibleDayCount) {
     if (visibleDayCount <= 5) {
       return _courseTitleWidthReferenceTextForFiveDays;
@@ -371,10 +608,11 @@ class CourseScheduleTable extends StatefulWidget {
 
   /// 计算给定课程列表中，每节最少需要多高才能让所有卡片文字不溢出。
   /// 遍历所有课程卡片（任意节数），用「(文字高度 + 开销) / 节数」反推
-  /// 单节所需的最小高度。
+  /// 单节所需的最小高度（基于最终可见的片段计算，忽略角标高度）。
   static double measureMinSectionHeightForContent({
     required double dayWidth,
     required List<Course> courses,
+    required List<SectionTime> sections,
     required int currentWeek,
     required bool showNonCurrentWeek,
     required List<int> weekdayIndexes,
@@ -411,76 +649,80 @@ class CourseScheduleTable extends StatefulWidget {
     final Set<int> weekdaySet = weekdayIndexes.toSet();
 
     double maxSectionHeight = 0;
-    for (final Course course in courses) {
-      final List<CourseSession> sessions = showNonCurrentWeek
-          ? course.sessions
-          : course.sessionsForWeek(currentWeek);
-      for (final CourseSession session in sessions) {
-        if (!weekdaySet.contains(session.weekday)) continue;
 
-        // 测量课程名（使用系统 textScaler 模拟 Text widget 的实际渲染大小）
-        final TextPainter namePainter = TextPainter(
+    // 使用与 UI 一致的可见片段计算逻辑（拆分被遮盖的区块），确保被上层遮盖的非本周片段不参与高度测量。
+    final List<_CourseBlock> fragments = _computeDisplayBlocks(
+      courses: courses,
+      sections: sections,
+      currentWeek: currentWeek,
+      showNonCurrentWeek: showNonCurrentWeek,
+      weekdayIndexes: weekdayIndexes,
+    );
+
+    for (final _CourseBlock frag in fragments) {
+      final Course course = frag.course;
+      final CourseSession session = frag.session;
+      if (!weekdaySet.contains(session.weekday)) continue;
+
+      final TextPainter namePainter = TextPainter(
+        text: TextSpan(
+          text: course.name,
+          style: TextStyle(
+            fontSize: resolvedTypography.titleFontSize,
+            fontWeight: FontWeight.bold,
+            height: 1.16,
+          ),
+        ),
+        textDirection: direction,
+        textScaler: textScaler,
+      )..layout(maxWidth: resolvedContentWidth);
+
+      double totalHeight = namePainter.height;
+
+      if (session.location.isNotEmpty) {
+        final TextPainter locPainter = TextPainter(
           text: TextSpan(
-            text: course.name,
+            text: '@${session.location}',
             style: TextStyle(
-              fontSize: resolvedTypography.titleFontSize,
-              fontWeight: FontWeight.bold,
-              height: 1.16,
+              fontSize: resolvedTypography.detailFontSize,
+              height: 1.2,
             ),
           ),
           textDirection: direction,
           textScaler: textScaler,
         )..layout(maxWidth: resolvedContentWidth);
-
-        double totalHeight = namePainter.height;
-
-        if (session.location.isNotEmpty) {
-          final TextPainter locPainter = TextPainter(
-            text: TextSpan(
-              text: '@${session.location}',
-              style: TextStyle(
-                fontSize: resolvedTypography.detailFontSize,
-                height: 1.2,
-              ),
-            ),
-            textDirection: direction,
-            textScaler: textScaler,
-          )..layout(maxWidth: resolvedContentWidth);
-          totalHeight += nameToLocationGap + locPainter.height;
-        }
-
-        if (course.teacher.isNotEmpty) {
-          final TextPainter teacherPainter = TextPainter(
-            text: TextSpan(
-              text: course.teacher,
-              style: TextStyle(
-                fontSize: resolvedTypography.detailFontSize,
-                height: 1.2,
-              ),
-            ),
-            textDirection: direction,
-            textScaler: textScaler,
-          )..layout(maxWidth: resolvedContentWidth);
-          totalHeight += locationToTeacherGap + teacherPainter.height;
-        }
-
-        final double squareSectionHeight = _resolveMinimumSquareSectionHeight(
-          dayWidth,
-        );
-
-        // [非本周] 徽章不参与 section 高度计算。
-        // 徽章仅是视觉装饰，溢出时由 OverflowBox + ClipRect 裁剪。
-        final double requiredCardHeight = _resolveRequiredCardHeight(
-          totalContentHeight: totalHeight,
-          sectionCount: session.sectionCount,
-          squareSectionHeight: squareSectionHeight,
-        );
-
-        final double neededPerSection =
-            requiredCardHeight / session.sectionCount;
-        maxSectionHeight = math.max(maxSectionHeight, neededPerSection);
+        totalHeight += nameToLocationGap + locPainter.height;
       }
+
+      if (course.teacher.isNotEmpty) {
+        final TextPainter teacherPainter = TextPainter(
+          text: TextSpan(
+            text: course.teacher,
+            style: TextStyle(
+              fontSize: resolvedTypography.detailFontSize,
+              height: 1.2,
+            ),
+          ),
+          textDirection: direction,
+          textScaler: textScaler,
+        )..layout(maxWidth: resolvedContentWidth);
+        totalHeight += locationToTeacherGap + teacherPainter.height;
+      }
+
+      final double squareSectionHeight = _resolveMinimumSquareSectionHeight(
+        dayWidth,
+      );
+
+      final double requiredCardHeight = _resolveRequiredCardHeight(
+        totalContentHeight: totalHeight,
+        sectionCount: session.sectionCount,
+        squareSectionHeight: squareSectionHeight,
+      );
+
+      final double neededPerSection = requiredCardHeight / session.sectionCount;
+      maxSectionHeight = math.max(maxSectionHeight, neededPerSection);
     }
+
     return maxSectionHeight;
   }
 
@@ -529,12 +771,13 @@ class CourseScheduleTable extends StatefulWidget {
           textScaler: scaler,
           direction: textDirection,
         );
-    // 遍历所有周次，计算单节最少需要多高才能让所有卡片文字不溢出
+    // 遍历所有周次，计算单节最少需要多高才能让所有卡片文字不溢出（仅基于内容）
     double globalMinSectionHeight = 0;
     for (int week = 1; week <= maxWeek; week++) {
       final double h = measureMinSectionHeightForContent(
         dayWidth: dayWidth,
         courses: courses,
+        sections: sections,
         currentWeek: week,
         showNonCurrentWeek: showNonCurrentWeek,
         weekdayIndexes: weekdayIndexes,
@@ -546,8 +789,140 @@ class CourseScheduleTable extends StatefulWidget {
       globalMinSectionHeight = math.max(globalMinSectionHeight, h);
     }
 
-    // 默认先满足单节正方形，再仅在内容溢出时增大高度。
-    return math.max(baseHeight, globalMinSectionHeight);
+    // 在满足纯内容高度的基础上，再检查是否存在非本周角标会溢出的片段，
+    // 如果角标会溢出则扩展节高以容纳角标（注意 neededPerSection 始终基于纯内容）。
+    double adjustedSectionHeight = globalMinSectionHeight;
+
+    for (int week = 1; week <= maxWeek; week++) {
+      final List<_CourseBlock> fragments = _computeDisplayBlocks(
+        courses: courses,
+        sections: sections,
+        currentWeek: week,
+        showNonCurrentWeek: showNonCurrentWeek,
+        weekdayIndexes: weekdayIndexes,
+      );
+
+      for (final _CourseBlock frag in fragments) {
+        if (!frag.isNonCurrent) continue;
+
+        final Course course = frag.course;
+        final CourseSession session = frag.session;
+        // 只对可见列进行计算
+        if (!weekdayIndexes.contains(session.weekday)) continue;
+
+        // 测量纯内容高度（与 measureMinSectionHeightForContent 相同的逻辑）
+        final TextPainter namePainter = TextPainter(
+          text: TextSpan(
+            text: course.name,
+            style: TextStyle(
+              fontSize: resolvedTypography.titleFontSize,
+              fontWeight: FontWeight.bold,
+              height: 1.16,
+            ),
+          ),
+          textDirection: textDirection,
+          textScaler: scaler,
+        )..layout(maxWidth: resolvedContentWidth);
+
+        double contentHeight = namePainter.height;
+        final double nameToLocationGap = math.max(
+          4,
+          resolvedTypography.detailFontSize * 0.5,
+        );
+        final double locationToTeacherGap = math.max(
+          3,
+          resolvedTypography.detailFontSize * 0.35,
+        );
+        if (session.location.isNotEmpty) {
+          final TextPainter locPainter = TextPainter(
+            text: TextSpan(
+              text: '@${session.location}',
+              style: TextStyle(
+                fontSize: resolvedTypography.detailFontSize,
+                height: 1.2,
+              ),
+            ),
+            textDirection: textDirection,
+            textScaler: scaler,
+          )..layout(maxWidth: resolvedContentWidth);
+          contentHeight += nameToLocationGap + locPainter.height;
+        }
+        if (course.teacher.isNotEmpty) {
+          final TextPainter teacherPainter = TextPainter(
+            text: TextSpan(
+              text: course.teacher,
+              style: TextStyle(
+                fontSize: resolvedTypography.detailFontSize,
+                height: 1.2,
+              ),
+            ),
+            textDirection: textDirection,
+            textScaler: scaler,
+          )..layout(maxWidth: resolvedContentWidth);
+          contentHeight += locationToTeacherGap + teacherPainter.height;
+        }
+
+        final double squareSectionHeightLocal =
+            _resolveMinimumSquareSectionHeight(dayWidth);
+
+        // 从仅内容计算得到的最小卡片高度作为初始猜测
+        double candidateCardHeight = _resolveRequiredCardHeight(
+          totalContentHeight: contentHeight,
+          sectionCount: session.sectionCount,
+          squareSectionHeight: squareSectionHeightLocal,
+        );
+
+        // 迭代：在已知 cardHeight 的情况下计算 verticalPadding -> badge top compensation -> 重新求解卡片高度
+        for (int iter = 0; iter < 8; iter++) {
+          final double verticalPadding = _resolveVerticalPaddingForCardHeight(
+            candidateCardHeight,
+          );
+          final double badgeTopComp = resolveNonCurrentBadgeTopCompensation(
+            verticalPadding,
+          );
+          final double badgeFontSize = resolveNonCurrentBadgeFontSize(
+            contentWidth: resolvedContentWidth,
+            typography: resolvedTypography,
+            textScaler: scaler,
+            direction: textDirection,
+          );
+
+          final TextPainter badgePainter = TextPainter(
+            text: TextSpan(
+              text: _nonCurrentBadgeText,
+              style: TextStyle(
+                fontSize: badgeFontSize,
+                height: 1.1,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            textDirection: textDirection,
+            textScaler: scaler,
+          )..layout(maxWidth: resolvedContentWidth);
+
+          final double badgeTotalHeight =
+              badgeTopComp + badgePainter.height + _nonCurrentBadgeBottomGap;
+
+          final double requiredWithBadge = _resolveRequiredCardHeight(
+            totalContentHeight: contentHeight + badgeTotalHeight,
+            sectionCount: session.sectionCount,
+            squareSectionHeight: squareSectionHeightLocal,
+          );
+
+          if ((requiredWithBadge - candidateCardHeight).abs() < 0.5) {
+            candidateCardHeight = requiredWithBadge;
+            break;
+          }
+          candidateCardHeight = requiredWithBadge;
+        }
+
+        final double perSection = candidateCardHeight / session.sectionCount;
+        adjustedSectionHeight = math.max(adjustedSectionHeight, perSection);
+      }
+    }
+
+    // 默认先满足单节正方形，再仅在内容或角标溢出时增大高度。
+    return math.max(baseHeight, adjustedSectionHeight);
   }
 
   /// 统一求解课程表当前设备与布局下的卡片排版结果。
@@ -2755,157 +3130,14 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
 
   /// 根据当前周次构建需展示的课程区块。
   List<_CourseBlock> _buildBlocks(Map<int, int> columnMap) {
-    final List<_CourseBlock> rawBlocks = <_CourseBlock>[];
-    if (sections.isEmpty) {
-      return rawBlocks;
-    }
-    for (final Course course in courses) {
-      // 如果显示非本周课程，则遍历所有 session，否则只遍历本周 session
-      final List<CourseSession> candidateSessions = showNonCurrentWeek
-          ? course.sessions
-          : course.sessionsForWeek(currentWeek);
-
-      for (final CourseSession session in candidateSessions) {
-        final int? columnIndex = columnMap[session.weekday];
-        if (columnIndex == null) {
-          continue;
-        }
-
-        final bool isCurrentWeek = session.occursInWeek(currentWeek);
-        // 显示非本周课程时，仅保留本周与未来周次；已结束周次直接隐藏。
-        if (showNonCurrentWeek && !isCurrentWeek) {
-          final bool hasFutureWeeks = session.customWeeks.isNotEmpty
-              ? session.customWeeks.any((int week) => week > currentWeek)
-              : session.endWeek >= currentWeek;
-          if (!hasFutureWeeks) {
-            continue;
-          }
-        }
-        // 如果不显示非本周课程，且当前 session 不在本周，则跳过（虽然 candidateSessions 已经过滤了，但如果是 showNonCurrentWeek=true，这里需要判断状态）
-        if (!showNonCurrentWeek && !isCurrentWeek) {
-          continue;
-        }
-
-        final SectionTime startSection = sections.firstWhere(
-          (SectionTime info) => info.index == session.startSection,
-          orElse: () => sections.first,
-        );
-        final int endIndex = session.startSection + session.sectionCount - 1;
-        final SectionTime endSection = sections.firstWhere(
-          (SectionTime info) => info.index == endIndex,
-          orElse: () => startSection,
-        );
-        rawBlocks.add(
-          _CourseBlock(
-            course: course,
-            session: session,
-            columnIndex: columnIndex,
-            startTime: startSection.start,
-            endTime: endSection.end,
-            isNonCurrent: !isCurrentWeek,
-          ),
-        );
-      }
-    }
-    // 将非本周课程排在前面（底层），本周课程排在后面（顶层）。
-    // 非本周课程中，距离当前周更远的排在下层，最近就能变成本周的排在上层。
-    // 同一层内，长课放在下层，短课放在上层。
-    rawBlocks.sort((_CourseBlock a, _CourseBlock b) {
-      if (a.isNonCurrent && !b.isNonCurrent) {
-        return -1;
-      }
-      if (!a.isNonCurrent && b.isNonCurrent) {
-        return 1;
-      }
-      // 非本周卡片：按最近未来周次排序（远的在底层，近的在上层）
-      if (a.isNonCurrent && b.isNonCurrent) {
-        final int aNearest = _nearestFutureWeek(a.session, currentWeek);
-        final int bNearest = _nearestFutureWeek(b.session, currentWeek);
-        if (aNearest != bNearest) {
-          // 远的排前面（底层），近的排后面（上层）
-          return bNearest.compareTo(aNearest);
-        }
-      }
-      final int lenCmp = b.session.sectionCount.compareTo(
-        a.session.sectionCount,
-      );
-      if (lenCmp != 0) {
-        return lenCmp;
-      }
-      return a.session.startSection.compareTo(b.session.startSection);
-    });
-
-    if (rawBlocks.isEmpty) {
-      return rawBlocks;
-    }
-
-    // 预计算每个课程块的重叠数量（用于右上角数字角标）。
-    final List<int> overlapCounts = List<int>.filled(rawBlocks.length, 1);
-    for (int i = 0; i < rawBlocks.length; i++) {
-      final _CourseBlock current = rawBlocks[i];
-      final int start = current.session.startSection;
-      final int end = start + current.session.sectionCount - 1;
-      int count = 1;
-      for (int j = 0; j < rawBlocks.length; j++) {
-        if (i == j) {
-          continue;
-        }
-        final _CourseBlock other = rawBlocks[j];
-        if (other.columnIndex != current.columnIndex) {
-          continue;
-        }
-        final int otherStart = other.session.startSection;
-        final int otherEnd = otherStart + other.session.sectionCount - 1;
-        if (start <= otherEnd && end >= otherStart) {
-          count++;
-        }
-      }
-      overlapCounts[i] = count;
-    }
-
-    // 被上层卡片有任何节次重叠的课程块整体隐藏，不做碎片拆分。
-    // 重叠数量角标会提示用户有隐藏课程。
-    final List<_CourseBlock> displayBlocks = <_CourseBlock>[];
-    for (int i = 0; i < rawBlocks.length; i++) {
-      final _CourseBlock block = rawBlocks[i];
-      final int start = block.session.startSection;
-      final int end = start + block.session.sectionCount - 1;
-      bool hideWholeBlock = false;
-
-      for (int j = i + 1; j < rawBlocks.length; j++) {
-        final _CourseBlock upper = rawBlocks[j];
-        if (upper.columnIndex != block.columnIndex) {
-          continue;
-        }
-        final int upperStart = upper.session.startSection;
-        final int upperEnd = upperStart + upper.session.sectionCount - 1;
-        if (upperStart > end || upperEnd < start) {
-          continue;
-        }
-
-        // 有任何节次重叠，直接整块隐藏。
-        hideWholeBlock = true;
-        break;
-      }
-
-      if (hideWholeBlock) {
-        continue;
-      }
-
-      displayBlocks.add(
-        _CourseBlock(
-          course: block.course,
-          session: block.session,
-          columnIndex: block.columnIndex,
-          startTime: block.startTime,
-          endTime: block.endTime,
-          isNonCurrent: block.isNonCurrent,
-          overlapCount: overlapCounts[i],
-        ),
-      );
-    }
-
-    return displayBlocks;
+    // 使用静态 helper 统一生成最终要渲染的片段（包含拆分与 overlapCount）
+    return CourseScheduleTable._computeDisplayBlocks(
+      courses: courses,
+      sections: sections,
+      currentWeek: currentWeek,
+      showNonCurrentWeek: showNonCurrentWeek,
+      weekdayIndexes: weekdayIndexes,
+    );
   }
 
   /// 构建时间列，支持进入节次配置。
