@@ -36,6 +36,12 @@ class CourseScheduleTable extends StatefulWidget {
   /// 自适应布局时使用的可见列数（用于统一左右区域高度缩放）。
   final int? adaptiveDayCount;
 
+  /// 预计算的课程卡片自适应排版结果。
+  ///
+  /// 该结果应只在导入、编辑、调课、完成设置或重新打开应用后重算，
+  /// 平时滚动/翻周时直接复用，避免反复进行 TextPainter 测量。
+  final CourseTableAdaptiveLayout? adaptiveLayout;
+
   /// 支持的最大周次数量 (maxWeek)。
   final int maxWeek;
 
@@ -102,6 +108,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.timeColumnWidth = 48,
     this.sectionHeight = 76,
     this.adaptiveDayCount,
+    this.adaptiveLayout,
     this.maxWeek = 20,
     this.onWeekChanged,
     this.onSectionTap,
@@ -173,69 +180,111 @@ class CourseScheduleTable extends StatefulWidget {
     return math.max(maxWidth, minWidth);
   }
 
-  /// 返回固定的逻辑字号（不含系统缩放因子）。
-  /// Text widget 会自动应用系统文字缩放；TextPainter 测量时需手动传入 textScaler。
-  static CourseCardTypography resolveTypography() {
-    const double titleFontSize = 13.0;
-    const double detailFontSize = 10.7;
-    const double badgeFontSize = 10.7;
-
-    return const CourseCardTypography(
-      titleFontSize: titleFontSize,
-      detailFontSize: detailFontSize,
-      badgeFontSize: badgeFontSize,
-    );
-  }
-
+  static const String _courseTitleWidthReferenceTextForSevenDays = '课程表';
+  static const String _courseTitleWidthReferenceTextForFiveDays = '课程名称';
+  static const double _courseCardMargin = 2.0;
+  static const double _courseCardHorizontalPadding = 4.0;
+  static const double _courseCardVerticalPaddingMin = 1.8;
+  static const double _courseCardVerticalPaddingMax = 3.2;
+  static const double _cardContentMinWidth = 18.0;
+  static const double _courseCardMinLogicalSize = 48.0;
   static const String _nonCurrentBadgeText = '[非本周]';
-  static const double _nonCurrentBadgeHorizontalPadding = 4.0;
-  static const double _nonCurrentBadgeVerticalPadding = 0.8;
+  static const double _nonCurrentBadgeTargetEdgeGap =
+      _courseCardHorizontalPadding;
   static const double _nonCurrentBadgeBottomGap = 2.0;
 
-  /// 按当前卡片可用宽度独立计算 [非本周] 字号，确保始终单行显示。
-  /// 这里允许在窄卡片时仅缩小徽章字号，不影响课程正文的固定字号策略。
-  static double resolveNonCurrentBadgeFontSize({
-    required double contentWidth,
-    required CourseCardTypography typography,
+  static double _resolveMinimumSquareSectionHeight(double dayWidth) {
+    return math.max(dayWidth, _courseCardMinLogicalSize);
+  }
+
+  static double _resolveVerticalPaddingForCardHeight(double cardHeight) {
+    return (cardHeight * 0.03)
+        .clamp(_courseCardVerticalPaddingMin, _courseCardVerticalPaddingMax)
+        .toDouble();
+  }
+
+  static double _resolveRequiredCardHeight({
+    required double totalContentHeight,
+    required int sectionCount,
+    required double squareSectionHeight,
+  }) {
+    final double minCardHeight = squareSectionHeight * sectionCount;
+
+    double requiredHeight(double cardHeight) {
+      final double verticalPadding = _resolveVerticalPaddingForCardHeight(
+        cardHeight,
+      );
+      return totalContentHeight + _courseCardMargin * 2 + verticalPadding * 2;
+    }
+
+    if (requiredHeight(minCardHeight) <= minCardHeight) {
+      return minCardHeight;
+    }
+
+    double low = minCardHeight;
+    double high = math.max(
+      minCardHeight,
+      totalContentHeight +
+          _courseCardMargin * 2 +
+          _courseCardVerticalPaddingMax * 2,
+    );
+
+    while (requiredHeight(high) > high) {
+      high += 8;
+    }
+
+    for (int i = 0; i < 14; i++) {
+      final double mid = (low + high) / 2;
+      if (requiredHeight(mid) <= mid) {
+        high = mid;
+      } else {
+        low = mid;
+      }
+    }
+
+    return high;
+  }
+
+  static double _resolveSingleLineFontSize({
+    required String sampleText,
+    required double maxWidth,
+    required double minFontSize,
+    required double maxFontSize,
+    required double lineHeight,
+    required FontWeight fontWeight,
     TextScaler textScaler = TextScaler.noScaling,
     TextDirection direction = TextDirection.ltr,
   }) {
-    // 预留 1px 安全冗余，避免不同分辨率/像素舍入导致临界裁切。
-    final double availableTextWidth = math.max(
-      contentWidth - _nonCurrentBadgeHorizontalPadding * 2 - 1,
-      4,
-    );
-    final double maxFont = typography.badgeFontSize;
-    const double minFont = 3.5;
+    final double safeWidth = math.max(maxWidth - 1, 4);
 
     bool fits(double fontSize) {
       final TextPainter painter = TextPainter(
         text: TextSpan(
-          text: _nonCurrentBadgeText,
+          text: sampleText,
           style: TextStyle(
             fontSize: fontSize,
-            height: 1.1,
-            fontWeight: FontWeight.w700,
+            height: lineHeight,
+            fontWeight: fontWeight,
           ),
         ),
         textDirection: direction,
         textScaler: textScaler,
         maxLines: 1,
-      )..layout(maxWidth: availableTextWidth);
-      return !painter.didExceedMaxLines && painter.width <= availableTextWidth;
+      )..layout(maxWidth: safeWidth);
+      return !painter.didExceedMaxLines && painter.width <= safeWidth;
     }
 
-    if (fits(maxFont)) {
-      return maxFont;
+    if (fits(maxFontSize)) {
+      return (maxFontSize * 0.98).clamp(minFontSize, maxFontSize).toDouble();
     }
 
-    if (!fits(minFont)) {
-      return minFont;
+    if (!fits(minFontSize)) {
+      return minFontSize;
     }
 
-    double low = minFont;
-    double high = maxFont;
-    for (int i = 0; i < 12; i++) {
+    double low = minFontSize;
+    double high = maxFontSize;
+    for (int i = 0; i < 14; i++) {
       final double mid = (low + high) / 2;
       if (fits(mid)) {
         low = mid;
@@ -243,124 +292,472 @@ class CourseScheduleTable extends StatefulWidget {
         high = mid;
       }
     }
-    // 再留少量安全系数，避免设备字体渲染差异带来的边界截断。
-    return (low * 0.98).clamp(minFont, maxFont).toDouble();
+
+    return (low * 0.98).clamp(minFontSize, maxFontSize).toDouble();
   }
 
-  /// 计算给定课程列表中，每节最少需要多高才能让所有卡片文字不溢出。
-  /// 遍历所有课程卡片（任意节数），用「(文字高度 + 开销) / 节数」反推
-  /// 单节所需的最小高度。
-  static double measureMinSectionHeightForContent({
-    required double dayWidth,
+  /// 返回给定 CourseSession 的实际发生周次集合（受 customWeeks 与 weekType 影响）。
+  /// 用于判断两个 session 是否存在周次交集。
+  static Set<int> _weeksForSession(CourseSession s) {
+    if (s.customWeeks.isNotEmpty) {
+      return s.customWeeks.toSet();
+    }
+    final Set<int> weeks = <int>{};
+    for (int w = s.startWeek; w <= s.endWeek; w++) {
+      if (s.occursInWeek(w)) {
+        weeks.add(w);
+      }
+    }
+    return weeks;
+  }
+
+  /// 判断两个 CourseSession 是否在任意周次上有交集。
+  static bool _sessionsHaveWeekOverlap(CourseSession a, CourseSession b) {
+    final Set<int> aWeeks = _weeksForSession(a);
+    final Set<int> bWeeks = _weeksForSession(b);
+    for (final int w in aWeeks) {
+      if (bWeeks.contains(w)) return true;
+    }
+    return false;
+  }
+
+  /// 计算并返回在页面渲染时实际会被展示的课程片段（已拆分被覆盖的区块）。
+  /// 返回的每个 _CourseBlock 包含 `renderStartSection` 与 `renderSectionCount`，
+  /// 可直接用于布局与高度测量。
+  static List<_CourseBlock> _computeDisplayBlocks({
     required List<Course> courses,
+    required List<SectionTime> sections,
     required int currentWeek,
     required bool showNonCurrentWeek,
     required List<int> weekdayIndexes,
+  }) {
+    final Map<int, int> columnMap = <int, int>{
+      for (int i = 0; i < weekdayIndexes.length; i++) weekdayIndexes[i]: i,
+    };
+
+    final List<_CourseBlock> rawBlocks = <_CourseBlock>[];
+    if (sections.isEmpty) return rawBlocks;
+
+    for (final Course course in courses) {
+      final List<CourseSession> candidateSessions = showNonCurrentWeek
+          ? course.sessions
+          : course.sessionsForWeek(currentWeek);
+
+      for (final CourseSession session in candidateSessions) {
+        final int? columnIndex = columnMap[session.weekday];
+        if (columnIndex == null) continue;
+
+        final bool isCurrentWeek = session.occursInWeek(currentWeek);
+        if (showNonCurrentWeek && !isCurrentWeek) {
+          final bool hasFutureWeeks = session.customWeeks.isNotEmpty
+              ? session.customWeeks.any((int week) => week > currentWeek)
+              : session.endWeek >= currentWeek;
+          if (!hasFutureWeeks) continue;
+        }
+        if (!showNonCurrentWeek && !isCurrentWeek) continue;
+
+        final SectionTime startSection = sections.firstWhere(
+          (SectionTime info) => info.index == session.startSection,
+          orElse: () => sections.first,
+        );
+        final int endIndex = session.startSection + session.sectionCount - 1;
+        final SectionTime endSection = sections.firstWhere(
+          (SectionTime info) => info.index == endIndex,
+          orElse: () => startSection,
+        );
+
+        rawBlocks.add(
+          _CourseBlock(
+            course: course,
+            session: session,
+            columnIndex: columnIndex,
+            startTime: startSection.start,
+            endTime: endSection.end,
+            isNonCurrent: !isCurrentWeek,
+          ),
+        );
+      }
+    }
+
+    // 与原逻辑一致的排序规则：非本周在下层，本周在上层；长度/起始作为次级排序条件。
+    rawBlocks.sort((_CourseBlock a, _CourseBlock b) {
+      if (a.isNonCurrent && !b.isNonCurrent) return -1;
+      if (!a.isNonCurrent && b.isNonCurrent) return 1;
+      if (a.isNonCurrent && b.isNonCurrent) {
+        final int aNearest = _CourseScheduleTableState._nearestFutureWeek(
+          a.session,
+          currentWeek,
+        );
+        final int bNearest = _CourseScheduleTableState._nearestFutureWeek(
+          b.session,
+          currentWeek,
+        );
+        if (aNearest != bNearest) {
+          return bNearest.compareTo(aNearest);
+        }
+      }
+      final int lenCmp = b.session.sectionCount.compareTo(
+        a.session.sectionCount,
+      );
+      if (lenCmp != 0) return lenCmp;
+      return a.session.startSection.compareTo(b.session.startSection);
+    });
+
+    // 计算每个原始区块的重叠数量（保持与旧逻辑一致，用于角标）
+    final List<int> overlapCounts = List<int>.filled(rawBlocks.length, 1);
+    for (int i = 0; i < rawBlocks.length; i++) {
+      final _CourseBlock current = rawBlocks[i];
+      final int start = current.session.startSection;
+      final int end = start + current.session.sectionCount - 1;
+      int count = 1;
+      for (int j = 0; j < rawBlocks.length; j++) {
+        if (i == j) continue;
+        final _CourseBlock other = rawBlocks[j];
+        if (other.columnIndex != current.columnIndex) continue;
+        final int otherStart = other.session.startSection;
+        final int otherEnd = otherStart + other.session.sectionCount - 1;
+        if (start <= otherEnd && end >= otherStart) count++;
+      }
+      overlapCounts[i] = count;
+    }
+
+    // 将原始区块根据上层遮盖范围拆分为不被遮盖的片段，保留原始 overlapCount
+    final List<_CourseBlock> fragments = <_CourseBlock>[];
+    for (int i = 0; i < rawBlocks.length; i++) {
+      final _CourseBlock block = rawBlocks[i];
+      final int start = block.session.startSection;
+      final int end = start + block.session.sectionCount - 1;
+
+      final List<List<int>> covered = <List<int>>[];
+      for (int j = i + 1; j < rawBlocks.length; j++) {
+        final _CourseBlock upper = rawBlocks[j];
+        if (upper.columnIndex != block.columnIndex) continue;
+        final int upperStart = upper.session.startSection;
+        final int upperEnd = upperStart + upper.session.sectionCount - 1;
+        if (upperStart <= end && upperEnd >= start) {
+          // 对于非本周卡片：若节次有重叠且两者周次也有交集，则不应被上层覆盖（按要求不允许覆盖）
+          if (block.isNonCurrent && upper.isNonCurrent) {
+            if (CourseScheduleTable._sessionsHaveWeekOverlap(
+              block.session,
+              upper.session,
+            )) {
+              // 不将该上层视为覆盖
+              continue;
+            }
+          }
+          covered.add(<int>[
+            math.max(start, upperStart),
+            math.min(end, upperEnd),
+          ]);
+        }
+      }
+
+      if (covered.isEmpty) {
+        fragments.add(
+          _CourseBlock(
+            course: block.course,
+            session: block.session,
+            columnIndex: block.columnIndex,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            isNonCurrent: block.isNonCurrent,
+            renderStartSection: block.session.startSection,
+            renderSectionCount: block.session.sectionCount,
+            overlapCount: overlapCounts[i],
+          ),
+        );
+        continue;
+      }
+
+      // 合并覆盖区间并取补集
+      covered.sort((a, b) => a[0].compareTo(b[0]));
+      final List<List<int>> merged = <List<int>>[];
+      for (final r in covered) {
+        if (merged.isEmpty) {
+          merged.add([r[0], r[1]]);
+        } else {
+          final last = merged.last;
+          if (r[0] <= last[1] + 1) {
+            last[1] = math.max(last[1], r[1]);
+          } else {
+            merged.add([r[0], r[1]]);
+          }
+        }
+      }
+
+      int cursor = start;
+      for (final r in merged) {
+        final int covStart = r[0];
+        final int covEnd = r[1];
+        if (covStart > cursor) {
+          final int fragStart = cursor;
+          final int fragEnd = covStart - 1;
+          final int fragCount = fragEnd - fragStart + 1;
+          final CourseSession fragSession = CourseSession(
+            weekday: block.session.weekday,
+            startSection: fragStart,
+            sectionCount: fragCount,
+            location: block.session.location,
+            startWeek: block.session.startWeek,
+            endWeek: block.session.endWeek,
+            weekType: block.session.weekType,
+            customWeeks: block.session.customWeeks,
+          );
+          final SectionTime fragStartInfo = sections.firstWhere(
+            (SectionTime s) => s.index == fragStart,
+            orElse: () => sections.first,
+          );
+          final SectionTime fragEndInfo = sections.firstWhere(
+            (SectionTime s) => s.index == fragEnd,
+            orElse: () => fragStartInfo,
+          );
+          fragments.add(
+            _CourseBlock(
+              course: block.course,
+              session: fragSession,
+              columnIndex: block.columnIndex,
+              startTime: fragStartInfo.start,
+              endTime: fragEndInfo.end,
+              isNonCurrent: block.isNonCurrent,
+              renderStartSection: fragStart,
+              renderSectionCount: fragCount,
+              overlapCount: overlapCounts[i],
+            ),
+          );
+        }
+        cursor = covEnd + 1;
+      }
+      if (cursor <= end) {
+        final int fragStart = cursor;
+        final int fragEnd = end;
+        final int fragCount = fragEnd - fragStart + 1;
+        final CourseSession fragSession = CourseSession(
+          weekday: block.session.weekday,
+          startSection: fragStart,
+          sectionCount: fragCount,
+          location: block.session.location,
+          startWeek: block.session.startWeek,
+          endWeek: block.session.endWeek,
+          weekType: block.session.weekType,
+          customWeeks: block.session.customWeeks,
+        );
+        final SectionTime fragStartInfo = sections.firstWhere(
+          (SectionTime s) => s.index == fragStart,
+          orElse: () => sections.first,
+        );
+        final SectionTime fragEndInfo = sections.firstWhere(
+          (SectionTime s) => s.index == fragEnd,
+          orElse: () => fragStartInfo,
+        );
+        fragments.add(
+          _CourseBlock(
+            course: block.course,
+            session: fragSession,
+            columnIndex: block.columnIndex,
+            startTime: fragStartInfo.start,
+            endTime: fragEndInfo.end,
+            isNonCurrent: block.isNonCurrent,
+            renderStartSection: fragStart,
+            renderSectionCount: fragCount,
+            overlapCount: overlapCounts[i],
+          ),
+        );
+      }
+    }
+
+    return fragments;
+  }
+
+  static String _resolveCourseTitleReferenceText(int visibleDayCount) {
+    if (visibleDayCount <= 5) {
+      return _courseTitleWidthReferenceTextForFiveDays;
+    }
+    return _courseTitleWidthReferenceTextForSevenDays;
+  }
+
+  /// 根据实际卡片宽度统一求解课程卡片字号。
+  /// 5 列时标题以“4 个中文字符 + 左右边距对称”为基准，
+  /// 其他列数维持“3 个中文字符 + 左右边距对称”的基准，细节文字按比例联动，
+  /// 以保证不同分辨率下的整体一致性。
+  static CourseCardTypography resolveTypography({
+    required double contentWidth,
+    required int visibleDayCount,
+    TextScaler textScaler = TextScaler.noScaling,
+    TextDirection direction = TextDirection.ltr,
+  }) {
+    final double titleFontSize = _resolveSingleLineFontSize(
+      sampleText: _resolveCourseTitleReferenceText(visibleDayCount),
+      maxWidth: contentWidth,
+      minFontSize: 8.6,
+      maxFontSize: 15.0,
+      lineHeight: 1.16,
+      fontWeight: FontWeight.w700,
+      textScaler: textScaler,
+      direction: direction,
+    );
+    final double detailFontSize = math
+        .min(10.7, titleFontSize * (10.7 / 13.0))
+        .clamp(7.1, 10.7)
+        .toDouble();
+    final double badgeFontSize = math
+        .min(10.7, titleFontSize * (10.7 / 13.0))
+        .clamp(7.1, 10.7)
+        .toDouble();
+
+    return CourseCardTypography(
+      titleFontSize: titleFontSize,
+      detailFontSize: detailFontSize,
+      badgeFontSize: badgeFontSize,
+    );
+  }
+
+  static double resolveNonCurrentBadgeTopCompensation(
+    double outerVerticalPadding,
+  ) {
+    return math
+        .max(_nonCurrentBadgeTargetEdgeGap - outerVerticalPadding, 0)
+        .toDouble();
+  }
+
+  /// 按当前卡片可用宽度独立计算 [非本周] 字号，确保始终单行显示。
+  /// 将 [非本周] 视为一个整体，以卡片实际可用宽度为基准，
+  /// 让左右边距与顶部边距保持同一规则。
+  static double resolveNonCurrentBadgeFontSize({
+    required double contentWidth,
     required CourseCardTypography typography,
     TextScaler textScaler = TextScaler.noScaling,
     TextDirection direction = TextDirection.ltr,
   }) {
-    // 卡片内容宽度 = 列宽 - margin(2×2) - padding(4×2)
-    final double contentWidth = math.max(dayWidth - 12, 18);
-    final double nameToLocationGap = math.max(
-      4,
-      typography.detailFontSize * 0.5,
-    );
-    final double locationToTeacherGap = math.max(
-      3,
-      typography.detailFontSize * 0.35,
-    );
-    final Set<int> weekdaySet = weekdayIndexes.toSet();
-    final double badgeFontSize = resolveNonCurrentBadgeFontSize(
-      contentWidth: contentWidth,
-      typography: typography,
+    final double maxFont = math.min(typography.titleFontSize, 13.0);
+    return _resolveSingleLineFontSize(
+      sampleText: _nonCurrentBadgeText,
+      maxWidth: contentWidth,
+      minFontSize: 3.5,
+      maxFontSize: maxFont,
+      lineHeight: 1.1,
+      fontWeight: FontWeight.w700,
       textScaler: textScaler,
       direction: direction,
     );
+  }
+
+  /// 计算给定课程列表中，每节最少需要多高才能让所有卡片文字不溢出。
+  /// 遍历所有课程卡片（任意节数），用「(文字高度 + 开销) / 节数」反推
+  /// 单节所需的最小高度（基于最终可见的片段计算，忽略角标高度）。
+  static double measureMinSectionHeightForContent({
+    required double dayWidth,
+    required List<Course> courses,
+    required List<SectionTime> sections,
+    required int currentWeek,
+    required bool showNonCurrentWeek,
+    required List<int> weekdayIndexes,
+    double? contentWidth,
+    CourseCardTypography? typography,
+    TextScaler textScaler = TextScaler.noScaling,
+    TextDirection direction = TextDirection.ltr,
+  }) {
+    // 卡片内容宽度 = 列宽 - margin(2×2) - padding(4×2)
+    final double resolvedContentWidth = math.max(
+      contentWidth ??
+          dayWidth - (_courseCardMargin + _courseCardHorizontalPadding) * 2,
+      _cardContentMinWidth,
+    );
+    final int visibleDayCount = weekdayIndexes.isEmpty
+        ? 7
+        : weekdayIndexes.length;
+    final CourseCardTypography resolvedTypography =
+        typography ??
+        resolveTypography(
+          contentWidth: resolvedContentWidth,
+          visibleDayCount: visibleDayCount,
+          textScaler: textScaler,
+          direction: direction,
+        );
+    final double nameToLocationGap = math.max(
+      4,
+      resolvedTypography.detailFontSize * 0.5,
+    );
+    final double locationToTeacherGap = math.max(
+      3,
+      resolvedTypography.detailFontSize * 0.35,
+    );
+    final Set<int> weekdaySet = weekdayIndexes.toSet();
 
     double maxSectionHeight = 0;
-    for (final Course course in courses) {
-      final List<CourseSession> sessions = showNonCurrentWeek
-          ? course.sessions
-          : course.sessionsForWeek(currentWeek);
-      for (final CourseSession session in sessions) {
-        if (!weekdaySet.contains(session.weekday)) continue;
 
-        final bool isNonCurrent = !session.occursInWeek(currentWeek);
+    // 使用与 UI 一致的可见片段计算逻辑（拆分被遮盖的区块），确保被上层遮盖的非本周片段不参与高度测量。
+    final List<_CourseBlock> fragments = _computeDisplayBlocks(
+      courses: courses,
+      sections: sections,
+      currentWeek: currentWeek,
+      showNonCurrentWeek: showNonCurrentWeek,
+      weekdayIndexes: weekdayIndexes,
+    );
 
-        // 测量课程名（使用系统 textScaler 模拟 Text widget 的实际渲染大小）
-        final TextPainter namePainter = TextPainter(
+    for (final _CourseBlock frag in fragments) {
+      final Course course = frag.course;
+      final CourseSession session = frag.session;
+      if (!weekdaySet.contains(session.weekday)) continue;
+
+      final TextPainter namePainter = TextPainter(
+        text: TextSpan(
+          text: course.name,
+          style: TextStyle(
+            fontSize: resolvedTypography.titleFontSize,
+            fontWeight: FontWeight.bold,
+            height: 1.16,
+          ),
+        ),
+        textDirection: direction,
+        textScaler: textScaler,
+      )..layout(maxWidth: resolvedContentWidth);
+
+      double totalHeight = namePainter.height;
+
+      if (session.location.isNotEmpty) {
+        final TextPainter locPainter = TextPainter(
           text: TextSpan(
-            text: course.name,
-            style: TextStyle(fontSize: typography.titleFontSize, height: 1.16),
+            text: '@${session.location}',
+            style: TextStyle(
+              fontSize: resolvedTypography.detailFontSize,
+              height: 1.2,
+            ),
           ),
           textDirection: direction,
           textScaler: textScaler,
-        )..layout(maxWidth: contentWidth);
-
-        double totalHeight = namePainter.height;
-
-        if (session.location.isNotEmpty) {
-          final TextPainter locPainter = TextPainter(
-            text: TextSpan(
-              text: '@${session.location}',
-              style: TextStyle(
-                fontSize: typography.detailFontSize,
-                height: 1.2,
-              ),
-            ),
-            textDirection: direction,
-            textScaler: textScaler,
-          )..layout(maxWidth: contentWidth);
-          totalHeight += nameToLocationGap + locPainter.height;
-        }
-
-        if (course.teacher.isNotEmpty) {
-          final TextPainter teacherPainter = TextPainter(
-            text: TextSpan(
-              text: course.teacher,
-              style: TextStyle(
-                fontSize: typography.detailFontSize,
-                height: 1.2,
-              ),
-            ),
-            textDirection: direction,
-            textScaler: textScaler,
-          )..layout(maxWidth: contentWidth);
-          totalHeight += locationToTeacherGap + teacherPainter.height;
-        }
-
-        // 非本周卡片还有 [非本周] 徽章高度（含底部间距 2）
-        if (isNonCurrent) {
-          final TextPainter badgePainter = TextPainter(
-            text: TextSpan(
-              text: _nonCurrentBadgeText,
-              style: TextStyle(
-                fontSize: badgeFontSize,
-                height: 1.1,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            textDirection: direction,
-            textScaler: textScaler,
-            maxLines: 1,
-          )..layout(maxWidth: contentWidth);
-          totalHeight +=
-              badgePainter.height +
-              _nonCurrentBadgeVerticalPadding * 2 +
-              _nonCurrentBadgeBottomGap;
-        }
-
-        // 卡片整体高度 = sectionCount * sectionHeight
-        // 卡片内可用于文字的高度 = sectionCount * sectionHeight - margin(4) - verticalPadding(最大 3.2×2)
-        // 要求：可用高度 >= totalHeight
-        // → sectionCount * sectionHeight >= totalHeight + 4 + 6.4
-        // → sectionHeight >= (totalHeight + 10.4) / sectionCount
-        final double neededPerSection =
-            (totalHeight + 10.4) / session.sectionCount;
-        maxSectionHeight = math.max(maxSectionHeight, neededPerSection);
+        )..layout(maxWidth: resolvedContentWidth);
+        totalHeight += nameToLocationGap + locPainter.height;
       }
+
+      if (course.teacher.isNotEmpty) {
+        final TextPainter teacherPainter = TextPainter(
+          text: TextSpan(
+            text: course.teacher,
+            style: TextStyle(
+              fontSize: resolvedTypography.detailFontSize,
+              height: 1.2,
+            ),
+          ),
+          textDirection: direction,
+          textScaler: textScaler,
+        )..layout(maxWidth: resolvedContentWidth);
+        totalHeight += locationToTeacherGap + teacherPainter.height;
+      }
+
+      final double squareSectionHeight = _resolveMinimumSquareSectionHeight(
+        dayWidth,
+      );
+
+      final double requiredCardHeight = _resolveRequiredCardHeight(
+        totalContentHeight: totalHeight,
+        sectionCount: session.sectionCount,
+        squareSectionHeight: squareSectionHeight,
+      );
+
+      final double neededPerSection = requiredCardHeight / session.sectionCount;
+      maxSectionHeight = math.max(maxSectionHeight, neededPerSection);
     }
+
     return maxSectionHeight;
   }
 
@@ -378,43 +775,250 @@ class CourseScheduleTable extends StatefulWidget {
     required int maxWeek,
     double baseSectionHeight = 76,
     int? adaptiveDayCount,
+    double? contentWidth,
+    CourseCardTypography? typography,
+    TextScaler? textScaler,
+    TextDirection? direction,
   }) {
     final TextScaler scaler =
-        MediaQuery.maybeTextScalerOf(context) ?? const TextScaler.linear(1.0);
-    final double textScale = (scaler.scale(14) / 14).clamp(0.85, 1.15);
+        textScaler ??
+        MediaQuery.maybeTextScalerOf(context) ??
+        const TextScaler.linear(1.0);
     final int visibleDayCount =
         adaptiveDayCount ??
         (weekdayIndexes.isEmpty ? 7 : weekdayIndexes.length);
-    final double dayCountFactor = (visibleDayCount / 7)
-        .clamp(0.9, 1.0)
-        .toDouble();
-    final double heightFactor =
-        ((0.98 + (textScale - 1.0) * 0.7) * dayCountFactor)
-            .clamp(0.84, 1.08)
-            .toDouble();
-    final double baseHeight = baseSectionHeight * heightFactor;
+    final double squareSectionHeight = _resolveMinimumSquareSectionHeight(
+      dayWidth,
+    );
+    final double baseHeight = squareSectionHeight;
 
-    final CourseCardTypography typography = resolveTypography();
-    final TextDirection direction = Directionality.of(context);
-
-    // 遍历所有周次，计算单节最少需要多高才能让所有卡片文字不溢出
+    final TextDirection textDirection = direction ?? Directionality.of(context);
+    final double resolvedContentWidth = math.max(
+      contentWidth ??
+          dayWidth - (_courseCardMargin + _courseCardHorizontalPadding) * 2,
+      _cardContentMinWidth,
+    );
+    final CourseCardTypography resolvedTypography =
+        typography ??
+        resolveTypography(
+          contentWidth: resolvedContentWidth,
+          visibleDayCount: visibleDayCount,
+          textScaler: scaler,
+          direction: textDirection,
+        );
+    // 遍历所有周次，计算单节最少需要多高才能让所有卡片文字不溢出（仅基于内容）
     double globalMinSectionHeight = 0;
     for (int week = 1; week <= maxWeek; week++) {
       final double h = measureMinSectionHeightForContent(
         dayWidth: dayWidth,
         courses: courses,
+        sections: sections,
         currentWeek: week,
         showNonCurrentWeek: showNonCurrentWeek,
         weekdayIndexes: weekdayIndexes,
-        typography: typography,
+        contentWidth: resolvedContentWidth,
+        typography: resolvedTypography,
         textScaler: scaler,
-        direction: direction,
+        direction: textDirection,
       );
       globalMinSectionHeight = math.max(globalMinSectionHeight, h);
     }
 
-    // measureMinSectionHeightForContent 已包含 margin + padding 开销
-    return math.max(baseHeight, globalMinSectionHeight);
+    // 在满足纯内容高度的基础上，再检查是否存在非本周角标会溢出的片段，
+    // 如果角标会溢出则扩展节高以容纳角标（注意 neededPerSection 始终基于纯内容）。
+    double adjustedSectionHeight = globalMinSectionHeight;
+
+    for (int week = 1; week <= maxWeek; week++) {
+      final List<_CourseBlock> fragments = _computeDisplayBlocks(
+        courses: courses,
+        sections: sections,
+        currentWeek: week,
+        showNonCurrentWeek: showNonCurrentWeek,
+        weekdayIndexes: weekdayIndexes,
+      );
+
+      for (final _CourseBlock frag in fragments) {
+        if (!frag.isNonCurrent) continue;
+
+        final Course course = frag.course;
+        final CourseSession session = frag.session;
+        // 只对可见列进行计算
+        if (!weekdayIndexes.contains(session.weekday)) continue;
+
+        // 测量纯内容高度（与 measureMinSectionHeightForContent 相同的逻辑）
+        final TextPainter namePainter = TextPainter(
+          text: TextSpan(
+            text: course.name,
+            style: TextStyle(
+              fontSize: resolvedTypography.titleFontSize,
+              fontWeight: FontWeight.bold,
+              height: 1.16,
+            ),
+          ),
+          textDirection: textDirection,
+          textScaler: scaler,
+        )..layout(maxWidth: resolvedContentWidth);
+
+        double contentHeight = namePainter.height;
+        final double nameToLocationGap = math.max(
+          4,
+          resolvedTypography.detailFontSize * 0.5,
+        );
+        final double locationToTeacherGap = math.max(
+          3,
+          resolvedTypography.detailFontSize * 0.35,
+        );
+        if (session.location.isNotEmpty) {
+          final TextPainter locPainter = TextPainter(
+            text: TextSpan(
+              text: '@${session.location}',
+              style: TextStyle(
+                fontSize: resolvedTypography.detailFontSize,
+                height: 1.2,
+              ),
+            ),
+            textDirection: textDirection,
+            textScaler: scaler,
+          )..layout(maxWidth: resolvedContentWidth);
+          contentHeight += nameToLocationGap + locPainter.height;
+        }
+        if (course.teacher.isNotEmpty) {
+          final TextPainter teacherPainter = TextPainter(
+            text: TextSpan(
+              text: course.teacher,
+              style: TextStyle(
+                fontSize: resolvedTypography.detailFontSize,
+                height: 1.2,
+              ),
+            ),
+            textDirection: textDirection,
+            textScaler: scaler,
+          )..layout(maxWidth: resolvedContentWidth);
+          contentHeight += locationToTeacherGap + teacherPainter.height;
+        }
+
+        final double squareSectionHeightLocal =
+            _resolveMinimumSquareSectionHeight(dayWidth);
+
+        // 从仅内容计算得到的最小卡片高度作为初始猜测
+        double candidateCardHeight = _resolveRequiredCardHeight(
+          totalContentHeight: contentHeight,
+          sectionCount: session.sectionCount,
+          squareSectionHeight: squareSectionHeightLocal,
+        );
+
+        // 迭代：在已知 cardHeight 的情况下计算 verticalPadding -> badge top compensation -> 重新求解卡片高度
+        for (int iter = 0; iter < 8; iter++) {
+          final double verticalPadding = _resolveVerticalPaddingForCardHeight(
+            candidateCardHeight,
+          );
+          final double badgeTopComp = resolveNonCurrentBadgeTopCompensation(
+            verticalPadding,
+          );
+          final double badgeFontSize = resolveNonCurrentBadgeFontSize(
+            contentWidth: resolvedContentWidth,
+            typography: resolvedTypography,
+            textScaler: scaler,
+            direction: textDirection,
+          );
+
+          final TextPainter badgePainter = TextPainter(
+            text: TextSpan(
+              text: _nonCurrentBadgeText,
+              style: TextStyle(
+                fontSize: badgeFontSize,
+                height: 1.1,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            textDirection: textDirection,
+            textScaler: scaler,
+          )..layout(maxWidth: resolvedContentWidth);
+
+          final double badgeTotalHeight =
+              badgeTopComp + badgePainter.height + _nonCurrentBadgeBottomGap;
+
+          final double requiredWithBadge = _resolveRequiredCardHeight(
+            totalContentHeight: contentHeight + badgeTotalHeight,
+            sectionCount: session.sectionCount,
+            squareSectionHeight: squareSectionHeightLocal,
+          );
+
+          if ((requiredWithBadge - candidateCardHeight).abs() < 0.5) {
+            candidateCardHeight = requiredWithBadge;
+            break;
+          }
+          candidateCardHeight = requiredWithBadge;
+        }
+
+        final double perSection = candidateCardHeight / session.sectionCount;
+        adjustedSectionHeight = math.max(adjustedSectionHeight, perSection);
+      }
+    }
+
+    // 默认先满足单节正方形，再仅在内容或角标溢出时增大高度。
+    return math.max(baseHeight, adjustedSectionHeight);
+  }
+
+  /// 统一求解课程表当前设备与布局下的卡片排版结果。
+  static CourseTableAdaptiveLayout resolveAdaptiveLayout({
+    required BuildContext context,
+    required double dayWidth,
+    required List<Course> courses,
+    required List<SectionTime> sections,
+    required int currentWeek,
+    required bool showNonCurrentWeek,
+    required List<int> weekdayIndexes,
+    required int maxWeek,
+    double baseSectionHeight = 76,
+    int? adaptiveDayCount,
+  }) {
+    final TextScaler textScaler =
+        MediaQuery.maybeTextScalerOf(context) ?? const TextScaler.linear(1.0);
+    final TextDirection direction = Directionality.of(context);
+    final int visibleDayCount =
+        adaptiveDayCount ??
+        (weekdayIndexes.isEmpty ? 7 : weekdayIndexes.length);
+    final double contentWidth = math.max(
+      dayWidth - (_courseCardMargin + _courseCardHorizontalPadding) * 2,
+      _cardContentMinWidth,
+    );
+    final CourseCardTypography typography = resolveTypography(
+      contentWidth: contentWidth,
+      visibleDayCount: visibleDayCount,
+      textScaler: textScaler,
+      direction: direction,
+    );
+    final double badgeFontSize = resolveNonCurrentBadgeFontSize(
+      contentWidth: contentWidth,
+      typography: typography,
+      textScaler: textScaler,
+      direction: direction,
+    );
+    final double sectionHeight = resolveEffectiveSectionHeight(
+      context: context,
+      dayWidth: dayWidth,
+      courses: courses,
+      sections: sections,
+      currentWeek: currentWeek,
+      showNonCurrentWeek: showNonCurrentWeek,
+      weekdayIndexes: weekdayIndexes,
+      maxWeek: maxWeek,
+      baseSectionHeight: baseSectionHeight,
+      adaptiveDayCount: adaptiveDayCount,
+      contentWidth: contentWidth,
+      typography: typography,
+      textScaler: textScaler,
+      direction: direction,
+    );
+
+    return CourseTableAdaptiveLayout(
+      contentWidth: contentWidth,
+      visibleDayCount: visibleDayCount,
+      sectionHeight: sectionHeight,
+      typography: typography,
+      badgeFontSize: badgeFontSize,
+    );
   }
 
   @override
@@ -498,20 +1102,36 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     required TextStyle detailStyle,
     required double contentWidth,
     required double contentHeight,
+    required double outerVerticalPadding,
     bool showLocationPrefix = true,
   }) {
-    // 排版参数：固定逻辑字号，Text widget 自动应用系统文字缩放
-    final CourseCardTypography typography =
-        CourseScheduleTable.resolveTypography();
     final TextScaler textScaler =
         MediaQuery.maybeTextScalerOf(context) ?? const TextScaler.linear(1.0);
     final TextDirection textDirection = Directionality.of(context);
+    final int visibleDayCount =
+        widget.adaptiveDayCount ??
+        (weekdayIndexes.isEmpty ? 7 : weekdayIndexes.length);
+    final CourseTableAdaptiveLayout? adaptiveLayout = widget.adaptiveLayout;
+    // 排版参数：优先复用父级预计算结果，避免在滚动/翻周时重复测量字体。
+    final CourseCardTypography typography =
+        adaptiveLayout?.typography ??
+        CourseScheduleTable.resolveTypography(
+          contentWidth: contentWidth,
+          visibleDayCount: visibleDayCount,
+          textScaler: textScaler,
+          direction: textDirection,
+        );
     final double badgeFontSize =
+        adaptiveLayout?.badgeFontSize ??
         CourseScheduleTable.resolveNonCurrentBadgeFontSize(
           contentWidth: contentWidth,
           typography: typography,
           textScaler: textScaler,
           direction: textDirection,
+        );
+    final double badgeTopCompensation =
+        CourseScheduleTable.resolveNonCurrentBadgeTopCompensation(
+          outerVerticalPadding,
         );
 
     final String locationText = showLocationPrefix
@@ -532,23 +1152,21 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           padding: const EdgeInsets.only(
             bottom: CourseScheduleTable._nonCurrentBadgeBottomGap,
           ),
-          child: Container(
-            width: double.infinity,
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(
-              horizontal: CourseScheduleTable._nonCurrentBadgeHorizontalPadding,
-              vertical: CourseScheduleTable._nonCurrentBadgeVerticalPadding,
-            ),
-            child: Text(
-              CourseScheduleTable._nonCurrentBadgeText,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.clip,
-              textAlign: TextAlign.center,
-              style: detailStyle.copyWith(
-                fontSize: badgeFontSize,
-                height: 1.1,
-                fontWeight: FontWeight.w700,
+          child: Padding(
+            padding: EdgeInsets.only(top: badgeTopCompensation),
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                CourseScheduleTable._nonCurrentBadgeText,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.clip,
+                textAlign: TextAlign.center,
+                style: detailStyle.copyWith(
+                  fontSize: badgeFontSize,
+                  height: 1.1,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -583,11 +1201,20 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       ],
     ];
 
-    // 字体大小固定不缩放，节高由父级动态拉长以容纳文字
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: textLines,
+    // 字体大小固定不缩放，节高由父级动态拉长以容纳文字。
+    // 非本周卡片的 [非本周] 徽章不参与高度计算，可能超出卡片高度。
+    // 使用 OverflowBox 解除高度约束 + ClipRect 裁剪溢出部分，
+    // 避免 RenderFlex overflow assertion。
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.topLeft,
+        maxHeight: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: textLines,
+        ),
+      ),
     );
   }
 
@@ -1434,7 +2061,6 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
-        border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: gradientColors.first.withValues(alpha: 0.25),
@@ -1445,13 +2071,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       ),
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints cardConstraints) {
-          const double horizontalPadding = 4;
+          const double horizontalPadding =
+              CourseScheduleTable._courseCardHorizontalPadding;
           final double verticalPadding = (cardConstraints.maxHeight * 0.03)
-              .clamp(1.8, 3.2)
+              .clamp(
+                CourseScheduleTable._courseCardVerticalPaddingMin,
+                CourseScheduleTable._courseCardVerticalPaddingMax,
+              )
               .toDouble();
           final double contentWidth = math.max(
             cardConstraints.maxWidth - horizontalPadding * 2,
-            18,
+            CourseScheduleTable._cardContentMinWidth,
           );
           final double contentHeight = math.max(
             cardConstraints.maxHeight - verticalPadding * 2,
@@ -1471,6 +2101,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
               detailStyle: detailStyle,
               contentWidth: contentWidth,
               contentHeight: contentHeight,
+              outerVerticalPadding: verticalPadding,
               showLocationPrefix: true,
             ),
           );
@@ -1626,6 +2257,21 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                   _resetDragInteraction();
                 },
                 child: cardContent,
+              ),
+            ),
+            // 选中边框：作为独立叠层渲染，不影响卡片内容的布局约束
+            Positioned(
+              top: 10 + 2, // margin
+              left: 2, // margin
+              right: 2, // margin
+              height: blockHeight - 4, // blockHeight minus margin
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
               ),
             ),
             buildDotHandle(true),
@@ -2084,12 +2730,17 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         // 只检查同一天的课程
         if (session.weekday != weekday) continue;
 
-        // 检查是否在当前周有课
-        if (!session.occursInWeek(currentWeek)) continue;
+        // 只有当两个 session 在某些周次上有交集时，才视为有可能的冲突（否则允许覆盖显示最近的）
+        if (!CourseScheduleTable._sessionsHaveWeekOverlap(
+          excludeSession,
+          session,
+        )) {
+          continue;
+        }
 
         final int sessionEnd = session.startSection + session.sectionCount - 1;
 
-        // 检查是否重叠
+        // 检查是否重叠节次
         if (startSection <= sessionEnd && endSection >= session.startSection) {
           return true;
         }
@@ -2122,10 +2773,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         targetEndOffset + sectionHeight - targetStartOffset;
 
     // 原始高度（用于拖拽模式）
-    final double startOffset =
-        sectionOffsets[block.session.startSection] ?? 0.0;
+    final double startOffset = sectionOffsets[block.renderStartSection] ?? 0.0;
     final int endSectionIndex =
-        block.session.startSection + block.session.sectionCount - 1;
+        block.renderStartSection + block.renderSectionCount - 1;
     final double endOffset = sectionOffsets[endSectionIndex] ?? startOffset;
     final double blockHeight = endOffset + sectionHeight - startOffset;
 
@@ -2258,73 +2908,91 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
           top: _dragOffset.dy,
           width: dayWidth,
           height: blockHeight,
-          child: Transform.scale(
-            scale: 1.05,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(
-                  child: Container(
-                    margin: const EdgeInsets.all(2),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: Container(
+                  margin: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: gradientColors,
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: LayoutBuilder(
+                    builder:
+                        (BuildContext context, BoxConstraints constraints) {
+                          const double horizontalPadding =
+                              CourseScheduleTable._courseCardHorizontalPadding;
+                          final double verticalPadding =
+                              (constraints.maxHeight * 0.03)
+                                  .clamp(
+                                    CourseScheduleTable
+                                        ._courseCardVerticalPaddingMin,
+                                    CourseScheduleTable
+                                        ._courseCardVerticalPaddingMax,
+                                  )
+                                  .toDouble();
+                          final double contentWidth = math.max(
+                            constraints.maxWidth - horizontalPadding * 2,
+                            CourseScheduleTable._cardContentMinWidth,
+                          );
+                          final double contentHeight = math.max(
+                            constraints.maxHeight - verticalPadding * 2,
+                            20,
+                          );
+
+                          return Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: horizontalPadding,
+                              vertical: verticalPadding,
+                            ),
+                            child: _buildAdaptiveCourseTextContent(
+                              context,
+                              block: block,
+                              isNonCurrent: isNonCurrent,
+                              titleStyle: titleStyle,
+                              detailStyle: detailStyle,
+                              contentWidth: contentWidth,
+                              contentHeight: contentHeight,
+                              outerVerticalPadding: verticalPadding,
+                              showLocationPrefix: true,
+                            ),
+                          );
+                        },
+                  ),
+                ),
+              ),
+              // 拖拽边框叠层
+              Positioned(
+                left: 2, // margin
+                right: 2,
+                top: 2,
+                bottom: 2,
+                child: IgnorePointer(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      gradient: LinearGradient(
-                        colors: gradientColors,
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                      border: Border.all(color: Colors.white, width: 2), // 白色边框
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: LayoutBuilder(
-                      builder:
-                          (BuildContext context, BoxConstraints constraints) {
-                            const double horizontalPadding = 4;
-                            final double verticalPadding =
-                                (constraints.maxHeight * 0.03)
-                                    .clamp(1.8, 3.2)
-                                    .toDouble();
-                            final double contentWidth = math.max(
-                              constraints.maxWidth - horizontalPadding * 2,
-                              18,
-                            );
-                            final double contentHeight = math.max(
-                              constraints.maxHeight - verticalPadding * 2,
-                              20,
-                            );
-
-                            return Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: horizontalPadding,
-                                vertical: verticalPadding,
-                              ),
-                              child: _buildAdaptiveCourseTextContent(
-                                context,
-                                block: block,
-                                isNonCurrent: isNonCurrent,
-                                titleStyle: titleStyle,
-                                detailStyle: detailStyle,
-                                contentWidth: contentWidth,
-                                contentHeight: contentHeight,
-                                showLocationPrefix: false,
-                              ),
-                            );
-                          },
+                      border: Border.all(color: Colors.white, width: 2),
                     ),
                   ),
                 ),
-                // 顶部圆点
-                buildDotHandle(true),
-                // 底部圆点
-                buildDotHandle(false),
-              ],
-            ),
+              ),
+              // 顶部圆点
+              buildDotHandle(true),
+              // 底部圆点
+              buildDotHandle(false),
+            ],
           ),
         ),
       ],
@@ -2477,175 +3145,39 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     }
   }
 
+  /// 计算 session 最近的未来周次（用于非本周卡片排序）。
+  static int _nearestFutureWeek(CourseSession session, int currentWeek) {
+    if (session.customWeeks.isNotEmpty) {
+      int nearest = 999;
+      for (final int w in session.customWeeks) {
+        if (w > currentWeek && w < nearest) {
+          nearest = w;
+        }
+      }
+      return nearest;
+    }
+    if (session.startWeek > currentWeek) {
+      return session.startWeek;
+    }
+    // session 跨越了当前周但不在本周（例如单双周），找下一个匹配周。
+    for (int w = currentWeek + 1; w <= session.endWeek; w++) {
+      if (session.occursInWeek(w)) {
+        return w;
+      }
+    }
+    return 999;
+  }
+
   /// 根据当前周次构建需展示的课程区块。
   List<_CourseBlock> _buildBlocks(Map<int, int> columnMap) {
-    final List<_CourseBlock> rawBlocks = <_CourseBlock>[];
-    if (sections.isEmpty) {
-      return rawBlocks;
-    }
-    for (final Course course in courses) {
-      // 如果显示非本周课程，则遍历所有 session，否则只遍历本周 session
-      final List<CourseSession> candidateSessions = showNonCurrentWeek
-          ? course.sessions
-          : course.sessionsForWeek(currentWeek);
-
-      for (final CourseSession session in candidateSessions) {
-        final int? columnIndex = columnMap[session.weekday];
-        if (columnIndex == null) {
-          continue;
-        }
-
-        final bool isCurrentWeek = session.occursInWeek(currentWeek);
-        // 显示非本周课程时，仅保留本周与未来周次；已结束周次直接隐藏。
-        if (showNonCurrentWeek && !isCurrentWeek) {
-          final bool hasFutureWeeks = session.customWeeks.isNotEmpty
-              ? session.customWeeks.any((int week) => week > currentWeek)
-              : session.endWeek >= currentWeek;
-          if (!hasFutureWeeks) {
-            continue;
-          }
-        }
-        // 如果不显示非本周课程，且当前 session 不在本周，则跳过（虽然 candidateSessions 已经过滤了，但如果是 showNonCurrentWeek=true，这里需要判断状态）
-        if (!showNonCurrentWeek && !isCurrentWeek) {
-          continue;
-        }
-
-        final SectionTime startSection = sections.firstWhere(
-          (SectionTime info) => info.index == session.startSection,
-          orElse: () => sections.first,
-        );
-        final int endIndex = session.startSection + session.sectionCount - 1;
-        final SectionTime endSection = sections.firstWhere(
-          (SectionTime info) => info.index == endIndex,
-          orElse: () => startSection,
-        );
-        rawBlocks.add(
-          _CourseBlock(
-            course: course,
-            session: session,
-            columnIndex: columnIndex,
-            startTime: startSection.start,
-            endTime: endSection.end,
-            isNonCurrent: !isCurrentWeek,
-          ),
-        );
-      }
-    }
-    // 将非本周课程排在前面（底层），本周课程排在后面（顶层）。
-    // 同一层内，长课放在下层，短课放在上层，便于被覆盖时做分段展示。
-    rawBlocks.sort((_CourseBlock a, _CourseBlock b) {
-      if (a.isNonCurrent && !b.isNonCurrent) {
-        return -1;
-      }
-      if (!a.isNonCurrent && b.isNonCurrent) {
-        return 1;
-      }
-      final int lenCmp = b.session.sectionCount.compareTo(
-        a.session.sectionCount,
-      );
-      if (lenCmp != 0) {
-        return lenCmp;
-      }
-      return a.session.startSection.compareTo(b.session.startSection);
-    });
-
-    if (rawBlocks.isEmpty) {
-      return rawBlocks;
-    }
-
-    // 预计算每个课程块的重叠数量（用于右上角数字角标）。
-    final List<int> overlapCounts = List<int>.filled(rawBlocks.length, 1);
-    for (int i = 0; i < rawBlocks.length; i++) {
-      final _CourseBlock current = rawBlocks[i];
-      final int start = current.session.startSection;
-      final int end = start + current.session.sectionCount - 1;
-      int count = 1;
-      for (int j = 0; j < rawBlocks.length; j++) {
-        if (i == j) {
-          continue;
-        }
-        final _CourseBlock other = rawBlocks[j];
-        if (other.columnIndex != current.columnIndex) {
-          continue;
-        }
-        final int otherStart = other.session.startSection;
-        final int otherEnd = otherStart + other.session.sectionCount - 1;
-        if (start <= otherEnd && end >= otherStart) {
-          count++;
-        }
-      }
-      overlapCounts[i] = count;
-    }
-
-    // 将被上层覆盖的课程块按可见节次拆分显示，避免超长课被整体遮住。
-    final List<_CourseBlock> displayBlocks = <_CourseBlock>[];
-    for (int i = 0; i < rawBlocks.length; i++) {
-      final _CourseBlock block = rawBlocks[i];
-      final int start = block.session.startSection;
-      final int end = start + block.session.sectionCount - 1;
-      final Set<int> coveredSections = <int>{};
-
-      for (int j = i + 1; j < rawBlocks.length; j++) {
-        final _CourseBlock upper = rawBlocks[j];
-        if (upper.columnIndex != block.columnIndex) {
-          continue;
-        }
-        final int upperStart = upper.session.startSection;
-        final int upperEnd = upperStart + upper.session.sectionCount - 1;
-        if (upperStart > end || upperEnd < start) {
-          continue;
-        }
-        final int overlapStart = math.max(start, upperStart);
-        final int overlapEnd = math.min(end, upperEnd);
-        for (int section = overlapStart; section <= overlapEnd; section++) {
-          coveredSections.add(section);
-        }
-      }
-
-      int? runStart;
-      for (int section = start; section <= end; section++) {
-        final bool isVisible = !coveredSections.contains(section);
-        if (isVisible) {
-          runStart ??= section;
-          continue;
-        }
-        if (runStart != null) {
-          final int runEnd = section - 1;
-          displayBlocks.add(
-            _CourseBlock(
-              course: block.course,
-              session: block.session,
-              columnIndex: block.columnIndex,
-              startTime: block.startTime,
-              endTime: block.endTime,
-              isNonCurrent: block.isNonCurrent,
-              renderStartSection: runStart,
-              renderSectionCount: runEnd - runStart + 1,
-              overlapCount: overlapCounts[i],
-            ),
-          );
-          runStart = null;
-        }
-      }
-
-      if (runStart != null) {
-        displayBlocks.add(
-          _CourseBlock(
-            course: block.course,
-            session: block.session,
-            columnIndex: block.columnIndex,
-            startTime: block.startTime,
-            endTime: block.endTime,
-            isNonCurrent: block.isNonCurrent,
-            renderStartSection: runStart,
-            renderSectionCount: end - runStart + 1,
-            overlapCount: overlapCounts[i],
-          ),
-        );
-      }
-    }
-
-    return displayBlocks;
+    // 使用静态 helper 统一生成最终要渲染的片段（包含拆分与 overlapCount）
+    return CourseScheduleTable._computeDisplayBlocks(
+      courses: courses,
+      sections: sections,
+      currentWeek: currentWeek,
+      showNonCurrentWeek: showNonCurrentWeek,
+      weekdayIndexes: weekdayIndexes,
+    );
   }
 
   /// 构建时间列，支持进入节次配置。
@@ -2717,6 +3249,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       fontWeight: FontWeight.w600,
       color: ns.onSurface,
       letterSpacing: 0,
+      height: 1.2,
       // 固定基础字号，避免节次列文字被压缩。
       fontSize: indexFontSize,
     );
@@ -3011,6 +3544,77 @@ class CourseCardTypography {
   final double titleFontSize;
   final double detailFontSize;
   final double badgeFontSize;
+}
+
+class CourseTableAdaptiveLayout {
+  const CourseTableAdaptiveLayout({
+    required this.contentWidth,
+    required this.visibleDayCount,
+    required this.sectionHeight,
+    required this.typography,
+    required this.badgeFontSize,
+  });
+
+  final double contentWidth;
+  final int visibleDayCount;
+  final double sectionHeight;
+  final CourseCardTypography typography;
+  final double badgeFontSize;
+}
+
+/// 自适应布局缓存 key，用于判断布局参数是否发生变化。
+///
+/// 将浮点值量化为整数进行比较，避免微小精度差异导致频繁重算。
+class AdaptiveLayoutCacheKey {
+  const AdaptiveLayoutCacheKey({
+    required this.logicalWidth,
+    required this.logicalHeight,
+    required this.dayWidth,
+    required this.devicePixelRatio,
+    required this.textScale,
+    required this.visibleDayCount,
+    required this.generation,
+  });
+
+  final double logicalWidth;
+  final double logicalHeight;
+  final double dayWidth;
+  final double devicePixelRatio;
+  final double textScale;
+  final int visibleDayCount;
+  final int generation;
+
+  int get _logicalWidthKey => (logicalWidth * 100).round();
+  int get _logicalHeightKey => (logicalHeight * 100).round();
+  int get _dayWidthKey => (dayWidth * 100).round();
+  int get _devicePixelRatioKey => (devicePixelRatio * 1000).round();
+  int get _textScaleKey => (textScale * 1000).round();
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is AdaptiveLayoutCacheKey &&
+        other._logicalWidthKey == _logicalWidthKey &&
+        other._logicalHeightKey == _logicalHeightKey &&
+        other._dayWidthKey == _dayWidthKey &&
+        other._devicePixelRatioKey == _devicePixelRatioKey &&
+        other._textScaleKey == _textScaleKey &&
+        other.visibleDayCount == visibleDayCount &&
+        other.generation == generation;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    _logicalWidthKey,
+    _logicalHeightKey,
+    _dayWidthKey,
+    _devicePixelRatioKey,
+    _textScaleKey,
+    visibleDayCount,
+    generation,
+  );
 }
 
 /// 内部的课程区块数据模型。
