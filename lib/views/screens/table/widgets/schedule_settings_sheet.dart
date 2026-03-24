@@ -461,7 +461,11 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                 });
               },
             ),
-            _buildDivider(),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildGroup(
+          children: [
             _buildSwitchTile(
               title: '锁定课程表',
               subtitle: '开启后课表卡片在课表页不允许拖动调整',
