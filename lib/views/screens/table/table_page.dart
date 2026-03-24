@@ -379,7 +379,8 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     final showWeekend = await service.loadShowWeekend();
     final showNonCurrentWeek = await service.loadShowNonCurrentWeek();
     final isScheduleLocked = await service.loadScheduleLocked();
-    final DateTime resolvedSemesterStart = semesterStart ?? _defaultSemesterStart;
+    final DateTime resolvedSemesterStart =
+        semesterStart ?? _defaultSemesterStart;
     final int resolvedWeek = _resolveWeekForDate(
       now: DateTime.now(),
       semesterStart: resolvedSemesterStart,
@@ -848,7 +849,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             },
             onMaxWeekChanged: (int max) async {
               await CourseService.instance.saveMaxWeek(max);
-              final int nextWeek = _clampDisplayedWeek(_currentWeek, maxWeek: max);
+              final int nextWeek = _clampDisplayedWeek(
+                _currentWeek,
+                maxWeek: max,
+              );
               final bool shouldSyncPage = nextWeek != _currentWeek;
               setState(() {
                 _maxWeek = max;

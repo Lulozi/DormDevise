@@ -112,7 +112,8 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   }
 
   void _popWithRefreshResult() {
-    if (_initialScheduleId != null && _currentScheduleId != _initialScheduleId) {
+    if (_initialScheduleId != null &&
+        _currentScheduleId != _initialScheduleId) {
       Navigator.of(context).pop(
         _shouldJumpToCurrentWeekOnExit
             ? 'jump_to_current_week'
