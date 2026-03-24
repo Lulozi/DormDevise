@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -75,6 +75,9 @@ class CourseScheduleTable extends StatefulWidget {
   /// 是否显示非本周课程 (showNonCurrentWeek)。
   final bool showNonCurrentWeek;
 
+  /// 是否锁定课程表卡片拖动与调整。
+  final bool isScheduleLocked;
+
   /// 点击添加课程的回调 (onAddCourseTap)。
   final void Function(int weekday, int section)? onAddCourseTap;
 
@@ -120,6 +123,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.scrollController,
     this.leadingInset = 0,
     this.showNonCurrentWeek = false,
+    this.isScheduleLocked = false,
     this.onAddCourseTap,
     this.onCourseChanged,
     this.onCourseDeleted,
@@ -403,25 +407,25 @@ class CourseScheduleTable extends StatefulWidget {
       return a.session.startSection.compareTo(b.session.startSection);
     });
 
-    // 计算每个原始区块的重叠数量（保持与旧逻辑一致，用于角标）
-    final List<int> overlapCounts = List<int>.filled(rawBlocks.length, 1);
-    for (int i = 0; i < rawBlocks.length; i++) {
-      final _CourseBlock current = rawBlocks[i];
-      final int start = current.session.startSection;
-      final int end = start + current.session.sectionCount - 1;
-      int count = 1;
-      for (int j = 0; j < rawBlocks.length; j++) {
-        if (i == j) continue;
-        final _CourseBlock other = rawBlocks[j];
-        if (other.columnIndex != current.columnIndex) continue;
+    int resolveOverlapCountForRange({
+      required int columnIndex,
+      required int startSection,
+      required int endSection,
+    }) {
+      int count = 0;
+      for (final _CourseBlock other in rawBlocks) {
+        if (other.columnIndex != columnIndex) continue;
         final int otherStart = other.session.startSection;
         final int otherEnd = otherStart + other.session.sectionCount - 1;
-        if (start <= otherEnd && end >= otherStart) count++;
+        if (startSection <= otherEnd && endSection >= otherStart) {
+          count++;
+        }
       }
-      overlapCounts[i] = count;
+      return count;
     }
 
-    // 将原始区块根据上层遮盖范围拆分为不被遮盖的片段，保留原始 overlapCount
+    // 将原始区块根据上层遮盖范围拆分为不被遮盖的片段，
+    // 并按当前可见节次范围重新计算 overlapCount。
     final List<_CourseBlock> fragments = <_CourseBlock>[];
     for (int i = 0; i < rawBlocks.length; i++) {
       final _CourseBlock block = rawBlocks[i];
@@ -463,7 +467,11 @@ class CourseScheduleTable extends StatefulWidget {
             isNonCurrent: block.isNonCurrent,
             renderStartSection: block.session.startSection,
             renderSectionCount: block.session.sectionCount,
-            overlapCount: overlapCounts[i],
+            overlapCount: resolveOverlapCountForRange(
+              columnIndex: block.columnIndex,
+              startSection: block.session.startSection,
+              endSection: end,
+            ),
           ),
         );
         continue;
@@ -521,7 +529,11 @@ class CourseScheduleTable extends StatefulWidget {
               isNonCurrent: block.isNonCurrent,
               renderStartSection: fragStart,
               renderSectionCount: fragCount,
-              overlapCount: overlapCounts[i],
+              overlapCount: resolveOverlapCountForRange(
+                columnIndex: block.columnIndex,
+                startSection: fragStart,
+                endSection: fragEnd,
+              ),
             ),
           );
         }
@@ -559,7 +571,11 @@ class CourseScheduleTable extends StatefulWidget {
             isNonCurrent: block.isNonCurrent,
             renderStartSection: fragStart,
             renderSectionCount: fragCount,
-            overlapCount: overlapCounts[i],
+            overlapCount: resolveOverlapCountForRange(
+              columnIndex: block.columnIndex,
+              startSection: fragStart,
+              endSection: fragEnd,
+            ),
           ),
         );
       }
@@ -1259,6 +1275,28 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       }
     }
     if (widget.editModeResetToken != oldWidget.editModeResetToken) {
+      if (_selectedBlock != null ||
+          _draggingBlock != null ||
+          _selectedSlot != null) {
+        setState(() {
+          _selectedBlock = null;
+          _draggingBlock = null;
+          _isResizing = false;
+          _dragOffset = Offset.zero;
+          _dragTargetWeekday = null;
+          _dragTargetSection = null;
+          _dragTargetSectionCount = null;
+          _hasConflict = false;
+          if (_selectedSlot != null) {
+            _previousSlot = _selectedSlot;
+            _selectedSlot = null;
+            _selectionAnimationController.forward(from: 0);
+          }
+        });
+        _updateEditMode();
+      }
+    }
+    if (widget.isScheduleLocked && !oldWidget.isScheduleLocked) {
       if (_selectedBlock != null ||
           _draggingBlock != null ||
           _selectedSlot != null) {
@@ -2003,6 +2041,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         _selectedBlock!.session == block.session &&
         _selectedBlock!.renderStartSection == block.renderStartSection &&
         _selectedBlock!.renderSectionCount == block.renderSectionCount;
+    final bool canAdjustCourseBlock = !widget.isScheduleLocked;
 
     // 构建调整手柄圆点
     Widget buildDotHandle(bool isTop) {
@@ -2129,7 +2168,202 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
               right: 0,
               height: blockHeight,
               child: GestureDetector(
-                onPanStart: (details) {
+                onPanStart: canAdjustCourseBlock
+                    ? (details) {
+                        setState(() {
+                          _draggingBlock = block;
+                          _isResizing = false;
+                          _initialDragOffset = details.localPosition;
+                          _dragOffset = Offset(
+                            block.columnIndex * dayWidth,
+                            startOffset,
+                          );
+                          _dragTargetWeekday = block.session.weekday;
+                          _dragTargetSection = block.session.startSection;
+                          _dragTargetSectionCount = block.session.sectionCount;
+                          _hasConflict = false;
+                        });
+                        _updateEditMode();
+                      }
+                    : null,
+                onPanUpdate: canAdjustCourseBlock
+                    ? (details) {
+                        if (_draggingBlock == null || _isResizing) return;
+                        setState(() {
+                          _dragOffset = Offset(
+                            (block.columnIndex * dayWidth +
+                                    details.localPosition.dx -
+                                    _initialDragOffset.dx)
+                                .clamp(0, viewportWidth - dayWidth),
+                            (startOffset +
+                                    details.localPosition.dy -
+                                    _initialDragOffset.dy)
+                                .clamp(0, tableHeight - blockHeight),
+                          );
+
+                          // 计算目标位置
+                          final int targetColumn = (_dragOffset.dx / dayWidth)
+                              .round()
+                              .clamp(0, weekdayIndexes.length - 1);
+                          _dragTargetWeekday = weekdayIndexes[targetColumn];
+
+                          // 找到最近的节次
+                          double minDistance = double.infinity;
+                          int? closestSection;
+                          for (final entry in sectionOffsets.entries) {
+                            final distance = (_dragOffset.dy - entry.value)
+                                .abs();
+                            if (distance < minDistance) {
+                              minDistance = distance;
+                              closestSection = entry.key;
+                            }
+                          }
+
+                          int targetStart =
+                              closestSection ?? block.session.startSection;
+
+                          // 限制课程不能跨越时段
+                          final SectionTime startInfo = sections.firstWhere(
+                            (SectionTime s) => s.index == targetStart,
+                            orElse: () => sections.first,
+                          );
+                          final String segment = startInfo.segmentName;
+                          final Iterable<SectionTime> segmentSections = sections
+                              .where(
+                                (SectionTime s) => s.segmentName == segment,
+                              );
+
+                          if (segmentSections.isNotEmpty) {
+                            final int maxSegmentIndex = segmentSections
+                                .map((SectionTime s) => s.index)
+                                .reduce(math.max);
+                            final int minSegmentIndex = segmentSections
+                                .map((SectionTime s) => s.index)
+                                .reduce(math.min);
+
+                            final int sectionCount = block.session.sectionCount;
+
+                            // 如果课程超出当前时段下界，向上回退
+                            if (targetStart + sectionCount - 1 >
+                                maxSegmentIndex) {
+                              targetStart = maxSegmentIndex - sectionCount + 1;
+                            }
+
+                            // 确保不超出上界
+                            if (targetStart < minSegmentIndex) {
+                              targetStart = minSegmentIndex;
+                            }
+                          }
+
+                          _dragTargetSection = targetStart;
+
+                          // 检查冲突
+                          _hasConflict = _checkConflict(
+                            _dragTargetWeekday!,
+                            _dragTargetSection!,
+                            block.session.sectionCount,
+                            block.session,
+                          );
+                        });
+                      }
+                    : null,
+                onPanEnd: canAdjustCourseBlock
+                    ? (details) {
+                        if (_draggingBlock == null || _isResizing) return;
+                        final draggedBlock = _draggingBlock!;
+                        final targetWeekday = _dragTargetWeekday;
+                        final targetSection = _dragTargetSection;
+                        final hasConflict = _hasConflict;
+
+                        _resetDragInteraction();
+
+                        if (hasConflict) return;
+
+                        if (targetWeekday != null &&
+                            targetSection != null &&
+                            (targetWeekday != draggedBlock.session.weekday ||
+                                targetSection !=
+                                    draggedBlock.session.startSection)) {
+                          final result = _handleCourseMoved(
+                            draggedBlock,
+                            targetWeekday,
+                            targetSection,
+                            draggedBlock.session.sectionCount,
+                          );
+                          if (result != null) {
+                            final (newCourse, newSession) = result;
+                            setState(() {
+                              _selectedBlock = _createUpdatedBlock(
+                                newCourse,
+                                newSession,
+                              );
+                            });
+                          }
+                        }
+                      }
+                    : null,
+                onPanCancel: canAdjustCourseBlock
+                    ? () {
+                        if (_draggingBlock == null || _isResizing) return;
+                        _resetDragInteraction();
+                      }
+                    : null,
+                child: cardContent,
+              ),
+            ),
+            // 选中边框：作为独立叠层渲染，不影响卡片内容的布局约束
+            Positioned(
+              top: 10 + 2, // margin
+              left: 2, // margin
+              right: 2, // margin
+              height: blockHeight - 4, // blockHeight minus margin
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ),
+            if (canAdjustCourseBlock) buildDotHandle(true),
+            if (canAdjustCourseBlock) buildDotHandle(false),
+          ],
+        ),
+      );
+    }
+
+    // 非选中状态
+    return Positioned(
+      key: ValueKey(
+        // 使用列表索引确保 key 绝对唯一
+        'block_$blockIndex',
+      ),
+      left: block.columnIndex * dayWidth,
+      top: startOffset,
+      width: dayWidth,
+      height: blockHeight,
+      child: Opacity(
+        opacity: isDragging ? 0.3 : 1.0,
+        child: GestureDetector(
+          onTap: () {
+            if (_selectedBlock != null) {
+              setState(() {
+                _selectedBlock = null;
+              });
+              _updateEditMode();
+            }
+            if (_selectedSlot != null) {
+              setState(() {
+                _previousSlot = _selectedSlot;
+                _selectedSlot = null;
+              });
+              _selectionAnimationController.forward(from: 0);
+            }
+            _showCourseDetails(context, block);
+          },
+          onLongPressStart: canAdjustCourseBlock
+              ? (details) {
                   setState(() {
                     _draggingBlock = block;
                     _isResizing = false;
@@ -2142,21 +2376,31 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                     _dragTargetSection = block.session.startSection;
                     _dragTargetSectionCount = block.session.sectionCount;
                     _hasConflict = false;
+                    if (_selectedSlot != null) {
+                      _previousSlot = _selectedSlot;
+                      _selectedSlot = null;
+                      _selectionAnimationController.forward(from: 0);
+                    }
                   });
                   _updateEditMode();
-                },
-                onPanUpdate: (details) {
-                  if (_draggingBlock == null || _isResizing) return;
+                }
+              : null,
+          onLongPressMoveUpdate: canAdjustCourseBlock
+              ? (details) {
+                  if (_draggingBlock == null) return;
                   setState(() {
+                    final double newLeft =
+                        block.columnIndex * dayWidth +
+                        details.localPosition.dx -
+                        _initialDragOffset.dx;
+                    final double newTop =
+                        startOffset +
+                        details.localPosition.dy -
+                        _initialDragOffset.dy;
+
                     _dragOffset = Offset(
-                      (block.columnIndex * dayWidth +
-                              details.localPosition.dx -
-                              _initialDragOffset.dx)
-                          .clamp(0, viewportWidth - dayWidth),
-                      (startOffset +
-                              details.localPosition.dy -
-                              _initialDragOffset.dy)
-                          .clamp(0, tableHeight - blockHeight),
+                      newLeft.clamp(0, viewportWidth - dayWidth),
+                      newTop.clamp(0, tableHeight - blockHeight),
                     );
 
                     // 计算目标位置
@@ -2219,15 +2463,26 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                       block.session,
                     );
                   });
-                },
-                onPanEnd: (details) {
-                  if (_draggingBlock == null || _isResizing) return;
+                }
+              : null,
+          onLongPressEnd: canAdjustCourseBlock
+              ? (details) {
+                  if (_draggingBlock == null) return;
                   final draggedBlock = _draggingBlock!;
                   final targetWeekday = _dragTargetWeekday;
                   final targetSection = _dragTargetSection;
                   final hasConflict = _hasConflict;
 
-                  _resetDragInteraction();
+                  setState(() {
+                    _draggingBlock = null;
+                    _dragOffset = Offset.zero;
+                    _dragTargetWeekday = null;
+                    _dragTargetSection = null;
+                    _dragTargetSectionCount = null;
+                    _hasConflict = false;
+                    _selectedBlock = block;
+                  });
+                  _updateEditMode();
 
                   if (hasConflict) return;
 
@@ -2251,203 +2506,14 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                       });
                     }
                   }
-                },
-                onPanCancel: () {
-                  if (_draggingBlock == null || _isResizing) return;
+                }
+              : null,
+          onLongPressCancel: canAdjustCourseBlock
+              ? () {
+                  if (_draggingBlock == null) return;
                   _resetDragInteraction();
-                },
-                child: cardContent,
-              ),
-            ),
-            // 选中边框：作为独立叠层渲染，不影响卡片内容的布局约束
-            Positioned(
-              top: 10 + 2, // margin
-              left: 2, // margin
-              right: 2, // margin
-              height: blockHeight - 4, // blockHeight minus margin
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ),
-            buildDotHandle(true),
-            buildDotHandle(false),
-          ],
-        ),
-      );
-    }
-
-    // 非选中状态
-    return Positioned(
-      key: ValueKey(
-        // 使用列表索引确保 key 绝对唯一
-        'block_$blockIndex',
-      ),
-      left: block.columnIndex * dayWidth,
-      top: startOffset,
-      width: dayWidth,
-      height: blockHeight,
-      child: Opacity(
-        opacity: isDragging ? 0.3 : 1.0,
-        child: GestureDetector(
-          onTap: () {
-            if (_selectedBlock != null) {
-              setState(() {
-                _selectedBlock = null;
-              });
-              _updateEditMode();
-            }
-            if (_selectedSlot != null) {
-              setState(() {
-                _previousSlot = _selectedSlot;
-                _selectedSlot = null;
-              });
-              _selectionAnimationController.forward(from: 0);
-            }
-            _showCourseDetails(context, block);
-          },
-          onLongPressStart: (details) {
-            setState(() {
-              _draggingBlock = block;
-              _isResizing = false;
-              _initialDragOffset = details.localPosition;
-              _dragOffset = Offset(block.columnIndex * dayWidth, startOffset);
-              _dragTargetWeekday = block.session.weekday;
-              _dragTargetSection = block.session.startSection;
-              _dragTargetSectionCount = block.session.sectionCount;
-              _hasConflict = false;
-              if (_selectedSlot != null) {
-                _previousSlot = _selectedSlot;
-                _selectedSlot = null;
-                _selectionAnimationController.forward(from: 0);
-              }
-            });
-            _updateEditMode();
-          },
-          onLongPressMoveUpdate: (details) {
-            if (_draggingBlock == null) return;
-            setState(() {
-              final double newLeft =
-                  block.columnIndex * dayWidth +
-                  details.localPosition.dx -
-                  _initialDragOffset.dx;
-              final double newTop =
-                  startOffset +
-                  details.localPosition.dy -
-                  _initialDragOffset.dy;
-
-              _dragOffset = Offset(
-                newLeft.clamp(0, viewportWidth - dayWidth),
-                newTop.clamp(0, tableHeight - blockHeight),
-              );
-
-              // 计算目标位置
-              final int targetColumn = (_dragOffset.dx / dayWidth)
-                  .round()
-                  .clamp(0, weekdayIndexes.length - 1);
-              _dragTargetWeekday = weekdayIndexes[targetColumn];
-
-              // 找到最近的节次
-              double minDistance = double.infinity;
-              int? closestSection;
-              for (final entry in sectionOffsets.entries) {
-                final distance = (_dragOffset.dy - entry.value).abs();
-                if (distance < minDistance) {
-                  minDistance = distance;
-                  closestSection = entry.key;
                 }
-              }
-
-              int targetStart = closestSection ?? block.session.startSection;
-
-              // 限制课程不能跨越时段
-              final SectionTime startInfo = sections.firstWhere(
-                (SectionTime s) => s.index == targetStart,
-                orElse: () => sections.first,
-              );
-              final String segment = startInfo.segmentName;
-              final Iterable<SectionTime> segmentSections = sections.where(
-                (SectionTime s) => s.segmentName == segment,
-              );
-
-              if (segmentSections.isNotEmpty) {
-                final int maxSegmentIndex = segmentSections
-                    .map((SectionTime s) => s.index)
-                    .reduce(math.max);
-                final int minSegmentIndex = segmentSections
-                    .map((SectionTime s) => s.index)
-                    .reduce(math.min);
-
-                final int sectionCount = block.session.sectionCount;
-
-                // 如果课程超出当前时段下界，向上回退
-                if (targetStart + sectionCount - 1 > maxSegmentIndex) {
-                  targetStart = maxSegmentIndex - sectionCount + 1;
-                }
-
-                // 确保不超出上界
-                if (targetStart < minSegmentIndex) {
-                  targetStart = minSegmentIndex;
-                }
-              }
-
-              _dragTargetSection = targetStart;
-
-              // 检查冲突
-              _hasConflict = _checkConflict(
-                _dragTargetWeekday!,
-                _dragTargetSection!,
-                block.session.sectionCount,
-                block.session,
-              );
-            });
-          },
-          onLongPressEnd: (details) {
-            if (_draggingBlock == null) return;
-            final draggedBlock = _draggingBlock!;
-            final targetWeekday = _dragTargetWeekday;
-            final targetSection = _dragTargetSection;
-            final hasConflict = _hasConflict;
-
-            setState(() {
-              _draggingBlock = null;
-              _dragOffset = Offset.zero;
-              _dragTargetWeekday = null;
-              _dragTargetSection = null;
-              _dragTargetSectionCount = null;
-              _hasConflict = false;
-              _selectedBlock = block;
-            });
-            _updateEditMode();
-
-            if (hasConflict) return;
-
-            if (targetWeekday != null &&
-                targetSection != null &&
-                (targetWeekday != draggedBlock.session.weekday ||
-                    targetSection != draggedBlock.session.startSection)) {
-              final result = _handleCourseMoved(
-                draggedBlock,
-                targetWeekday,
-                targetSection,
-                draggedBlock.session.sectionCount,
-              );
-              if (result != null) {
-                final (newCourse, newSession) = result;
-                setState(() {
-                  _selectedBlock = _createUpdatedBlock(newCourse, newSession);
-                });
-              }
-            }
-          },
-          onLongPressCancel: () {
-            if (_draggingBlock == null) return;
-            _resetDragInteraction();
-          },
+              : null,
           child: cardContent,
         ),
       ),
