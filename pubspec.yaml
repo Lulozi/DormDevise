@@ -66,6 +66,7 @@ dependencies:
   network_info_plus: ^6.1.4
   wifi_scan: ^0.4.1+2
   qr_flutter: ^4.1.0
+  mobile_scanner: ^7.2.0
 
 dev_dependencies:
   flutter_test:
