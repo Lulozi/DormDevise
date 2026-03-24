@@ -23,6 +23,7 @@ class CourseService {
   static const String _showWeekendKey = 'course_service_show_weekend';
   static const String _showNonCurrentWeekKey =
       'course_service_show_non_current_week';
+  static const String _scheduleLockedKey = 'course_service_schedule_locked';
   static const String _reminderEnabledKey = 'course_service_reminder_enabled';
   static const String _reminderTimeKey = 'course_service_reminder_time';
   static const String _reminderMethodKey = 'course_service_reminder_method';
@@ -258,6 +259,20 @@ class CourseService {
     await prefs.setBool(key, show);
   }
 
+  /// 加载课程表是否锁定。
+  Future<bool> loadScheduleLocked([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_scheduleLockedKey, scheduleId);
+    return prefs.getBool(key) ?? false;
+  }
+
+  /// 保存课程表是否锁定。
+  Future<void> saveScheduleLocked(bool locked, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_scheduleLockedKey, scheduleId);
+    await prefs.setBool(key, locked);
+  }
+
   /// 删除课程表
   Future<void> deleteSchedules(List<String> ids) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -292,6 +307,7 @@ class CourseService {
         await saveMaxWeek(20, newId);
         await saveShowWeekend(false, newId);
         await saveShowNonCurrentWeek(true, newId);
+        await saveScheduleLocked(false, newId);
       }
     }
 
@@ -306,6 +322,7 @@ class CourseService {
       await prefs.remove('${_tableNameKey}_$id');
       await prefs.remove('${_showWeekendKey}_$id');
       await prefs.remove('${_showNonCurrentWeekKey}_$id');
+      await prefs.remove('${_scheduleLockedKey}_$id');
       await prefs.remove('${_reminderEnabledKey}_$id');
       await prefs.remove('${_reminderTimeKey}_$id');
       await prefs.remove('${_reminderMethodKey}_$id');

@@ -19,6 +19,7 @@ class ScheduleSettingsPage extends StatefulWidget {
   final String tableName;
   final bool showWeekend;
   final bool showNonCurrentWeek;
+  final bool isScheduleLocked;
   final ValueChanged<CourseScheduleConfig> onConfigChanged;
   final ValueChanged<DateTime> onSemesterStartChanged;
   final ValueChanged<int> onCurrentWeekChanged;
@@ -26,6 +27,7 @@ class ScheduleSettingsPage extends StatefulWidget {
   final ValueChanged<String> onTableNameChanged;
   final ValueChanged<bool> onShowWeekendChanged;
   final ValueChanged<bool> onShowNonCurrentWeekChanged;
+  final ValueChanged<bool>? onScheduleLockedChanged;
   final VoidCallback onOpenSectionSettings;
   final bool isEmbedded;
   final Widget? header;
@@ -42,6 +44,7 @@ class ScheduleSettingsPage extends StatefulWidget {
     required this.tableName,
     required this.showWeekend,
     required this.showNonCurrentWeek,
+    required this.isScheduleLocked,
     required this.onConfigChanged,
     required this.onSemesterStartChanged,
     required this.onCurrentWeekChanged,
@@ -49,6 +52,7 @@ class ScheduleSettingsPage extends StatefulWidget {
     required this.onTableNameChanged,
     required this.onShowWeekendChanged,
     required this.onShowNonCurrentWeekChanged,
+    this.onScheduleLockedChanged,
     required this.onOpenSectionSettings,
     this.isEmbedded = false,
     this.header,
@@ -74,6 +78,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   late int _maxWeek;
   late bool _showWeekend;
   late bool _showNonCurrentWeek;
+  late bool _isScheduleLocked;
+  bool _showInCalendar = false;
+  bool _enableDesktopWidget = false;
   late String _tableName;
   String? _colorAllocationAction;
 
@@ -97,6 +104,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     _maxWeek = widget.maxWeek;
     _showWeekend = widget.showWeekend;
     _showNonCurrentWeek = widget.showNonCurrentWeek;
+    _isScheduleLocked = widget.isScheduleLocked;
     _tableName = widget.tableName;
 
     _initReminderController();
@@ -178,6 +186,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     }
     if (oldWidget.showNonCurrentWeek != widget.showNonCurrentWeek) {
       _showNonCurrentWeek = widget.showNonCurrentWeek;
+    }
+    if (oldWidget.isScheduleLocked != widget.isScheduleLocked) {
+      _isScheduleLocked = widget.isScheduleLocked;
     }
     if (oldWidget.tableName != widget.tableName) {
       _tableName = widget.tableName;
@@ -430,10 +441,37 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         _buildGroup(
           children: [
             _buildSwitchTile(
-              title: '在日历和组件中显示',
-              subtitle: '课程将以日程形式在日历及组件中显示',
-              value: false,
-              onChanged: (v) {},
+              title: '在日历中显示',
+              subtitle: '暂未接入功能，当前仅展示开关样式',
+              value: _showInCalendar,
+              onChanged: (bool value) {
+                setState(() {
+                  _showInCalendar = value;
+                });
+              },
+            ),
+            _buildDivider(),
+            _buildSwitchTile(
+              title: '启用桌面组件',
+              subtitle: '暂未接入功能，当前仅展示开关样式',
+              value: _enableDesktopWidget,
+              onChanged: (bool value) {
+                setState(() {
+                  _enableDesktopWidget = value;
+                });
+              },
+            ),
+            _buildDivider(),
+            _buildSwitchTile(
+              title: '锁定课程表',
+              subtitle: '开启后课表卡片在课表页不允许拖动调整',
+              value: _isScheduleLocked,
+              onChanged: (bool value) {
+                setState(() {
+                  _isScheduleLocked = value;
+                });
+                widget.onScheduleLockedChanged?.call(value);
+              },
             ),
           ],
         ),

@@ -16,6 +16,7 @@ class CreateScheduleCoursesPage extends StatefulWidget {
   final String tableName;
   final bool showWeekend;
   final bool showNonCurrentWeek;
+  final bool isScheduleLocked;
 
   /// 预填充的课程列表（如从网页爬取导入），为空则从零手动添加。
   final List<Course> initialCourses;
@@ -30,6 +31,7 @@ class CreateScheduleCoursesPage extends StatefulWidget {
     required this.tableName,
     required this.showWeekend,
     required this.showNonCurrentWeek,
+    required this.isScheduleLocked,
     this.initialCourses = const <Course>[],
   });
 
@@ -122,6 +124,10 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
       await CourseService.instance.saveShowWeekend(widget.showWeekend, id);
       await CourseService.instance.saveShowNonCurrentWeek(
         widget.showNonCurrentWeek,
+        id,
+      );
+      await CourseService.instance.saveScheduleLocked(
+        widget.isScheduleLocked,
         id,
       );
       await CourseService.instance.saveCourses(_courses, id);
@@ -307,6 +313,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                   timeColumnWidth: timeColumnWidth,
                   sectionHeight: effectiveSectionHeight,
                   scrollController: _timeColumnController,
+                  isScheduleLocked: widget.isScheduleLocked,
                 ),
               ),
               Expanded(
@@ -333,6 +340,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
                       sectionHeight: effectiveSectionHeight,
                       weekDates: _resolveWeekDates(week),
                       weekdayIndexes: weekdayIndexes,
+                      isScheduleLocked: widget.isScheduleLocked,
                       weekdays: widget.showWeekend
                           ? const ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
                           : const ['周一', '周二', '周三', '周四', '周五'],

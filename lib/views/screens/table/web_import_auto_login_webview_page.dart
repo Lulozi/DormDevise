@@ -406,6 +406,7 @@ class _WebImportAutoLoginWebViewPageState
             initialMaxWeek: maxWeek,
             initialShowWeekend: _hasWeekendCourses(courses),
             initialShowNonCurrentWeek: true,
+            initialLockSchedule: true,
             initialCourses: courses,
           ),
         ),
