@@ -1,13 +1,16 @@
 import 'dart:async';
 
 import 'package:dormdevise/views/screens/open_door/open_door_page.dart';
-import 'package:dormdevise/views/screens/open_door/open_door_settings_page.dart';
+import 'package:dormdevise/views/screens/open_door/door_lock_config_page.dart';
 import 'package:dormdevise/views/screens/open_door/door_widget_prompt_page.dart';
+import 'package:dormdevise/views/screens/person/about_page.dart';
 import 'package:dormdevise/widgets/door_widget_dialog.dart';
 import 'package:dormdevise/views/screens/person/person_page.dart';
 import 'package:dormdevise/views/screens/table/table_page.dart';
+import 'package:dormdevise/services/course_service.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/theme/theme_service.dart';
+import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -123,6 +126,9 @@ class ManagementScreenState extends State<ManagementScreen>
   bool _navLocked = false;
   StreamSubscription<Uri?>? _widgetLaunchSubscription;
   bool _widgetDialogVisible = false;
+  bool _hasCheckedForUpdatesOnLaunch = false;
+  bool _updatePromptVisible = false;
+  DateTime _lastReminderRefreshAt = DateTime.now();
 
   /// 根据原始页面索引构建对应的业务页面。
   ///
@@ -211,6 +217,14 @@ class ManagementScreenState extends State<ManagementScreen>
     _bindWidgetLaunchEvents();
     // 提前请求通知权限
     UpdateDownloadService.instance.initializeNotifications();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) {
+          return;
+        }
+        unawaited(_checkForUpdatesOnLaunch());
+      });
+    });
   }
 
   /// 移除绑定并释放控制器资源。
@@ -220,6 +234,26 @@ class ManagementScreenState extends State<ManagementScreen>
     _widgetLaunchSubscription?.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+
+  static DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+    final DateTime now = DateTime.now();
+    final bool crossedDay = _dateOnly(now) != _dateOnly(_lastReminderRefreshAt);
+    final bool exceededRefreshWindow =
+        now.difference(_lastReminderRefreshAt) >= const Duration(hours: 6);
+    if (!crossedDay && !exceededRefreshWindow) {
+      return;
+    }
+    _lastReminderRefreshAt = now;
+    unawaited(CourseService.instance.initializeReminders(force: true));
   }
 
   /// 绑定桌面微件事件流，支持轻点微件后自动弹出滑动对话框。
@@ -270,6 +304,90 @@ class ManagementScreenState extends State<ManagementScreen>
         break;
       default:
         break;
+    }
+  }
+
+  Future<void> _checkForUpdatesOnLaunch() async {
+    if (_hasCheckedForUpdatesOnLaunch ||
+        _widgetDialogVisible ||
+        _updatePromptVisible) {
+      return;
+    }
+    _hasCheckedForUpdatesOnLaunch = true;
+    try {
+      final UpdateCheckResult? result = await UpdateCheckService.instance
+          .fetchAvailableUpdate();
+      if (!mounted || result == null || _widgetDialogVisible) {
+        return;
+      }
+
+      _updatePromptVisible = true;
+      final bool? shouldOpenUpdatePage = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          final ThemeData theme = Theme.of(dialogContext);
+          final List<String> highlights = result.highlights.take(4).toList();
+          final String? description = result.body?.trim();
+          return AlertDialog(
+            title: Text('发现新版本 ${result.versionLabel}'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text('当前版本 ${result.currentVersion}'),
+                  if (highlights.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 16),
+                    Text('更新亮点', style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    ...highlights.map(
+                      (String item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              '• ',
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            Expanded(child: Text(item)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else if (description != null &&
+                      description.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 16),
+                    Text(description),
+                  ],
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('稍后'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('前往更新'),
+              ),
+            ],
+          );
+        },
+      );
+      if (!mounted || shouldOpenUpdatePage != true) {
+        return;
+      }
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const AboutPage()));
+    } catch (error, stackTrace) {
+      debugPrint('启动更新检查失败: $error\n$stackTrace');
+    } finally {
+      _updatePromptVisible = false;
     }
   }
 
