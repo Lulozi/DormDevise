@@ -441,7 +441,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         _buildGroup(
           children: [
             _buildSwitchTile(
-              title: '在日历中显示',
+              title: '启用日历显示',
               subtitle: '暂未接入功能，当前仅展示开关样式',
               value: _showInCalendar,
               onChanged: (bool value) {
