@@ -116,6 +116,7 @@ class NotificationService {
     required DateTime semesterStart,
     required int reminderMinutes,
     required String method,
+    required bool enableVibration,
   }) async {
     if (!_isInitialized) await initialize();
     await cancelAllReminders();
@@ -128,11 +129,8 @@ class NotificationService {
 
     // 获取当前时间
     final now = DateTime.now();
-    // 预调度未来 7 天的课程
-    // 如果是闹钟模式，仅调度当天的课程（不设置隔天闹钟）
-    final endSchedule = method == 'alarm'
-        ? DateTime(now.year, now.month, now.day, 23, 59, 59)
-        : now.add(const Duration(days: 7));
+    // 提前调度更长时间，减少后台停留后提醒失效的概率。
+    final endSchedule = now.add(Duration(days: method == 'alarm' ? 7 : 30));
 
     // 生成所有节次的时间表
     final sections = config.generateSections();
@@ -165,11 +163,8 @@ class NotificationService {
           // 或者如果是“立即”提醒且时间就在刚刚（2分钟内），则立即发送
           if (reminderTime.isAfter(now)) {
             if (method == 'alarm') {
-              // 闹钟模式：仅允许课程尚未开始，且提醒时间<=90分钟
+              // 闹钟模式：仅允许课程尚未开始。
               if (!classTime.isAfter(now)) {
-                continue;
-              }
-              if (reminderTime.difference(now).inMinutes > 90) {
                 continue;
               }
 
@@ -191,6 +186,7 @@ class NotificationService {
                     : '还有 $reminderMinutes 分钟上课\n地点: ${session.location}',
                 scheduledDate: reminderTime,
                 method: method,
+                enableVibration: enableVibration,
               );
               scheduledCount++;
             }
@@ -217,6 +213,7 @@ class NotificationService {
                 title: '上课提醒: ${course.name}',
                 body: '现在开始上课\n地点: ${session.location}',
                 method: method,
+                enableVibration: enableVibration,
               );
               scheduledCount++;
             }
@@ -233,29 +230,45 @@ class NotificationService {
     required String title,
     required String body,
     required String method,
+    required bool enableVibration,
   }) async {
     final isAlarm = method == 'alarm';
+    final String channelId = _resolveChannelId(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelName = _resolveChannelName(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelDescription = _resolveChannelDescription(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
     await _notificationsPlugin.show(
       id,
       title,
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          isAlarm
-              ? 'course_alarm_channel_v4'
-              : 'course_notification_channel_v4',
-          isAlarm ? '课程闹钟' : '课程提醒',
-          channelDescription: isAlarm ? '用于发送上课前的强提醒' : '用于发送上课前的提醒通知',
+          channelId,
+          channelName,
+          channelDescription: channelDescription,
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
           ticker: '课程提醒',
           visibility: NotificationVisibility.public,
           category: isAlarm
               ? AndroidNotificationCategory.alarm
-              : AndroidNotificationCategory.reminder,
+              : AndroidNotificationCategory.message,
           audioAttributesUsage: isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,
+          styleInformation: BigTextStyleInformation(body),
+          enableVibration: isAlarm ? true : enableVibration,
+          vibrationPattern: isAlarm || !enableVibration
+              ? null
+              : Int64List.fromList(<int>[0, 120, 80, 180]),
           // 闹钟模式下启用全屏通知（如果权限允许）
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
@@ -285,14 +298,33 @@ class NotificationService {
     required String body,
     required DateTime scheduledDate,
     required String method,
+    required bool enableVibration,
   }) async {
     final isAlarm = method == 'alarm';
+    final String channelId = _resolveChannelId(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelName = _resolveChannelName(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelDescription = _resolveChannelDescription(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
 
     // 检查是否具有精确闹钟权限 (Android 12+)
     // 如果没有权限，zonedSchedule 可能会失败或不准确
     // 只有当时间确实已经过去时，才直接显示，否则即使只有 1 秒也进行调度，确保整点触发
     if (scheduledDate.isBefore(DateTime.now())) {
-      await _showNotification(id: id, title: title, body: body, method: method);
+      await _showNotification(
+        id: id,
+        title: title,
+        body: body,
+        method: method,
+        enableVibration: enableVibration,
+      );
       return;
     }
 
@@ -303,21 +335,24 @@ class NotificationService {
       tz.TZDateTime.from(scheduledDate, tz.local),
       NotificationDetails(
         android: AndroidNotificationDetails(
-          isAlarm
-              ? 'course_alarm_channel_v4'
-              : 'course_notification_channel_v4',
-          isAlarm ? '课程闹钟' : '课程提醒',
-          channelDescription: isAlarm ? '用于发送上课前的强提醒' : '用于发送上课前的提醒通知',
+          channelId,
+          channelName,
+          channelDescription: channelDescription,
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
           ticker: '课程提醒',
           visibility: NotificationVisibility.public,
           category: isAlarm
               ? AndroidNotificationCategory.alarm
-              : AndroidNotificationCategory.reminder,
+              : AndroidNotificationCategory.message,
           audioAttributesUsage: isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,
+          styleInformation: BigTextStyleInformation(body),
+          enableVibration: isAlarm ? true : enableVibration,
+          vibrationPattern: isAlarm || !enableVibration
+              ? null
+              : Int64List.fromList(<int>[0, 120, 80, 180]),
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
           additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
@@ -343,6 +378,38 @@ class NotificationService {
     );
   }
 
+  String _resolveChannelId({
+    required bool isAlarm,
+    required bool enableVibration,
+  }) {
+    if (isAlarm) {
+      return 'course_alarm_channel_v4';
+    }
+    return enableVibration
+        ? 'course_notification_channel_v5'
+        : 'course_notification_channel_v5_silent';
+  }
+
+  String _resolveChannelName({
+    required bool isAlarm,
+    required bool enableVibration,
+  }) {
+    if (isAlarm) {
+      return '课程闹钟';
+    }
+    return enableVibration ? '课程消息提醒' : '课程消息提醒（无振动）';
+  }
+
+  String _resolveChannelDescription({
+    required bool isAlarm,
+    required bool enableVibration,
+  }) {
+    if (isAlarm) {
+      return '用于发送上课前的强提醒';
+    }
+    return enableVibration ? '用于发送类似消息横幅的上课提醒' : '用于发送无振动的消息横幅提醒';
+  }
+
   /// 使用原生自定义 RemoteViews 的闹钟调度（让“关闭”按钮出现在右侧）。
   Future<void> _scheduleNativeAlarm({
     required int id,
@@ -359,6 +426,7 @@ class NotificationService {
         body: '教室: $location',
         scheduledDate: scheduledDate,
         method: 'notification',
+        enableVibration: true,
       );
       return;
     }
@@ -390,6 +458,7 @@ class NotificationService {
         title: course,
         body: '教室: $location',
         method: 'notification',
+        enableVibration: true,
       );
       return;
     }

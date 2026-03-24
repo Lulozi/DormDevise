@@ -91,6 +91,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   int _reminderTime = 15;
   bool _isReminderMethodEnabled = false;
   String _reminderMethod = 'notification';
+  bool _reminderVibrationEnabled = true;
   bool _enableAnimation = false;
 
   late FixedExtentScrollController _reminderTimeController;
@@ -139,11 +140,15 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     final method = await CourseService.instance.loadReminderMethod(
       widget.scheduleId,
     );
+    final vibrationEnabled = await CourseService.instance.loadReminderVibration(
+      widget.scheduleId,
+    );
     if (mounted) {
       setState(() {
         _isReminderMethodEnabled = enabled;
         _reminderTime = time;
         _reminderMethod = method;
+        _reminderVibrationEnabled = vibrationEnabled;
 
         // 更新控制器位置
         _reminderTimeController.dispose();
@@ -200,6 +205,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       enabled: _isReminderMethodEnabled,
       time: _reminderTime,
       method: _reminderMethod,
+      vibrationEnabled: _reminderVibrationEnabled,
       scheduleId: widget.scheduleId,
     );
   }
@@ -423,6 +429,26 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                         },
                         content: _buildReminderTimePicker(),
                         showDivider: false,
+                      ),
+                      _buildDivider(),
+                      _buildSwitchTile(
+                        title: '振动提醒',
+                        subtitle: '通知提醒时配合横幅通知振动提醒',
+                        value: _reminderVibrationEnabled,
+                        onChanged: (bool value) async {
+                          setState(() {
+                            _reminderVibrationEnabled = value;
+                            if (!widget.saveNotificationImmediately) {
+                              _hasReminderChanged = true;
+                            }
+                          });
+                          if (widget.saveNotificationImmediately) {
+                            await CourseService.instance.saveReminderVibration(
+                              value,
+                              widget.scheduleId,
+                            );
+                          }
+                        },
                       ),
                     ],
                   ),

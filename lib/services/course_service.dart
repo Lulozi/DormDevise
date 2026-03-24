@@ -27,6 +27,8 @@ class CourseService {
   static const String _reminderEnabledKey = 'course_service_reminder_enabled';
   static const String _reminderTimeKey = 'course_service_reminder_time';
   static const String _reminderMethodKey = 'course_service_reminder_method';
+  static const String _reminderVibrationKey =
+      'course_service_reminder_vibration';
 
   static const String _schedulesKey = 'course_service_schedules';
   static const String _currentScheduleIdKey =
@@ -326,6 +328,7 @@ class CourseService {
       await prefs.remove('${_reminderEnabledKey}_$id');
       await prefs.remove('${_reminderTimeKey}_$id');
       await prefs.remove('${_reminderMethodKey}_$id');
+      await prefs.remove('${_reminderVibrationKey}_$id');
     }
   }
 
@@ -377,21 +380,40 @@ class CourseService {
     await _rescheduleReminders(scheduleId);
   }
 
+  /// 加载课程提醒振动开关。
+  Future<bool> loadReminderVibration([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final String key = await _getKey(_reminderVibrationKey, scheduleId);
+    return prefs.getBool(key) ?? true;
+  }
+
+  /// 保存课程提醒振动开关。
+  Future<void> saveReminderVibration(bool enabled, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_reminderVibrationKey, scheduleId);
+    await prefs.setBool(key, enabled);
+    await _rescheduleReminders(scheduleId);
+  }
+
   /// 批量保存课程提醒设置
   Future<void> saveAllReminderSettings({
     required bool enabled,
     required int time,
     required String method,
+    required bool vibrationEnabled,
     String? scheduleId,
   }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final enabledKey = await _getKey(_reminderEnabledKey, scheduleId);
     final timeKey = await _getKey(_reminderTimeKey, scheduleId);
     final methodKey = await _getKey(_reminderMethodKey, scheduleId);
+    final vibrationKey = await _getKey(_reminderVibrationKey, scheduleId);
 
     await prefs.setBool(enabledKey, enabled);
     await prefs.setInt(timeKey, time);
     await prefs.setString(methodKey, method);
+    await prefs.setBool(vibrationKey, vibrationEnabled);
 
     await _rescheduleReminders(scheduleId);
   }
@@ -433,6 +455,7 @@ class CourseService {
     final semesterStart = await loadSemesterStart(scheduleId);
     final reminderTime = await loadReminderTime(scheduleId);
     final reminderMethod = await loadReminderMethod(scheduleId);
+    final reminderVibration = await loadReminderVibration(scheduleId);
 
     // 如果未设置开学时间，使用默认策略（与 TablePage/deleteSchedules 逻辑尽量保持一致）
     final DateTime effectiveStart =
@@ -452,6 +475,7 @@ class CourseService {
       semesterStart: effectiveStart,
       reminderMinutes: reminderTime,
       method: reminderMethod,
+      enableVibration: reminderVibration,
     );
   }
 }
