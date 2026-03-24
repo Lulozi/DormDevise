@@ -18,81 +18,97 @@ class DoorConfigShareSheet {
       showDragHandle: true,
       builder: (BuildContext sheetContext) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.share_outlined),
-                title: const Text('分享配置（复制到剪贴板）'),
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  await Clipboard.setData(ClipboardData(text: payload));
-                  if (!context.mounted) {
-                    return;
-                  }
-                  AppToast.show(context, '$configLabel 已复制到剪贴板');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.qr_code_2_rounded),
-                title: const Text('二维码导出'),
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  if (!context.mounted) {
-                    return;
-                  }
-                  await _showQrCodeDialog(
-                    context: context,
-                    configLabel: configLabel,
-                    payload: payload,
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.download_outlined),
-                title: const Text('导入配置（从剪贴板）'),
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  final ClipboardData? data = await Clipboard.getData(
-                    'text/plain',
-                  );
-                  final String raw = data?.text?.trim() ?? '';
-                  if (raw.isEmpty) {
-                    if (!context.mounted) {
-                      return;
-                    }
-                    AppToast.show(
-                      context,
-                      '剪贴板内容为空',
-                      variant: AppToastVariant.warning,
-                    );
-                    return;
-                  }
-                  await onImport(raw);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.qr_code_scanner_rounded),
-                title: const Text('扫码导入'),
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  if (!context.mounted) {
-                    return;
-                  }
-                  final String? raw = await Navigator.of(context).push<String>(
-                    MaterialPageRoute<String>(
-                      builder: (_) =>
-                          DoorConfigQrScanPage(title: '扫描$configLabel二维码'),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _SectionTitle(title: '剪贴板'),
+                _ActionGroup(
+                  children: <Widget>[
+                    ListTile(
+                      leading: const Icon(Icons.share_outlined),
+                      title: const Text('导出到剪贴板'),
+                      onTap: () async {
+                        Navigator.of(sheetContext).pop();
+                        await Clipboard.setData(ClipboardData(text: payload));
+                        if (!context.mounted) {
+                          return;
+                        }
+                        AppToast.show(context, '$configLabel 已复制到剪贴板');
+                      },
                     ),
-                  );
-                  if (raw == null || raw.trim().isEmpty) {
-                    return;
-                  }
-                  await onImport(raw);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
+                    ListTile(
+                      leading: const Icon(Icons.download_outlined),
+                      title: const Text('剪贴板导入'),
+                      onTap: () async {
+                        Navigator.of(sheetContext).pop();
+                        final ClipboardData? data = await Clipboard.getData(
+                          'text/plain',
+                        );
+                        final String raw = data?.text?.trim() ?? '';
+                        if (raw.isEmpty) {
+                          if (!context.mounted) {
+                            return;
+                          }
+                          AppToast.show(
+                            context,
+                            '剪贴板内容为空',
+                            variant: AppToastVariant.warning,
+                          );
+                          return;
+                        }
+                        await onImport(raw);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _SectionTitle(title: '二维码'),
+                _ActionGroup(
+                  children: <Widget>[
+                    ListTile(
+                      leading: const Icon(Icons.qr_code_2_rounded),
+                      title: const Text('导出为二维码'),
+                      onTap: () async {
+                        Navigator.of(sheetContext).pop();
+                        if (!context.mounted) {
+                          return;
+                        }
+                        await _showQrCodeDialog(
+                          context: context,
+                          configLabel: configLabel,
+                          payload: payload,
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.qr_code_scanner_rounded),
+                      title: const Text('扫码导入'),
+                      onTap: () async {
+                        Navigator.of(sheetContext).pop();
+                        if (!context.mounted) {
+                          return;
+                        }
+                        final String? raw = await Navigator.of(context)
+                            .push<String>(
+                              MaterialPageRoute<String>(
+                                builder: (_) => DoorConfigQrScanPage(
+                                  title: '扫描$configLabel二维码',
+                                ),
+                              ),
+                            );
+                        if (raw == null || raw.trim().isEmpty) {
+                          return;
+                        }
+                        await onImport(raw);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -145,6 +161,61 @@ class DoorConfigShareSheet {
           ],
         );
       },
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionGroup extends StatelessWidget {
+  const _ActionGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final List<Widget> spacedChildren = <Widget>[];
+    for (int i = 0; i < children.length; i++) {
+      spacedChildren.add(children[i]);
+      if (i != children.length - 1) {
+        spacedChildren.add(
+          Divider(
+            height: 1,
+            indent: 16,
+            endIndent: 16,
+            color: colorScheme.outlineVariant,
+          ),
+        );
+      }
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: spacedChildren),
     );
   }
 }
