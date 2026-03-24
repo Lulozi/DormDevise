@@ -1,15 +1,15 @@
-import 'local_door_lock_settings_page.dart';
-import 'mqtt_settings_page.dart';
 import 'package:flutter/material.dart';
 
-/// 开门相关设置页，整合多项配置标签。
+import 'local_door_lock_settings_page.dart';
+import 'mqtt_settings_page.dart';
+
+/// 门锁配置页，集中承载 HTTP 与 MQTT 两类开门配置。
 class OpenDoorSettingsPage extends StatefulWidget {
   const OpenDoorSettingsPage({super.key, this.initialTabIndex = 0});
 
-  /// 指定初始展示的标签索引，默认显示第一个标签。
+  /// 指定初始展示的标签索引，默认显示 HTTP 配置。
   final int initialTabIndex;
 
-  /// 创建状态对象以驱动标签页控制器。
   @override
   State<OpenDoorSettingsPage> createState() => _OpenDoorSettingsPageState();
 }
@@ -18,9 +18,8 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  final List<Tab> _tabs = const [Tab(text: 'HTTP配置'), Tab(text: 'MQTT 设置')];
+  final List<Tab> _tabs = const [Tab(text: 'HTTP配置'), Tab(text: 'MQTT配置')];
 
-  /// 初始化标签控制器。
   @override
   void initState() {
     super.initState();
@@ -32,17 +31,15 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     );
   }
 
-  /// 释放标签控制器资源。
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
   }
 
-  /// 构建包含标签导航与内容的界面。
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('门锁配置'),
@@ -56,7 +53,7 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
+        children: const <Widget>[
           LocalDoorLockSettingsPage(showAppBar: false),
           MqttSettingsPage(showAppBar: false),
         ],

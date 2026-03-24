@@ -4,13 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dormdevise/models/mqtt_config.dart';
 import 'package:dormdevise/models/status_topic_suggestion_builder.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/mqtt_config_service.dart';
 import 'package:dormdevise/services/mqtt_service.dart';
+
+import 'door_config_share_sheet.dart';
 
 /// MQTT 配置与调试页面。
 class MqttSettingsPage extends StatefulWidget {
@@ -309,13 +310,14 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     await DoorWidgetService.instance.refreshStatusListener();
   }
 
-  /// 将配置导出为 JSON 并复制到剪贴板。
-  Future<void> _exportConfig() async {
+  /// 生成可用于分享或二维码导出的配置文本。
+  String _buildExportPayloadText() {
     final MqttConfig config = _buildConfigFromInputs();
     final Map<String, Object?> exportMap = <String, Object?>{
       'mqtt_host': config.host,
       'mqtt_port': config.port.toString(),
       'mqtt_topic': config.commandTopic,
+      'mqtt_clientId': config.clientId,
       'mqtt_username': config.username ?? '',
       'mqtt_password': config.password ?? '',
       'mqtt_ca': config.caPath,
@@ -327,24 +329,22 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       'custom_open_msg': config.customMessage,
       'mqtt_status_enabled': config.statusEnabled,
     };
-    final jsonStr = JsonEncoder.withIndent('  ').convert(exportMap);
-    await Clipboard.setData(ClipboardData(text: jsonStr));
-    if (!mounted) return;
-    _showStatus('配置已导出到剪贴板');
-    _showBubble(context, '配置已导出到剪贴板\n\n$jsonStr');
+    return const JsonEncoder.withIndent('  ').convert(exportMap);
   }
 
-  /// 从剪贴板导入配置并刷新表单。
-  Future<void> _importConfigFromClipboard() async {
-    final data = await Clipboard.getData('text/plain');
-    if (data == null || data.text == null || data.text!.trim().isEmpty) {
-      if (!mounted) return;
-      _showStatus('剪贴板内容为空', isError: true, icon: Icons.info_outline);
-      _showBubble(context, '剪贴板内容为空');
+  /// 从任意文本内容导入配置并刷新表单。
+  Future<void> _importConfigFromText(String raw) async {
+    final String text = raw.trim();
+    if (text.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      _showStatus('导入内容为空', isError: true, icon: Icons.info_outline);
+      _showBubble(context, '导入内容为空');
       return;
     }
     try {
-      final dynamic decoded = jsonDecode(data.text!);
+      final dynamic decoded = jsonDecode(text);
       if (decoded is! Map) throw Exception('格式错误');
       final Map<String, Object?> storageMap = <String, Object?>{
         'mqtt_host': decoded['mqtt_host'],
@@ -370,13 +370,22 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       await _loadConfig();
       final importStr = JsonEncoder.withIndent('  ').convert(decoded);
       if (!mounted) return;
-      _showStatus('配置已从剪贴板导入');
-      _showBubble(context, '配置已从剪贴板导入\n\n$importStr\n\n点击确定保存配置');
+      _showStatus('配置已导入并保存');
+      _showBubble(context, '配置已导入并保存\n\n$importStr');
     } catch (e) {
       if (!mounted) return;
       _showStatus('导入失败: $e', isError: true);
       _showBubble(context, '导入失败: $e');
     }
+  }
+
+  Future<void> _openShareImportMenu() async {
+    await DoorConfigShareSheet.show(
+      context: context,
+      configLabel: 'MQTT配置',
+      payload: _buildExportPayloadText(),
+      onImport: _importConfigFromText,
+    );
   }
 
   /// 打开文件选择器并回填路径。
@@ -1176,8 +1185,20 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _saveConfig,
+                      onPressed: _loading ? null : _openShareImportMenu,
                       style: OutlinedButton.styleFrom(
+                        shape: buttonShape,
+                        padding: buttonPadding,
+                      ),
+                      icon: const Icon(Icons.ios_share_outlined),
+                      label: const Text('分享/导入'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _loading ? null : _saveConfig,
+                      style: FilledButton.styleFrom(
                         shape: buttonShape,
                         padding: buttonPadding,
                       ),
@@ -1185,57 +1206,26 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                       label: const Text('保存配置'),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _loading ? null : _testConnect,
-                      style: FilledButton.styleFrom(
-                        shape: buttonShape,
-                        padding: buttonPadding,
-                      ),
-                      icon: _loading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.cloud_sync_outlined),
-                      label: Text(
-                        _loading
-                            ? '正在连接...'
-                            : (_hasSubscribed ? '已订阅' : '订阅连接'),
-                      ),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _exportConfig,
-                      style: OutlinedButton.styleFrom(
-                        shape: buttonShape,
-                        padding: buttonPadding,
-                      ),
-                      icon: const Icon(Icons.upload_outlined),
-                      label: const Text('导出配置'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _importConfigFromClipboard,
-                      style: OutlinedButton.styleFrom(
-                        shape: buttonShape,
-                        padding: buttonPadding,
-                      ),
-                      icon: const Icon(Icons.download_outlined),
-                      label: const Text('导入配置'),
-                    ),
-                  ),
-                ],
+              FilledButton.icon(
+                onPressed: _loading ? null : _testConnect,
+                style: FilledButton.styleFrom(
+                  shape: buttonShape,
+                  padding: buttonPadding,
+                  minimumSize: const Size.fromHeight(52),
+                ),
+                icon: _loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_sync_outlined),
+                label: Text(
+                  _loading ? '正在连接...' : (_hasSubscribed ? '已订阅' : '订阅连接'),
+                ),
               ),
               const SizedBox(height: 20),
               Row(

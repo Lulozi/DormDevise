@@ -5,8 +5,9 @@ import 'package:dormdevise/models/local_door_lock_config.dart';
 import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/wifi_info_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
+import 'door_config_share_sheet.dart';
 
 /// HTTP配置页面。
 ///
@@ -531,27 +532,19 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
     };
   }
 
-  Future<void> _exportConfigToClipboard() async {
-    final String jsonText = const JsonEncoder.withIndent(
-      '  ',
-    ).convert(_buildSharePayload());
-    await Clipboard.setData(ClipboardData(text: jsonText));
-    if (!mounted) {
-      return;
-    }
-    _showStatus('配置已复制到剪贴板，可分享给其他设备');
+  String _buildSharePayloadText() {
+    return const JsonEncoder.withIndent('  ').convert(_buildSharePayload());
   }
 
-  Future<void> _importConfigFromClipboard() async {
-    final ClipboardData? data = await Clipboard.getData('text/plain');
-    final String raw = data?.text?.trim() ?? '';
-    if (raw.isEmpty) {
-      _showStatus('剪贴板内容为空', isError: true, icon: Icons.info_outline);
+  Future<void> _importConfigFromText(String raw) async {
+    final String text = raw.trim();
+    if (text.isEmpty) {
+      _showStatus('导入内容为空', isError: true, icon: Icons.info_outline);
       return;
     }
 
     try {
-      final dynamic decoded = jsonDecode(raw);
+      final dynamic decoded = jsonDecode(text);
       if (decoded is! Map) {
         throw const FormatException('不是有效的配置对象');
       }
@@ -629,35 +622,11 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
   }
 
   Future<void> _openShareImportMenu() async {
-    await showModalBottomSheet<void>(
+    await DoorConfigShareSheet.show(
       context: context,
-      showDragHandle: true,
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.share_outlined),
-                title: const Text('分享配置（复制到剪贴板）'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _exportConfigToClipboard();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.download_outlined),
-                title: const Text('导入配置（从剪贴板）'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _importConfigFromClipboard();
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
+      configLabel: 'HTTP配置',
+      payload: _buildSharePayloadText(),
+      onImport: _importConfigFromText,
     );
   }
 

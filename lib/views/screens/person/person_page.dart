@@ -1,8 +1,7 @@
 import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:flutter/material.dart';
 
-import '../open_door/local_door_lock_settings_page.dart';
-import '../open_door/mqtt_settings_page.dart';
+import '../open_door/door_lock_config_page.dart';
 import 'about_page.dart';
 import 'door_widget_settings_page.dart';
 import 'download_source_config_page.dart';
@@ -53,14 +52,9 @@ class _PersonPageState extends State<PersonPage> {
     final List<Widget> cards = [
       // body内容，按顺序排列
       _buildSettingsEntry(
-        icon: Icons.api_rounded,
-        title: 'MQTT配置',
-        builder: (context) => const MqttSettingsPage(),
-      ),
-      _buildSettingsEntry(
-        icon: Icons.http,
-        title: 'HTTP配置',
-        builder: (context) => const LocalDoorLockSettingsPage(),
+        icon: Icons.door_front_door_outlined,
+        title: '门锁配置',
+        builder: (context) => const OpenDoorSettingsPage(),
       ),
       _buildSettingsEntry(
         icon: Icons.dashboard_customize,
