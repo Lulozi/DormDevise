@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/services/update/update_installer.dart';
 
 /// 描述下载任务实时进度的模型。
@@ -161,6 +163,11 @@ class UpdateDownloadService {
   static const String _channelId = 'dormdevise_download_channel_v2';
   static const String _channelName = '更新下载';
   static const String _channelDescription = '显示应用更新下载进度';
+  static const String _pendingInstallPathKey =
+      'update_download_pending_install_path';
+  static const String _pendingInstallAwaitingResumeKey =
+      'update_download_pending_install_awaiting_resume';
+  static const String _installNotificationPayload = 'update_install';
 
   // 全局下载状态管理
   final ValueNotifier<DownloadProgress?> progressNotifier =
@@ -170,6 +177,10 @@ class UpdateDownloadService {
   bool _cancelRequested = false;
   http.Client? _activeClient;
   bool _activeClientOwned = false;
+  bool _isAppInForeground = false;
+  bool _isInstallAttemptInFlight = false;
+  DateTime? _lastInstallAttemptAt;
+  StreamSubscription<String>? _installSubscription;
 
   /// 初始化通知插件并请求权限
   Future<void> initializeNotifications() async {
@@ -188,7 +199,19 @@ class UpdateDownloadService {
           macOS: initializationSettingsDarwin,
         );
 
-    await _notificationsPlugin.initialize(initializationSettings);
+    await _notificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        if (response.payload == _installNotificationPayload) {
+          unawaited(
+            Future<void>.delayed(
+              const Duration(milliseconds: 300),
+              () => resumePendingInstallIfNeeded(force: true),
+            ),
+          );
+        }
+      },
+    );
 
     if (Platform.isAndroid) {
       final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
@@ -201,6 +224,10 @@ class UpdateDownloadService {
     }
 
     _isNotificationsInitialized = true;
+    _installSubscription ??= UpdateInstaller.onPackageInstalled.listen((_) {
+      unawaited(_clearPendingInstallState());
+      unawaited(UpdateInstaller.cleanupTemporaryApks());
+    });
   }
 
   /// 显示或更新进度通知
@@ -243,7 +270,11 @@ class UpdateDownloadService {
   }
 
   /// 显示完成或失败通知
-  Future<void> _showResultNotification(String title, String body) async {
+  Future<void> _showResultNotification(
+    String title,
+    String body, {
+    String? payload,
+  }) async {
     if (!_isNotificationsInitialized) return;
 
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
@@ -253,6 +284,7 @@ class UpdateDownloadService {
           channelDescription: _channelDescription,
           importance: Importance.high,
           priority: Priority.high,
+          visibility: NotificationVisibility.public,
           autoCancel: true,
           ongoing: false,
         );
@@ -266,6 +298,7 @@ class UpdateDownloadService {
       title,
       body,
       platformChannelSpecifics,
+      payload: payload,
     );
   }
 
@@ -313,17 +346,87 @@ class UpdateDownloadService {
     _activeClientOwned = false;
 
     if (result.isSuccess) {
-      await _showResultNotification('下载完成', '正在尝试安装更新...');
-      try {
-        await UpdateInstaller.openAndCleanup(result.file!);
-      } catch (e) {
-        debugPrint('自动安装失败: $e');
+      final File file = result.file!;
+      if (_isAppInForeground) {
+        await _showResultNotification(
+          '下载完成',
+          '正在尝试安装更新...',
+          payload: _installNotificationPayload,
+        );
+        await registerDownloadedFileForInstall(file, openNow: true);
+      } else {
+        await registerDownloadedFileForInstall(file, openNow: false);
       }
     } else if (result.isCancelled) {
       await _cancelNotification();
     } else {
       await _showResultNotification('下载失败', result.error.toString());
     }
+  }
+
+  /// 标记当前应用是否处于前台，便于决定是否立即唤起安装器。
+  void setAppInForeground(bool isForeground) {
+    _isAppInForeground = isForeground;
+  }
+
+  /// 查询当前是否仍有待继续安装的更新包。
+  Future<bool> hasPendingInstall() async {
+    final _PendingInstallState? state = await _loadPendingInstallState();
+    if (state == null) {
+      return false;
+    }
+    final File file = File(state.path);
+    if (await file.exists()) {
+      return true;
+    }
+    await _clearPendingInstallState();
+    return false;
+  }
+
+  /// 注册一个已经下载完成的安装包，并按当前前后台状态决定是否立即安装。
+  Future<void> registerDownloadedFileForInstall(
+    File file, {
+    required bool openNow,
+  }) async {
+    await initializeNotifications();
+    if (!await file.exists()) {
+      await _clearPendingInstallState();
+      return;
+    }
+    await _savePendingInstallState(
+      file.path,
+      awaitingResume: !(openNow && _isAppInForeground),
+    );
+
+    if (openNow && _isAppInForeground) {
+      await _attemptInstallPendingFile(file);
+      return;
+    }
+
+    await _showResultNotification(
+      '下载完成',
+      '点击通知或返回应用继续安装',
+      payload: _installNotificationPayload,
+    );
+  }
+
+  /// 在应用回到前台后继续尝试安装已下载好的更新包。
+  Future<void> resumePendingInstallIfNeeded({bool force = false}) async {
+    await initializeNotifications();
+    final _PendingInstallState? state = await _loadPendingInstallState();
+    if (state == null) {
+      return;
+    }
+    if (!force && (!_isAppInForeground || !state.awaitingResume)) {
+      return;
+    }
+
+    final File file = File(state.path);
+    if (!await file.exists()) {
+      await _clearPendingInstallState();
+      return;
+    }
+    await _attemptInstallPendingFile(file);
   }
 
   /// 请求取消当前下载
@@ -355,6 +458,79 @@ class UpdateDownloadService {
       unitIndex++;
     }
     return '${size.toStringAsFixed(1)} ${units[unitIndex]}';
+  }
+
+  Future<void> _attemptInstallPendingFile(File file) async {
+    if (!await file.exists()) {
+      await _clearPendingInstallState();
+      return;
+    }
+    if (_isInstallAttemptInFlight) {
+      return;
+    }
+    final DateTime now = DateTime.now();
+    if (_lastInstallAttemptAt != null &&
+        now.difference(_lastInstallAttemptAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+
+    _isInstallAttemptInFlight = true;
+    _lastInstallAttemptAt = now;
+    try {
+      final OpenResult openResult = await UpdateInstaller.openAndCleanup(file);
+      if (openResult.type == ResultType.done) {
+        await _savePendingInstallState(file.path, awaitingResume: false);
+        await _showResultNotification(
+          '下载完成',
+          '已打开安装程序',
+          payload: _installNotificationPayload,
+        );
+      } else {
+        await _savePendingInstallState(file.path, awaitingResume: true);
+        await _showResultNotification(
+          '下载完成',
+          '安装程序打开失败，点击通知或返回应用继续安装',
+          payload: _installNotificationPayload,
+        );
+      }
+    } catch (error) {
+      debugPrint('尝试打开安装程序失败: $error');
+      await _savePendingInstallState(file.path, awaitingResume: true);
+      await _showResultNotification(
+        '下载完成',
+        '安装程序打开失败，点击通知或返回应用继续安装',
+        payload: _installNotificationPayload,
+      );
+    } finally {
+      _isInstallAttemptInFlight = false;
+    }
+  }
+
+  Future<_PendingInstallState?> _loadPendingInstallState() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? path = prefs.getString(_pendingInstallPathKey);
+    if (path == null || path.isEmpty) {
+      return null;
+    }
+    return _PendingInstallState(
+      path: path,
+      awaitingResume: prefs.getBool(_pendingInstallAwaitingResumeKey) ?? false,
+    );
+  }
+
+  Future<void> _savePendingInstallState(
+    String path, {
+    required bool awaitingResume,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingInstallPathKey, path);
+    await prefs.setBool(_pendingInstallAwaitingResumeKey, awaitingResume);
+  }
+
+  Future<void> _clearPendingInstallState() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingInstallPathKey);
+    await prefs.remove(_pendingInstallAwaitingResumeKey);
   }
 
   /// 根据下载请求推导出最终写入的目标文件。
@@ -552,4 +728,14 @@ String sanitizeFileName(String raw) {
     return 'DormDevise-update-${DateTime.now().millisecondsSinceEpoch}.apk';
   }
   return sanitized;
+}
+
+class _PendingInstallState {
+  const _PendingInstallState({
+    required this.path,
+    required this.awaitingResume,
+  });
+
+  final String path;
+  final bool awaitingResume;
 }
