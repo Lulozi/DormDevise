@@ -13,6 +13,25 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
+  static final Int64List _messageVibrationPattern = Int64List.fromList(<int>[
+    0,
+    120,
+    80,
+    180,
+  ]);
+
+  String _buildReminderTitle(String courseName) => '课程：$courseName';
+
+  String _buildReminderBody({
+    required int reminderMinutes,
+    required String location,
+  }) {
+    final String timingText = reminderMinutes == 0
+        ? '现在将开始上课'
+        : '距离上课还有 $reminderMinutes 分钟';
+    return '$timingText\n地点：$location';
+  }
+
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
@@ -76,6 +95,7 @@ class NotificationService {
         );
 
     await _notificationsPlugin.initialize(initializationSettings);
+    await _ensureAndroidChannels();
     _isInitialized = true;
   }
 
@@ -180,10 +200,11 @@ class NotificationService {
               // 使用普通通知
               await _scheduleNotification(
                 id: notificationId++,
-                title: '上课提醒: ${course.name}',
-                body: reminderMinutes == 0
-                    ? '现在开始上课\n地点: ${session.location}'
-                    : '还有 $reminderMinutes 分钟上课\n地点: ${session.location}',
+                title: _buildReminderTitle(course.name),
+                body: _buildReminderBody(
+                  reminderMinutes: reminderMinutes,
+                  location: session.location,
+                ),
                 scheduledDate: reminderTime,
                 method: method,
                 enableVibration: enableVibration,
@@ -210,8 +231,11 @@ class NotificationService {
             } else {
               await _showNotification(
                 id: notificationId++,
-                title: '上课提醒: ${course.name}',
-                body: '现在开始上课\n地点: ${session.location}',
+                title: _buildReminderTitle(course.name),
+                body: _buildReminderBody(
+                  reminderMinutes: 0,
+                  location: session.location,
+                ),
                 method: method,
                 enableVibration: enableVibration,
               );
@@ -223,6 +247,46 @@ class NotificationService {
     }
 
     debugPrint('Scheduled $scheduledCount reminders.');
+  }
+
+  Future<void> _ensureAndroidChannels() async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+    if (androidImplementation == null) {
+      return;
+    }
+
+    await androidImplementation.createNotificationChannel(
+      AndroidNotificationChannel(
+        'course_notification_channel_v7',
+        '课程消息提醒',
+        description: '用于发送类似消息横幅的上课提醒',
+        importance: Importance.max,
+        enableVibration: true,
+        vibrationPattern: _messageVibrationPattern,
+        enableLights: true,
+        playSound: true,
+        audioAttributesUsage: AudioAttributesUsage.notification,
+      ),
+    );
+    await androidImplementation.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'course_notification_channel_v7_silent',
+        '课程消息提醒（无振动）',
+        description: '用于发送无振动的消息横幅提醒',
+        importance: Importance.max,
+        enableVibration: false,
+        enableLights: true,
+        playSound: false,
+        audioAttributesUsage: AudioAttributesUsage.notification,
+      ),
+    );
   }
 
   Future<void> _showNotification({
@@ -268,7 +332,7 @@ class NotificationService {
           enableVibration: isAlarm ? true : enableVibration,
           vibrationPattern: isAlarm || !enableVibration
               ? null
-              : Int64List.fromList(<int>[0, 120, 80, 180]),
+              : _messageVibrationPattern,
           // 闹钟模式下启用全屏通知（如果权限允许）
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
@@ -352,7 +416,7 @@ class NotificationService {
           enableVibration: isAlarm ? true : enableVibration,
           vibrationPattern: isAlarm || !enableVibration
               ? null
-              : Int64List.fromList(<int>[0, 120, 80, 180]),
+              : _messageVibrationPattern,
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
           additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
@@ -386,8 +450,8 @@ class NotificationService {
       return 'course_alarm_channel_v4';
     }
     return enableVibration
-        ? 'course_notification_channel_v5'
-        : 'course_notification_channel_v5_silent';
+        ? 'course_notification_channel_v7'
+        : 'course_notification_channel_v7_silent';
   }
 
   String _resolveChannelName({
