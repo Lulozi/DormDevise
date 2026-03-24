@@ -4,14 +4,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Icons;
 import 'package:dormdevise/utils/app_icons.dart';
 import 'package:http/http.dart' as http;
-import 'package:open_filex/open_filex.dart';
-import 'package:dormdevise/services/update/update_installer.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
 
 /// 关于页面，汇总版本信息与更新逻辑。
@@ -37,9 +35,6 @@ class _AboutPageState extends State<AboutPage> {
   late final UpdateDownloadService _downloadService;
   late final UpdateDownloadCoordinator _downloadCoordinator;
   late final VoidCallback _downloadListener;
-  StreamSubscription<String>? _installSubscription;
-  List<String>? _cachedSupportedAbis;
-  Future<List<String>>? _supportedAbisFuture;
   _VersionActionMode _versionActionMode = _VersionActionMode.checkUpdate;
 
   /// 初始化监听器并预加载版本与设备信息。
@@ -54,24 +49,8 @@ class _AboutPageState extends State<AboutPage> {
     };
     _downloadCoordinator.addListener(_downloadListener);
     _downloadService.resultNotifier.addListener(_handleGlobalDownloadResult);
-
-    // 订阅原生安装完成广播，收到事件后尝试清理临时 APK
-    _installSubscription = UpdateInstaller.onPackageInstalled.listen((pkg) {
-      try {
-        if (!mounted) {
-          debugPrint('收到安装完成事件（后台），包名：$pkg');
-        } else {
-          debugPrint('收到安装完成事件，包名：$pkg');
-        }
-        // 异步清理临时 APK
-        unawaited(UpdateInstaller.cleanupTemporaryApks());
-      } catch (e) {
-        debugPrint('处理安装完成事件出错：$e');
-      }
-    });
     unawaited(_initPackageInfo());
     unawaited(_primeLatestVersionStatus());
-    unawaited(_ensureSupportedAbis());
   }
 
   /// 移除下载监听，防止内存泄漏。
@@ -79,9 +58,6 @@ class _AboutPageState extends State<AboutPage> {
   void dispose() {
     _downloadCoordinator.removeListener(_downloadListener);
     _downloadService.resultNotifier.removeListener(_handleGlobalDownloadResult);
-    // 不再取消下载，允许后台进行
-    _installSubscription?.cancel();
-    _installSubscription = null;
     super.dispose();
   }
 
@@ -120,13 +96,10 @@ class _AboutPageState extends State<AboutPage> {
   /// 预判远端是否存在更新版本。
   Future<void> _primeLatestVersionStatus() async {
     try {
-      final latest = await _fetchLatestReleaseInfo();
+      final UpdateCheckResult? latest = await UpdateCheckService.instance
+          .fetchAvailableUpdate();
       if (!mounted) return;
-      final latestVersion = latest?.version;
-      final currentVersion = _safeParseVersion(_currentVersion);
-      final hasNewer = latestVersion != null && currentVersion != null
-          ? latestVersion > currentVersion
-          : latestVersion != null;
+      final bool hasNewer = latest != null;
       if (_hasNewerVersion != hasNewer) {
         setState(() => _hasNewerVersion = hasNewer);
       }
@@ -154,7 +127,8 @@ class _AboutPageState extends State<AboutPage> {
     setState(() => _checkingUpdate = true);
 
     try {
-      final latest = await _fetchLatestReleaseInfo();
+      final UpdateReleaseInfo? latest = await UpdateCheckService.instance
+          .fetchLatestReleaseInfo(forceRefresh: true);
       if (!mounted) return;
 
       if (latest == null) {
@@ -164,8 +138,10 @@ class _AboutPageState extends State<AboutPage> {
 
       final latestVersion = latest.version;
       final currentVersion = _safeParseVersion(_currentVersion);
-      final supportedAbis = await _ensureSupportedAbis();
-      var asset = _selectAndroidAsset(latest.assets, supportedAbis);
+      final List<String> supportedAbis = await UpdateCheckService.instance
+          .ensureSupportedAbis();
+      UpdateReleaseAsset? asset = UpdateCheckService.instance
+          .selectAndroidAsset(latest.assets, supportedAbis);
 
       final hasNewer = latestVersion != null && currentVersion != null
           ? latestVersion > currentVersion
@@ -182,38 +158,64 @@ class _AboutPageState extends State<AboutPage> {
 
       if (asset == null) {
         _showToastMessage(
-          supportedAbis.isEmpty
-              ? '未找到适用于 Android 的安装包，请前往发布页手动下载'
-              : '未找到适用于当前设备架构的安装包，请前往发布页手动下载',
+          UpdateCheckService.instance.unsupportedAssetMessage(supportedAbis),
           variant: AppToastVariant.warning,
         );
         return;
       }
 
-      // 若 API 未返回文件大小（如 Gitee），尝试通过 HEAD 请求获取
       if (asset.size <= 0) {
-        final size = await _tryFetchAssetSize(asset.browserDownloadUrl);
+        final int size = await UpdateCheckService.instance.tryFetchAssetSize(
+          asset.browserDownloadUrl,
+        );
         if (size > 0) {
-          asset = _ReleaseAsset(
-            name: asset.name,
-            browserDownloadUrl: asset.browserDownloadUrl,
-            contentType: asset.contentType,
-            size: size,
-          );
+          asset = asset.copyWith(size: size);
         }
       }
 
-      final shouldUpdate = await _showUpdateAvailableDialog(
-        context,
-        latest,
-        asset,
+      final UpdateCheckResult updateInfo = UpdateCheckResult(
+        currentVersion: _currentVersion.isEmpty ? '未知版本' : _currentVersion,
+        latestRelease: latest,
+        latestVersion: latestVersion,
+        versionLabel: latest.readableLabel ?? 'v${latestVersion.toString()}',
+        body: latest.body,
+        highlights: extractReleaseHighlights(latest.body ?? ''),
+        supportedAbis: supportedAbis,
+        asset: asset,
       );
+
+      final bool? shouldUpdate = await UpdateCheckService.instance
+          .showUpdateAvailableDialog(context, updateInfo);
       if (!mounted) return;
       if (shouldUpdate != true) {
         return;
       }
 
-      await _downloadAndInstallUpdate(asset, latestVersion);
+      final UpdateStartResult startResult = await UpdateCheckService.instance
+          .startBackgroundUpdate(asset: asset, releaseVersion: latestVersion);
+      if (!mounted) {
+        return;
+      }
+      switch (startResult.status) {
+        case UpdateStartStatus.startedDownload:
+          await _presentDownloadDialog();
+          break;
+        case UpdateStartStatus.alreadyDownloading:
+          await _presentDownloadDialog();
+          break;
+        case UpdateStartStatus.openedCachedInstaller:
+          _showToastMessage(
+            startResult.message,
+            variant: AppToastVariant.success,
+          );
+          break;
+        case UpdateStartStatus.noCompatibleAsset:
+          _showToastMessage(
+            startResult.message,
+            variant: AppToastVariant.warning,
+          );
+          break;
+      }
     } catch (error) {
       if (!context.mounted) return;
       _showToastMessage(
@@ -224,190 +226,6 @@ class _AboutPageState extends State<AboutPage> {
       if (mounted) {
         setState(() => _checkingUpdate = false);
       }
-    }
-  }
-
-  /// 通过共享下载服务执行更新下载流程并尝试唤起安装程序。
-  Future<void> _downloadAndInstallUpdate(
-    _ReleaseAsset asset,
-    Version? releaseVersion,
-  ) async {
-    final int? totalHint = asset.size > 0 ? asset.size : null;
-    if (_downloadCoordinator.isDownloading) {
-      await _presentDownloadDialog();
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final customPattern = prefs.getString('custom_download_url_pattern');
-    String downloadUrl = asset.browserDownloadUrl;
-
-    if (customPattern != null && customPattern.isNotEmpty) {
-      String candidateUrl;
-      if (customPattern.contains(r'$sanitizedName')) {
-        // 包含变量，执行替换
-        candidateUrl = customPattern.replaceAll(r'$sanitizedName', asset.name);
-      } else {
-        // 不包含变量，视为目录前缀，自动拼接文件名
-        final prefix = customPattern.endsWith('/')
-            ? customPattern
-            : '$customPattern/';
-
-        String filename = asset.name;
-        // 尝试根据规则构造文件名: com.lulo.dormdevise-v{version}-{arch}-release.apk
-        if (releaseVersion != null) {
-          final variant = _inferAndroidApkVariant(asset);
-          String? arch;
-          switch (variant) {
-            case _AndroidApkVariant.arm64V8a:
-              arch = 'arm64-v8a';
-              break;
-            case _AndroidApkVariant.armeabiV7a:
-              arch = 'armeabi-v7a';
-              break;
-            case _AndroidApkVariant.x86_64:
-              arch = 'x86_64';
-              break;
-            case _AndroidApkVariant.x86:
-              arch = 'x86';
-              break;
-            case _AndroidApkVariant.universal:
-              arch = 'universal';
-              break;
-            default:
-              arch = null;
-          }
-
-          if (arch != null) {
-            filename = 'com.lulo.dormdevise-v$releaseVersion-$arch-release.apk';
-          }
-        }
-
-        candidateUrl = '$prefix$filename';
-      }
-
-      // 测速对比，超时 5 秒
-      downloadUrl = await _pickFastestUrl(
-        asset.browserDownloadUrl,
-        candidateUrl,
-      );
-    }
-
-    final DownloadRequest downloadRequest = DownloadRequest(
-      uri: Uri.parse(downloadUrl),
-      fileName: asset.name.isEmpty ? null : asset.name,
-      totalBytesHint: totalHint,
-    );
-
-    final File? cachedFile = await _downloadService.findCachedFile(
-      request: downloadRequest,
-      expectedBytes: asset.size > 0 ? asset.size : null,
-    );
-    bool shouldReuseCached = cachedFile != null;
-    if (shouldReuseCached) {
-      final Version? currentVersion = _safeParseVersion(_currentVersion);
-      if (releaseVersion != null && currentVersion != null) {
-        shouldReuseCached = releaseVersion > currentVersion;
-      }
-    }
-
-    if (shouldReuseCached && cachedFile != null) {
-      try {
-        if (await cachedFile.length() <= 0) {
-          shouldReuseCached = false;
-        }
-      } catch (_) {
-        shouldReuseCached = false;
-      }
-    }
-
-    if (shouldReuseCached && cachedFile != null) {
-      await _openInstallerFile(
-        cachedFile,
-        toastWhenMounted: '已找到已下载的安装包，正在打开安装程序...',
-        logWhenDetached: '发现缓存安装包，尝试直接安装',
-      );
-      return;
-    }
-
-    // 启动后台下载
-    unawaited(
-      _downloadService.startBackgroundDownload(request: downloadRequest),
-    );
-
-    // 显示弹窗
-    await _presentDownloadDialog();
-  }
-
-  /// 尝试通过 HEAD 请求获取文件大小。
-  Future<int> _tryFetchAssetSize(String url) async {
-    try {
-      final response = await http
-          .head(Uri.parse(url))
-          .timeout(const Duration(seconds: 3));
-      if (response.statusCode == 200) {
-        final contentLength = response.headers['content-length'];
-        if (contentLength != null) {
-          return int.tryParse(contentLength) ?? 0;
-        }
-      }
-    } catch (_) {
-      // 忽略网络错误
-    }
-    return 0;
-  }
-
-  /// 竞速选择最快的下载链接，超时 5 秒。
-  Future<String> _pickFastestUrl(String original, String custom) async {
-    final completer = Completer<String>();
-    bool originalFailed = false;
-    bool customFailed = false;
-
-    void check(String url, bool isOriginal) async {
-      try {
-        final uri = Uri.parse(url);
-        final client = http.Client();
-        // 使用 HEAD 请求测试连通性与响应速度
-        final response = await client
-            .head(uri)
-            .timeout(const Duration(seconds: 4));
-        client.close();
-
-        if (response.statusCode == 200) {
-          if (!completer.isCompleted) {
-            completer.complete(url);
-          }
-        } else {
-          if (isOriginal) {
-            originalFailed = true;
-          } else {
-            customFailed = true;
-          }
-        }
-      } catch (_) {
-        if (isOriginal) {
-          originalFailed = true;
-        } else {
-          customFailed = true;
-        }
-      }
-
-      if (originalFailed && customFailed && !completer.isCompleted) {
-        // 两个都失败，默认回退到原始链接
-        completer.complete(original);
-      }
-    }
-
-    // 同时发起请求
-    check(original, true);
-    check(custom, false);
-
-    try {
-      // 等待第一个完成，或者 5 秒超时
-      return await completer.future.timeout(const Duration(seconds: 5));
-    } catch (_) {
-      // 超时或都失败，默认使用原始链接
-      return original;
     }
   }
 
@@ -526,37 +344,6 @@ class _AboutPageState extends State<AboutPage> {
     _setVersionActionMode(_VersionActionMode.checkUpdate);
   }
 
-  /// 封装安装包打开逻辑，确保提示与日志保持一致。
-  Future<void> _openInstallerFile(
-    File file, {
-    String? toastWhenMounted,
-    String? logWhenDetached,
-  }) async {
-    if (toastWhenMounted != null) {
-      if (mounted) {
-        _showToastMessage(toastWhenMounted);
-      } else {
-        debugPrint(logWhenDetached ?? toastWhenMounted);
-      }
-    } else if (logWhenDetached != null && !mounted) {
-      debugPrint(logWhenDetached);
-    }
-
-    final OpenResult openResult = await UpdateInstaller.openAndCleanup(
-      file,
-      showToast: (msg) {
-        if (!mounted) return;
-        _showToastMessage(msg);
-      },
-    );
-
-    if (!mounted && openResult.type != ResultType.done) {
-      final String message = openResult.message;
-      final String displayMessage = message.isEmpty ? '请稍后重试' : message;
-      debugPrint('无法打开安装包：$displayMessage');
-    }
-  }
-
   /// 统一封装的提示入口，便于变更样式。
   void _showToastMessage(
     String message, {
@@ -594,38 +381,6 @@ class _AboutPageState extends State<AboutPage> {
   /// 打开开发者GitHub主页
   Future<void> _openGitHubPage() async {
     await _openExternalUrl('https://github.com/Lulozi');
-  }
-
-  /// 确保已获取并缓存设备支持的 ABI 列表。
-  Future<List<String>> _ensureSupportedAbis() {
-    final cached = _cachedSupportedAbis;
-    if (cached != null) {
-      return Future<List<String>>.value(cached);
-    }
-
-    final future = _supportedAbisFuture ??= _loadSupportedAndroidAbis();
-    return future.then((abis) {
-      _cachedSupportedAbis ??= abis;
-      return abis;
-    });
-  }
-
-  /// 读取 Android 设备支持的处理器架构信息。
-  Future<List<String>> _loadSupportedAndroidAbis() async {
-    if (!Platform.isAndroid) {
-      return const [];
-    }
-    try {
-      final info = await DeviceInfoPlugin().androidInfo;
-      final abis = info.supportedAbis;
-      return abis
-          .map((abi) => abi.toLowerCase())
-          .where((abi) => abi.isNotEmpty)
-          .toList(growable: false);
-    } catch (error) {
-      debugPrint('无法获取设备 ABI：$error');
-      return const [];
-    }
   }
 
   /// 展示开源许可列表的底部弹窗。
@@ -1115,7 +870,8 @@ class _InfoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     return ListTile(
-      contentPadding: EdgeInsets.zero,
+      contentPadding: const EdgeInsets.only(left: 10),
+      minLeadingWidth: 28,
       leading: Icon(
         icon,
         size: 19.2,
@@ -1147,76 +903,6 @@ String _mapErrorMessage(Object error) {
     return raw.substring('Exception: '.length);
   }
   return raw;
-}
-
-/// 弹出新版本可用提示并返回用户选择。
-Future<bool?> _showUpdateAvailableDialog(
-  BuildContext context,
-  _ReleaseInfo release,
-  _ReleaseAsset asset,
-) {
-  final highlights = _extractReleaseHighlights(release.body ?? '');
-  final description = release.body?.trim();
-  final versionLabel =
-      release.readableLabel ??
-      (release.version != null ? 'v${release.version}' : '最新版本');
-  final sizeLabel = _formatFileSize(asset.size);
-
-  return showDialog<bool>(
-    context: context,
-    builder: (dialogContext) {
-      final textTheme = Theme.of(dialogContext).textTheme;
-      final colorScheme = Theme.of(dialogContext).colorScheme;
-      return AlertDialog(
-        title: Text('发现新版本 $versionLabel'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('安装包大小：$sizeLabel', style: textTheme.bodyMedium),
-              if (highlights.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text('更新亮点：', style: textTheme.titleSmall),
-                const SizedBox(height: 8),
-                ...highlights.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '• ',
-                          style: TextStyle(color: colorScheme.primary),
-                        ),
-                        Expanded(child: Text(item)),
-                      ],
-                    ),
-                  ),
-                ),
-              ] else if (description != null && description.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(description),
-              ] else ...[
-                const SizedBox(height: 16),
-                Text('暂无更新说明，是否继续下载并安装？'),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('稍后'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('立即更新'),
-          ),
-        ],
-      );
-    },
-  );
 }
 
 /// 打开外部链接，必要时优先尝试内嵌浏览器。
@@ -1793,31 +1479,6 @@ Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
   }
 }
 
-/// 获取最新的稳定版本信息，若无稳定版则返回候选。
-Future<_ReleaseInfo?> _fetchLatestReleaseInfo() async {
-  final releases = await _fetchAllReleasesBasedOnConfig();
-
-  if (releases.isEmpty) return null;
-
-  // 过滤掉 Draft 和 Prerelease (除非只有 Prerelease)
-  final stable = releases
-      .where((release) => !release.isDraft && !release.isPrerelease)
-      .toList();
-  final candidates = stable.isNotEmpty
-      ? stable
-      : releases.where((release) => !release.isDraft).toList();
-
-  if (candidates.isEmpty) {
-    // 如果只有 Draft，也尝试取一个
-    releases.sort(_compareReleaseOrder);
-    return releases.first;
-  }
-
-  // 排序取最新
-  candidates.sort(_compareReleaseOrder);
-  return candidates.first;
-}
-
 /// 从 GitHub API 拉取发布列表。
 Future<List<_ReleaseInfo>> _loadReleasesFromGitHub() async {
   final uri = Uri.parse(
@@ -1887,133 +1548,6 @@ int _compareReleaseOrder(_ReleaseInfo a, _ReleaseInfo b) {
   }
 
   return 0;
-}
-
-/// 根据 ABI 优先级挑选合适的 Android 安装包资源。
-_ReleaseAsset? _selectAndroidAsset(
-  List<_ReleaseAsset> assets,
-  List<String> preferredAbis,
-) {
-  if (assets.isEmpty) return null;
-
-  final apkAssets = assets.where((asset) => asset.isAndroidApk).toList();
-  if (apkAssets.isEmpty) return null;
-
-  final buckets = <_AndroidApkVariant, List<_ReleaseAsset>>{};
-  for (final asset in apkAssets) {
-    final variant = _inferAndroidApkVariant(asset);
-    buckets.putIfAbsent(variant, () => <_ReleaseAsset>[]).add(asset);
-  }
-
-  for (final abi in preferredAbis) {
-    final variant = _variantForAbi(abi);
-    if (variant == null) continue;
-    final matches = buckets[variant];
-    if (matches == null || matches.isEmpty) {
-      continue;
-    }
-    matches.sort((a, b) => b.size.compareTo(a.size));
-    return matches.first;
-  }
-
-  final universal = buckets[_AndroidApkVariant.universal];
-  if (universal != null && universal.isNotEmpty) {
-    universal.sort((a, b) => b.size.compareTo(a.size));
-    return universal.first;
-  }
-
-  apkAssets.sort((a, b) => b.size.compareTo(a.size));
-  return apkAssets.first;
-}
-
-enum _AndroidApkVariant {
-  arm64V8a,
-  armeabiV7a,
-  x86_64,
-  x86,
-  universal,
-  unknown,
-}
-
-/// 通过资源名与元数据推断 APK 所属架构。
-_AndroidApkVariant _inferAndroidApkVariant(_ReleaseAsset asset) {
-  final fingerprint =
-      '${asset.name}|${asset.browserDownloadUrl}|${asset.contentType}'
-          .toLowerCase();
-
-  bool containsAll(Iterable<String> tokens) =>
-      tokens.every((token) => fingerprint.contains(token));
-
-  bool containsAny(Iterable<String> tokens) =>
-      tokens.any((token) => fingerprint.contains(token));
-
-  if (containsAll(['arm64', 'v8a']) ||
-      fingerprint.contains('arm64v8a') ||
-      fingerprint.contains('aarch64')) {
-    return _AndroidApkVariant.arm64V8a;
-  }
-
-  if ((containsAll(['armeabi', 'v7a']) ||
-          fingerprint.contains('armeabiv7a') ||
-          fingerprint.contains('armv7')) &&
-      !fingerprint.contains('arm64')) {
-    return _AndroidApkVariant.armeabiV7a;
-  }
-
-  if (fingerprint.contains('x86_64') ||
-      fingerprint.contains('x86-64') ||
-      (fingerprint.contains('x64') && !fingerprint.contains('arm64')) ||
-      fingerprint.contains('amd64')) {
-    return _AndroidApkVariant.x86_64;
-  }
-
-  final hasStandaloneX86 = RegExp(
-    r'(^|[^0-9a-z])x86($|[^0-9a-z])',
-  ).hasMatch(fingerprint);
-  if ((hasStandaloneX86 || fingerprint.contains('ia32')) &&
-      !fingerprint.contains('x86_64') &&
-      !fingerprint.contains('x86-64')) {
-    return _AndroidApkVariant.x86;
-  }
-
-  if (containsAny([
-    'universal',
-    'all-abi',
-    'allabi',
-    'multi-abi',
-    'multiabi',
-    'all_arch',
-    'allarch',
-    'anycpu',
-  ])) {
-    return _AndroidApkVariant.universal;
-  }
-
-  return _AndroidApkVariant.unknown;
-}
-
-/// 将 ABI 字符串映射为内部枚举类型。
-_AndroidApkVariant? _variantForAbi(String abi) {
-  final normalized = abi.toLowerCase();
-  if (normalized.contains('arm64') || normalized.contains('aarch64')) {
-    return _AndroidApkVariant.arm64V8a;
-  }
-  if (normalized.contains('armeabi') || normalized.contains('armv7')) {
-    return _AndroidApkVariant.armeabiV7a;
-  }
-  if (normalized.contains('x86_64') ||
-      normalized.contains('x86-64') ||
-      (normalized.contains('x64') && !normalized.contains('arm64')) ||
-      normalized.contains('amd64')) {
-    return _AndroidApkVariant.x86_64;
-  }
-  if (normalized.contains('x86') || normalized.contains('ia32')) {
-    return _AndroidApkVariant.x86;
-  }
-  if (normalized.contains('universal') || normalized.contains('allabi')) {
-    return _AndroidApkVariant.universal;
-  }
-  return null;
 }
 
 /// 将字节大小转换为可读字符串。
