@@ -79,6 +79,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   // 动画状态标记
   String? _newlyAddedId;
   bool _shouldFlashNewlyAdded = true;
+  bool _shouldJumpToCurrentWeekOnExit = false;
 
   String? _initialScheduleId;
 
@@ -108,6 +109,18 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         _isLoading = false;
       });
     }
+  }
+
+  void _popWithRefreshResult() {
+    if (_initialScheduleId != null && _currentScheduleId != _initialScheduleId) {
+      Navigator.of(context).pop(
+        _shouldJumpToCurrentWeekOnExit
+            ? 'jump_to_current_week'
+            : 'refresh_only',
+      );
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   void _toggleSelectionMode() {
@@ -272,13 +285,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         if (_isSelectionMode) {
           _toggleSelectionMode();
         } else {
-          // 正常返回时，如果当前课表ID变了，也应该返回true
-          if (_initialScheduleId != null &&
-              _currentScheduleId != _initialScheduleId) {
-            Navigator.of(context).pop(true);
-          } else {
-            Navigator.of(context).pop();
-          }
+          _popWithRefreshResult();
         }
       },
       child: Scaffold(
@@ -303,7 +310,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                     Icons.arrow_back_ios_new,
                     color: colorScheme.onSurface,
                   ),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _popWithRefreshResult,
                 ),
           leadingWidth: _isSelectionMode ? 80 : null,
           title: Text(
@@ -353,6 +360,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                       setState(() {
                         _newlyAddedId = _schedules.first.id;
                         _shouldFlashNewlyAdded = true;
+                        _shouldJumpToCurrentWeekOnExit = true;
                       });
                     }
                   }
@@ -610,12 +618,12 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               if (!isCurrent) {
                 await CourseService.instance.switchSchedule(id);
                 if (context.mounted) {
-                  Navigator.of(context).pop(true);
+                  Navigator.of(context).pop('refresh_only');
                 }
               } else {
                 // 如果点击的是当前课表，且当前课表ID与进入页面时的ID不同（说明发生了切换或重建），则返回true刷新
                 if (_initialScheduleId != null && id != _initialScheduleId) {
-                  Navigator.of(context).pop(true);
+                  _popWithRefreshResult();
                 } else {
                   Navigator.of(context).pop();
                 }
