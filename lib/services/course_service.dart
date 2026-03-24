@@ -475,7 +475,7 @@ class CourseService {
       semesterStart: effectiveStart,
       reminderMinutes: reminderTime,
       method: reminderMethod,
-      enableVibration: reminderVibration,
+      enableVibration: reminderMethod == 'notification' && reminderVibration,
     );
   }
 }

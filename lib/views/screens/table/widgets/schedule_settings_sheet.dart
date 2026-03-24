@@ -430,26 +430,29 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                         content: _buildReminderTimePicker(),
                         showDivider: false,
                       ),
-                      _buildDivider(),
-                      _buildSwitchTile(
-                        title: '振动提醒',
-                        subtitle: '通知提醒时配合横幅通知振动提醒',
-                        value: _reminderVibrationEnabled,
-                        onChanged: (bool value) async {
-                          setState(() {
-                            _reminderVibrationEnabled = value;
-                            if (!widget.saveNotificationImmediately) {
-                              _hasReminderChanged = true;
+                      if (_reminderMethod == 'notification') ...<Widget>[
+                        _buildDivider(),
+                        _buildSwitchTile(
+                          title: '振动提醒',
+                          subtitle: '通知提醒时配合横幅通知振动提醒',
+                          value: _reminderVibrationEnabled,
+                          onChanged: (bool value) async {
+                            setState(() {
+                              _reminderVibrationEnabled = value;
+                              if (!widget.saveNotificationImmediately) {
+                                _hasReminderChanged = true;
+                              }
+                            });
+                            if (widget.saveNotificationImmediately) {
+                              await CourseService.instance
+                                  .saveReminderVibration(
+                                    value,
+                                    widget.scheduleId,
+                                  );
                             }
-                          });
-                          if (widget.saveNotificationImmediately) {
-                            await CourseService.instance.saveReminderVibration(
-                              value,
-                              widget.scheduleId,
-                            );
-                          }
-                        },
-                      ),
+                          },
+                        ),
+                      ],
                     ],
                   ),
                   crossFadeState: _isReminderMethodEnabled
