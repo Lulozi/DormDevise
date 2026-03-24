@@ -1116,7 +1116,11 @@ class _InfoTile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      leading: Icon(
+        icon,
+        size: 19.2,
+        color: Theme.of(context).colorScheme.primary,
+      ),
       title: Text(
         title,
         style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
