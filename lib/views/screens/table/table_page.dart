@@ -1030,8 +1030,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
                         });
                       }
                     },
-                    onAddCourseTap: (weekday, section) =>
-                        _addCourse(weekday: weekday, section: section),
+                    onAddCourseTap: _isScheduleLocked
+                        ? null
+                        : (weekday, section) =>
+                              _addCourse(weekday: weekday, section: section),
                     onCourseChanged: (oldCourse, newCourse) async {
                       setState(() {
                         _invalidateAdaptiveLayoutCache();

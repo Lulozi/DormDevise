@@ -1823,6 +1823,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                           return; // 如果取消了选中，不进行后续的加号显示
                         }
 
+                        if (widget.isScheduleLocked) {
+                          return;
+                        }
+
                         if (slot.section != null) {
                           final newSlot = (
                             weekday: weekdayIndexes[day],
@@ -1873,6 +1877,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     double dayWidth,
     Map<int, double> sectionOffsets,
   ) {
+    if (widget.isScheduleLocked) {
+      return const SizedBox.shrink();
+    }
     return AnimatedBuilder(
       animation: _selectionAnimation,
       builder: (context, child) {
@@ -3190,6 +3197,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         items: overlapping,
         allCourses: courses,
         maxWeek: widget.maxWeek,
+        isReadOnly: widget.isScheduleLocked,
       ),
     );
 
