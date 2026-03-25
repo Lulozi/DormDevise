@@ -48,4 +48,4 @@ app.*.map.json
 /android/.kotlin
 
 # 资产
-\tooling
+/tooling
