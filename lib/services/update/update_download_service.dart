@@ -168,7 +168,7 @@ class UpdateDownloadService {
   static const String _pendingInstallAwaitingResumeKey =
       'update_download_pending_install_awaiting_resume';
   static const String _installNotificationPayload = 'update_install';
-  static const String _androidRoundIcon = 'icon_dormdevise_round';
+  static const String _androidNotificationIcon = 'icon_dormdevise_door';
 
   // 全局下载状态管理
   final ValueNotifier<DownloadProgress?> progressNotifier =
@@ -188,7 +188,7 @@ class UpdateDownloadService {
     if (_isNotificationsInitialized) return;
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings(_androidRoundIcon);
+        AndroidInitializationSettings(_androidNotificationIcon);
 
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings();
@@ -245,7 +245,7 @@ class UpdateDownloadService {
           _channelId,
           _channelName,
           channelDescription: _channelDescription,
-          icon: _androidRoundIcon,
+          icon: _androidNotificationIcon,
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
           playSound: false,
@@ -284,7 +284,7 @@ class UpdateDownloadService {
           _channelId,
           _channelName,
           channelDescription: _channelDescription,
-          icon: _androidRoundIcon,
+          icon: _androidNotificationIcon,
           importance: Importance.high,
           priority: Priority.high,
           visibility: NotificationVisibility.public,

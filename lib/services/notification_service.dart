@@ -39,7 +39,7 @@ class NotificationService {
   static const MethodChannel _alarmChannel = MethodChannel(
     'dormdevise/alarm_notifications',
   );
-  static const String _androidRoundIcon = 'icon_dormdevise_round';
+  static const String _androidNotificationIcon = 'icon_dormdevise_door';
 
   bool _isInitialized = false;
 
@@ -80,7 +80,7 @@ class NotificationService {
     }
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings(_androidRoundIcon);
+        AndroidInitializationSettings(_androidNotificationIcon);
 
     final DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
@@ -337,7 +337,7 @@ class NotificationService {
           channelId,
           channelName,
           channelDescription: channelDescription,
-          icon: _androidRoundIcon,
+          icon: _androidNotificationIcon,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
@@ -422,7 +422,7 @@ class NotificationService {
           channelId,
           channelName,
           channelDescription: channelDescription,
-          icon: _androidRoundIcon,
+          icon: _androidNotificationIcon,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
