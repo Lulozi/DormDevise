@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../models/web_school.dart';
 import '../../../services/web_school_service.dart';
@@ -24,6 +24,9 @@ class WebImportLoginPage extends StatefulWidget {
 
 class _WebImportLoginPageState extends State<WebImportLoginPage> {
   static const String _fitBadgeAsset = 'assets/images/schoolBadge/FIT.jpg';
+  static const MethodChannel _windowChannel = MethodChannel(
+    'dormdevise/window',
+  );
 
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -41,10 +44,12 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   void initState() {
     super.initState();
     _loadSavedCredentials();
+    _applyLoginKeyboardMode();
   }
 
   @override
   void dispose() {
+    _restoreDefaultKeyboardMode();
     _usernameController.dispose();
     _passwordController.dispose();
     _usernameFocusNode.dispose();
@@ -64,6 +69,24 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     _passwordController.selection = TextSelection.collapsed(
       offset: _passwordController.text.length,
     );
+  }
+
+  Future<void> _applyLoginKeyboardMode() async {
+    try {
+      await _windowChannel.invokeMethod<void>(
+        'setSoftInputMode',
+        <String, dynamic>{'mode': 'adjustNothing'},
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _restoreDefaultKeyboardMode() async {
+    try {
+      await _windowChannel.invokeMethod<void>(
+        'setSoftInputMode',
+        <String, dynamic>{'mode': 'adjustResize'},
+      );
+    } catch (_) {}
   }
 
   /// 加载已保存的凭据（如果有）。
@@ -237,6 +260,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     });
 
     try {
+      await _restoreDefaultKeyboardMode();
       await WebSchoolService.instance.saveCredentials(
         schoolName: widget.school.name,
         username: username,
@@ -265,6 +289,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
         // 返回登录页后重置焦点，防止输入法误弹。
         _resetInputFocusState();
+        await _applyLoginKeyboardMode();
 
         // 课表创建成功后一路回退到课表主页
         if (result == true && mounted) {
@@ -525,6 +550,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                                 ),
                               ),
                             ),
+                            scrollPadding: EdgeInsets.zero,
                             textInputAction: TextInputAction.next,
                           ),
                           _buildSavedAccountPanel(colorScheme),
@@ -598,6 +624,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                                 ),
                               ),
                             ),
+                            scrollPadding: EdgeInsets.zero,
                             textInputAction: TextInputAction.done,
                             onSubmitted: (_) =>
                                 _saveCredentialsAndOpenWebLogin(),
