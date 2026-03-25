@@ -150,18 +150,32 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
+              const SizedBox(height: 24),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      child: const Text('继续扫描'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      child: const Text('确认导入'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('继续扫描'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('确认导入'),
-            ),
-          ],
         );
       },
     );
