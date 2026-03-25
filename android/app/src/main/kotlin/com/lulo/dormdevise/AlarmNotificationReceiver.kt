@@ -91,7 +91,7 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             }
 
             val builder = NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(R.drawable.icon_dormdevise_round)
+                .setSmallIcon(R.drawable.icon_dormdevise_door)
                 .setContentTitle(title)
                 .setContentText(body.replace('\n', ' '))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -109,11 +109,6 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
                 .setOnlyAlertOnce(false)
                 .setColor(ContextCompat.getColor(context, R.color.widget_primary))
                 .setDeleteIntent(AlarmNotificationScheduler.buildDismissPendingIntent(context, id))
-                .addAction(
-                    0,
-                    "关闭",
-                    AlarmNotificationScheduler.buildDismissPendingIntent(context, id),
-                )
 
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                 val legacySound = if (isAlarm) {

@@ -3,8 +3,8 @@
 	<!-- Android 12 及以上启动样式，补充官方新增的 SplashScreen 配置 -->
 	<style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
 		<item name="android:windowBackground">@drawable/launch_background</item>
-		<item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_dormdevise_round</item>
-		<item name="android:windowSplashScreenBackground">@android:color/transparent</item>
+		<item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_dormdevise_splash_placeholder</item>
+		<item name="android:windowSplashScreenBackground">@android:color/white</item>
 		<item name="android:windowSplashScreenBrandingImage">@null</item>
 	</style>
 
