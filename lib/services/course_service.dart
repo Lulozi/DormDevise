@@ -418,23 +418,25 @@ class CourseService {
     await _rescheduleReminders(scheduleId);
   }
 
-  /// 初始化/刷新提醒（通常在应用启动时调用）
-  /// 初始化/刷新提醒（通常在应用启动时调用）
-  /// - 默认行为：如果方法为 `alarm` 且已存在原生闹钟 ID，则不在启动时重新调度，避免重复创建。
-  /// - 如果需要强制重调度（例如用户修改了课程或提醒设置），请传入 `force = true`。
+  /// 初始化/刷新提醒（通常在应用启动时调用）。
+  /// 为了避免系统回收后出现“本地记录还在，但实际闹钟已丢失”的假状态，
+  /// 启动时会先尝试恢复原生持久化的提醒；恢复失败时再按当前课程数据重排。
   Future<void> initializeReminders({bool force = false}) async {
+    final enabled = await loadReminderEnabled();
+    if (!enabled) {
+      await NotificationService.instance.cancelAllReminders();
+      return;
+    }
+
     if (!force) {
-      final method = await loadReminderMethod();
-      if (method == 'alarm') {
-        final nativeIds = await NotificationService.instance
-            .getNativeAlarmIds();
-        if (nativeIds.isNotEmpty) {
-          debugPrint(
-            'Native alarms already exist; skipping reschedule on startup.',
-          );
-          return;
-        }
+      await NotificationService.instance.restoreNativeReminders();
+      final nativeIds = await NotificationService.instance.getNativeAlarmIds();
+      if (nativeIds.isNotEmpty) {
+        debugPrint('Native reminder schedule restored from persisted entries.');
+        return;
       }
+    } else {
+      debugPrint('Force refresh reminder schedule requested.');
     }
     await _rescheduleReminders();
   }
