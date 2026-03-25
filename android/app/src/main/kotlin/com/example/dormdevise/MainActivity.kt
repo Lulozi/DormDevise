@@ -103,6 +103,10 @@ class MainActivity : FlutterActivity() {
 					AlarmNotificationScheduler.cancelAll(applicationContext)
 					result.success(null)
 				}
+				"restore" -> {
+					AlarmNotificationScheduler.restoreAll(applicationContext)
+					result.success(null)
+				}
                 "list" -> {
                     val ids = AlarmNotificationScheduler.getScheduledIds(applicationContext)
                     result.success(ids)
