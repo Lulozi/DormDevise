@@ -18,6 +18,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
+import 'package:dormdevise/views/widgets/bubble_popup.dart';
 
 /// 关于页面，汇总版本信息与更新逻辑。
 class AboutPage extends StatefulWidget {
@@ -36,6 +37,7 @@ class _AboutPageState extends State<AboutPage> {
   late final UpdateDownloadCoordinator _downloadCoordinator;
   late final VoidCallback _downloadListener;
   _VersionActionMode _versionActionMode = _VersionActionMode.checkUpdate;
+  UpdateTrackPreference _updateTrackPreference = UpdateTrackPreference.stable;
 
   /// 初始化监听器并预加载版本与设备信息。
   @override
@@ -50,6 +52,7 @@ class _AboutPageState extends State<AboutPage> {
     _downloadCoordinator.addListener(_downloadListener);
     _downloadService.resultNotifier.addListener(_handleGlobalDownloadResult);
     unawaited(_initPackageInfo());
+    unawaited(_loadUpdateTrackPreference());
     unawaited(_primeLatestVersionStatus());
   }
 
@@ -77,6 +80,33 @@ class _AboutPageState extends State<AboutPage> {
       return;
     }
     setState(() => _versionActionMode = mode);
+  }
+
+  Future<void> _loadUpdateTrackPreference() async {
+    final UpdateTrackPreference preference = await UpdateCheckService.instance
+        .getUpdateTrackPreference();
+    if (!mounted || _updateTrackPreference == preference) {
+      return;
+    }
+    setState(() => _updateTrackPreference = preference);
+  }
+
+  Future<void> _handleUpdateTrackChanged(
+    UpdateTrackPreference preference,
+  ) async {
+    if (_updateTrackPreference == preference) {
+      return;
+    }
+    await UpdateCheckService.instance.setUpdateTrackPreference(preference);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _updateTrackPreference = preference);
+    await _primeLatestVersionStatus();
+    if (!mounted) {
+      return;
+    }
+    _showToastMessage('更新通道已切换为${preference.label}');
   }
 
   /// 读取当前应用版本并触发更新状态检查。
@@ -184,13 +214,14 @@ class _AboutPageState extends State<AboutPage> {
         asset: asset,
       );
 
-      final bool? shouldUpdate = await UpdateCheckService.instance
+      final UpdateDialogAction action = await UpdateCheckService.instance
           .showUpdateAvailableDialog(context, updateInfo);
       if (!mounted) return;
-      if (shouldUpdate != true) {
+      if (action != UpdateDialogAction.confirm) {
         return;
       }
 
+      await UpdateCheckService.instance.clearHomePageUpdatePromptState();
       final UpdateStartResult startResult = await UpdateCheckService.instance
           .startBackgroundUpdate(asset: asset, releaseVersion: latestVersion);
       if (!mounted) {
@@ -450,8 +481,8 @@ class _AboutPageState extends State<AboutPage> {
     final bool showBusyIndicator = _checkingUpdate;
     final String versionHint =
         _versionActionMode == _VersionActionMode.showDownload
-        ? '点击版本查看下载进度'
-        : '点击版本检查更新';
+        ? '点击版本查看下载进度，长按切换更新通道（当前：${_updateTrackPreference.label}）'
+        : '点击版本检查更新，长按切换更新通道（当前：${_updateTrackPreference.label}）';
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
       body: SafeArea(
@@ -465,7 +496,9 @@ class _AboutPageState extends State<AboutPage> {
               versionHint: versionHint,
               tapDisabled: tapDisabled,
               downloadInProgress: downloadInProgress,
+              updateTrackPreference: _updateTrackPreference,
               onCheckUpdate: _handleCheckForUpdates,
+              onUpdateTrackChanged: _handleUpdateTrackChanged,
               onOpenRepository: _openRepository,
               onOpenReleasePage: _openReleasePage,
               onOpenBilibiliPage: _openBilibiliPage,
@@ -537,7 +570,10 @@ class _AboutHeader extends StatelessWidget {
   final bool tapDisabled;
   final bool downloadInProgress;
   final String versionHint;
+  final UpdateTrackPreference updateTrackPreference;
   final Future<void> Function() onCheckUpdate;
+  final Future<void> Function(UpdateTrackPreference preference)
+  onUpdateTrackChanged;
   final Future<void> Function() onOpenRepository;
   final Future<void> Function() onOpenReleasePage;
   final Future<void> Function() onOpenBilibiliPage;
@@ -550,7 +586,9 @@ class _AboutHeader extends StatelessWidget {
     required this.tapDisabled,
     required this.downloadInProgress,
     required this.versionHint,
+    required this.updateTrackPreference,
     required this.onCheckUpdate,
+    required this.onUpdateTrackChanged,
     required this.onOpenRepository,
     required this.onOpenReleasePage,
     required this.onOpenBilibiliPage,
@@ -603,7 +641,9 @@ class _AboutHeader extends StatelessWidget {
               hasNewerVersion: hasNewerVersion,
               disableTap: tapDisabled,
               downloadInProgress: downloadInProgress,
+              updateTrackPreference: updateTrackPreference,
               onCheckUpdate: onCheckUpdate,
+              onUpdateTrackChanged: onUpdateTrackChanged,
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -653,7 +693,10 @@ class _VersionStatusChip extends StatefulWidget {
   final bool hasNewerVersion;
   final bool disableTap;
   final bool downloadInProgress;
+  final UpdateTrackPreference updateTrackPreference;
   final Future<void> Function() onCheckUpdate;
+  final Future<void> Function(UpdateTrackPreference preference)
+  onUpdateTrackChanged;
 
   const _VersionStatusChip({
     required this.version,
@@ -661,7 +704,9 @@ class _VersionStatusChip extends StatefulWidget {
     required this.hasNewerVersion,
     required this.disableTap,
     required this.downloadInProgress,
+    required this.updateTrackPreference,
     required this.onCheckUpdate,
+    required this.onUpdateTrackChanged,
   });
 
   @override
@@ -671,6 +716,9 @@ class _VersionStatusChip extends StatefulWidget {
 class _VersionStatusChipState extends State<_VersionStatusChip>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  final GlobalKey _chipKey = GlobalKey();
+  BubblePopupController? _bubbleController;
+  bool _isBubbleOpen = false;
 
   /// 初始化动画控制器，根据是否有新版本触发闪烁。
   @override
@@ -700,8 +748,104 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
   /// 销毁动画控制器资源。
   @override
   void dispose() {
+    _bubbleController?.dismiss();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _dismissTrackBubble() async {
+    if (!_isBubbleOpen) {
+      return;
+    }
+    await _bubbleController?.dismiss();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _bubbleController = null;
+      _isBubbleOpen = false;
+    });
+  }
+
+  Future<void> _showTrackBubble() async {
+    await _dismissTrackBubble();
+    if (!mounted) {
+      return;
+    }
+
+    final BubblePopupController controller = BubblePopupController();
+    setState(() {
+      _bubbleController = controller;
+      _isBubbleOpen = true;
+    });
+    final List<Widget> menuItems = <Widget>[];
+    for (int i = 0; i < UpdateTrackPreference.values.length; i++) {
+      final UpdateTrackPreference preference = UpdateTrackPreference.values[i];
+      menuItems.add(_buildTrackMenuItem(preference, controller));
+      if (i != UpdateTrackPreference.values.length - 1) {
+        menuItems.add(const Divider(height: 1, thickness: 0.5));
+      }
+    }
+
+    await showBubblePopup(
+      context: context,
+      anchorKey: _chipKey,
+      controller: controller,
+      content: SizedBox(
+        width: 176,
+        child: Column(mainAxisSize: MainAxisSize.min, children: menuItems),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+    if (identical(_bubbleController, controller)) {
+      setState(() {
+        _bubbleController = null;
+        _isBubbleOpen = false;
+      });
+    }
+  }
+
+  Widget _buildTrackMenuItem(
+    UpdateTrackPreference preference,
+    BubblePopupController controller,
+  ) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool selected = preference == widget.updateTrackPreference;
+    return InkWell(
+      onTap: () async {
+        await controller.dismiss();
+        if (!mounted) {
+          return;
+        }
+        await widget.onUpdateTrackChanged(preference);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                preference.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ),
+            if (selected)
+              Icon(
+                Icons.verified_outlined,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 绘制能够响应点击与动画的版本状态标签。
@@ -743,7 +887,9 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
     }
 
     return GestureDetector(
+      key: _chipKey,
       onTap: widget.disableTap ? null : () => unawaited(widget.onCheckUpdate()),
+      onLongPress: () => unawaited(_showTrackBubble()),
       behavior: HitTestBehavior.opaque,
       child: AnimatedBuilder(
         animation: _controller,
@@ -757,7 +903,9 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
           final borderColor = Color.lerp(baseBorder, highlightBorder, progress);
 
           return Chip(
-            label: Text('版本 ${widget.version}'),
+            label: Text(
+              '版本 ${widget.version} · ${widget.updateTrackPreference.label}',
+            ),
             avatar: buildAvatar(),
             backgroundColor: backgroundColor ?? baseBackground,
             side: BorderSide(color: borderColor ?? baseBorder),
