@@ -168,6 +168,7 @@ class UpdateDownloadService {
   static const String _pendingInstallAwaitingResumeKey =
       'update_download_pending_install_awaiting_resume';
   static const String _installNotificationPayload = 'update_install';
+  static const String _androidRoundIcon = 'icon_dormdevise_round';
 
   // 全局下载状态管理
   final ValueNotifier<DownloadProgress?> progressNotifier =
@@ -187,7 +188,7 @@ class UpdateDownloadService {
     if (_isNotificationsInitialized) return;
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings(_androidRoundIcon);
 
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings();
@@ -244,6 +245,7 @@ class UpdateDownloadService {
           _channelId,
           _channelName,
           channelDescription: _channelDescription,
+          icon: _androidRoundIcon,
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
           playSound: false,
@@ -282,6 +284,7 @@ class UpdateDownloadService {
           _channelId,
           _channelName,
           channelDescription: _channelDescription,
+          icon: _androidRoundIcon,
           importance: Importance.high,
           priority: Priority.high,
           visibility: NotificationVisibility.public,
