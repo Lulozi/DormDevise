@@ -6,17 +6,20 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
+import android.media.RingtoneManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 
 /**
- * 负责展示与关闭课程提醒通知。
+ * 负责展示、打开与关闭课程提醒通知。
  */
 class AlarmNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             ACTION_SHOW -> handleShow(context, intent)
             ACTION_DISMISS -> handleDismiss(context, intent)
+            ACTION_OPEN -> handleOpen(context, intent)
         }
     }
 
@@ -37,9 +40,30 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
         AlarmNotificationScheduler.removeId(context, id)
     }
 
+    private fun handleOpen(context: Context, intent: Intent) {
+        val id = intent.getIntExtra(EXTRA_ID, 0)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(id)
+        AlarmNotificationScheduler.removeId(context, id)
+
+        val launchIntent = context.packageManager
+            .getLaunchIntentForPackage(context.packageName)
+            ?.apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+        if (launchIntent != null) {
+            context.startActivity(launchIntent)
+        }
+    }
+
     companion object {
         const val ACTION_SHOW = "com.lulo.dormdevise.ALARM_SHOW"
         const val ACTION_DISMISS = "com.lulo.dormdevise.ALARM_DISMISS"
+        const val ACTION_OPEN = "com.lulo.dormdevise.ALARM_OPEN"
         const val EXTRA_ID = "extra_alarm_id"
         const val EXTRA_TITLE = "extra_alarm_title"
         const val EXTRA_BODY = "extra_alarm_body"
@@ -58,15 +82,7 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             enableVibration: Boolean,
         ) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            val contentPendingIntent: PendingIntent? = launchIntent?.let {
-                PendingIntent.getActivity(
-                    context,
-                    id,
-                    it,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-            }
+            val contentPendingIntent = buildOpenPendingIntent(context, id)
 
             val channelId = when {
                 isAlarm -> AlarmNotificationScheduler.ALARM_CHANNEL_ID
@@ -75,7 +91,7 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             }
 
             val builder = NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(context.applicationInfo.icon)
+                .setSmallIcon(R.drawable.icon_dormdevise_round)
                 .setContentTitle(title)
                 .setContentText(body.replace('\n', ' '))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -90,24 +106,61 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setOngoing(isAlarm)
                 .setAutoCancel(!isAlarm)
+                .setOnlyAlertOnce(false)
                 .setColor(ContextCompat.getColor(context, R.color.widget_primary))
+                .setDeleteIntent(AlarmNotificationScheduler.buildDismissPendingIntent(context, id))
                 .addAction(
                     0,
                     "关闭",
-                    AlarmNotificationScheduler.buildDismissPendingIntent(context, id)
+                    AlarmNotificationScheduler.buildDismissPendingIntent(context, id),
                 )
 
-            contentPendingIntent?.let { builder.setContentIntent(it) }
-            if (isAlarm && contentPendingIntent != null) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                val legacySound = if (isAlarm) {
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                } else {
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                }
+                builder.setSound(legacySound)
+                if (isAlarm) {
+                    builder.setVibrate(longArrayOf(0L, 500L, 260L, 720L))
+                } else if (enableVibration) {
+                    builder.setVibrate(longArrayOf(0L, 160L, 90L, 220L, 120L, 220L))
+                }
+            }
+
+            builder.setContentIntent(contentPendingIntent)
+            if (isAlarm && canUseFullScreenIntent(manager)) {
                 builder.setFullScreenIntent(contentPendingIntent, true)
             }
 
-            val notification = builder.build()
-            if (isAlarm) {
-                notification.flags = notification.flags or Notification.FLAG_INSISTENT
+            val notification = builder.build().also {
+                if (isAlarm) {
+                    it.flags = it.flags or Notification.FLAG_INSISTENT
+                }
             }
-
             manager.notify(id, notification)
+        }
+
+        private fun buildOpenPendingIntent(context: Context, id: Int): PendingIntent {
+            val openIntent = Intent(context, AlarmNotificationReceiver::class.java).apply {
+                action = ACTION_OPEN
+                putExtra(EXTRA_ID, id)
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                id + 100000,
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        private fun canUseFullScreenIntent(manager: NotificationManager): Boolean {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                manager.canUseFullScreenIntent()
+            } else {
+                true
+            }
         }
     }
 }

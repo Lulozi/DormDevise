@@ -39,6 +39,7 @@ class NotificationService {
   static const MethodChannel _alarmChannel = MethodChannel(
     'dormdevise/alarm_notifications',
   );
+  static const String _androidRoundIcon = 'icon_dormdevise_round';
 
   bool _isInitialized = false;
 
@@ -79,7 +80,7 @@ class NotificationService {
     }
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings(_androidRoundIcon);
 
     final DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
@@ -120,8 +121,11 @@ class NotificationService {
   }
 
   Future<void> cancelAllReminders() async {
+    if (Platform.isAndroid) {
+      await _cancelNativeAlarms();
+      return;
+    }
     await _notificationsPlugin.cancelAll();
-    await _cancelNativeAlarms();
   }
 
   /// 重新调度所有课程提醒
@@ -267,8 +271,19 @@ class NotificationService {
     }
 
     await androidImplementation.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'course_alarm_channel_v6',
+        '课程闹钟',
+        description: '用于发送上课前的强提醒，遵循系统闹钟铃声与提醒设置',
+        importance: Importance.max,
+        enableVibration: true,
+        playSound: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+    await androidImplementation.createNotificationChannel(
       AndroidNotificationChannel(
-        'course_notification_channel_v7',
+        'course_notification_channel_v8',
         '课程消息提醒',
         description: '用于发送类似消息横幅的上课提醒',
         importance: Importance.max,
@@ -281,13 +296,13 @@ class NotificationService {
     );
     await androidImplementation.createNotificationChannel(
       const AndroidNotificationChannel(
-        'course_notification_channel_v7_silent',
+        'course_notification_channel_v8_silent',
         '课程消息提醒（无振动）',
         description: '用于发送无振动的消息横幅提醒',
         importance: Importance.max,
         enableVibration: false,
         enableLights: true,
-        playSound: false,
+        playSound: true,
         audioAttributesUsage: AudioAttributesUsage.notification,
       ),
     );
@@ -322,6 +337,7 @@ class NotificationService {
           channelId,
           channelName,
           channelDescription: channelDescription,
+          icon: _androidRoundIcon,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
@@ -406,6 +422,7 @@ class NotificationService {
           channelId,
           channelName,
           channelDescription: channelDescription,
+          icon: _androidRoundIcon,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
@@ -451,11 +468,11 @@ class NotificationService {
     required bool enableVibration,
   }) {
     if (isAlarm) {
-      return 'course_alarm_channel_v4';
+      return 'course_alarm_channel_v6';
     }
     return enableVibration
-        ? 'course_notification_channel_v7'
-        : 'course_notification_channel_v7_silent';
+        ? 'course_notification_channel_v8'
+        : 'course_notification_channel_v8_silent';
   }
 
   String _resolveChannelName({
@@ -473,7 +490,7 @@ class NotificationService {
     required bool enableVibration,
   }) {
     if (isAlarm) {
-      return '用于发送上课前的强提醒';
+      return '用于发送上课前的强提醒，遵循系统闹钟铃声与提醒设置';
     }
     return enableVibration ? '用于发送类似消息横幅的上课提醒' : '用于发送无振动的消息横幅提醒';
   }
@@ -565,6 +582,16 @@ class NotificationService {
       await _alarmChannel.invokeMethod('cancelAll');
     } catch (e) {
       debugPrint('Native alarm cancel failed: $e');
+    }
+  }
+
+  /// 让 Android 原生侧按照已持久化的提醒信息恢复系统调度。
+  Future<void> restoreNativeReminders() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _alarmChannel.invokeMethod('restore');
+    } catch (e) {
+      debugPrint('Native alarm restore failed: $e');
     }
   }
 
