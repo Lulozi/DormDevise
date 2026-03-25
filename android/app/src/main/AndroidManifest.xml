@@ -25,7 +25,8 @@
     <application
         android:label="舍设"
         android:name=".DormdeviseApplication"
-        android:icon="@mipmap/icon_dormdevise"
+        android:icon="@drawable/icon_dormdevise_round"
+        android:roundIcon="@drawable/icon_dormdevise_round"
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true">
         <activity
@@ -92,6 +93,17 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".AlarmRestoreReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
         <receiver
