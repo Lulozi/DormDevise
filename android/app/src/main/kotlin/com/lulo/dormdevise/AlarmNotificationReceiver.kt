@@ -61,6 +61,9 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        private const val FLUTTER_SHARED_PREFERENCES_NAME = "FlutterSharedPreferences"
+        private const val THEME_PRIMARY_COLOR_KEY = "flutter.theme_primary_color"
+
         const val ACTION_SHOW = "com.lulo.dormdevise.ALARM_SHOW"
         const val ACTION_DISMISS = "com.lulo.dormdevise.ALARM_DISMISS"
         const val ACTION_OPEN = "com.lulo.dormdevise.ALARM_OPEN"
@@ -91,7 +94,7 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             }
 
             val builder = NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(R.drawable.icon_dormdevise_door)
+                .setSmallIcon(R.drawable.icon_dormdevise_notification)
                 .setContentTitle(title)
                 .setContentText(body.replace('\n', ' '))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -107,7 +110,8 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
                 .setOngoing(isAlarm)
                 .setAutoCancel(!isAlarm)
                 .setOnlyAlertOnce(false)
-                .setColor(ContextCompat.getColor(context, R.color.widget_primary))
+                .setColor(resolveNotificationColor(context))
+                .setColorized(false)
                 .setDeleteIntent(AlarmNotificationScheduler.buildDismissPendingIntent(context, id))
 
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
@@ -125,6 +129,9 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             }
 
             builder.setContentIntent(contentPendingIntent)
+            if (!isAlarm) {
+                builder.setTimeoutAfter(3_000L)
+            }
             if (isAlarm && canUseFullScreenIntent(manager)) {
                 builder.setFullScreenIntent(contentPendingIntent, true)
             }
@@ -156,6 +163,21 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             } else {
                 true
             }
+        }
+
+        private fun resolveNotificationColor(context: Context): Int {
+            val fallbackColor = ContextCompat.getColor(context, R.color.widget_primary)
+            val preferences = context.getSharedPreferences(
+                FLUTTER_SHARED_PREFERENCES_NAME,
+                Context.MODE_PRIVATE,
+            )
+            if (preferences.contains(THEME_PRIMARY_COLOR_KEY)) {
+                return preferences.getLong(
+                    THEME_PRIMARY_COLOR_KEY,
+                    fallbackColor.toLong(),
+                ).toInt()
+            }
+            return fallbackColor
         }
     }
 }

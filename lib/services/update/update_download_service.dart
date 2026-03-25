@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -8,6 +9,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dormdevise/services/update/update_installer.dart';
+import 'package:dormdevise/services/theme/theme_service.dart';
 
 /// 描述下载任务实时进度的模型。
 class DownloadProgress {
@@ -169,6 +171,7 @@ class UpdateDownloadService {
       'update_download_pending_install_awaiting_resume';
   static const String _installNotificationPayload = 'update_install';
   static const String _androidNotificationIcon = 'icon_dormdevise_door';
+  Color get _androidNotificationColor => ThemeService.instance.primaryColor;
 
   // 全局下载状态管理
   final ValueNotifier<DownloadProgress?> progressNotifier =
@@ -246,6 +249,7 @@ class UpdateDownloadService {
           _channelName,
           channelDescription: _channelDescription,
           icon: _androidNotificationIcon,
+          color: _androidNotificationColor,
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
           playSound: false,
@@ -285,6 +289,7 @@ class UpdateDownloadService {
           _channelName,
           channelDescription: _channelDescription,
           icon: _androidNotificationIcon,
+          color: _androidNotificationColor,
           importance: Importance.high,
           priority: Priority.high,
           visibility: NotificationVisibility.public,

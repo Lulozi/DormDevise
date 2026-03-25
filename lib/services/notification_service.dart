@@ -8,6 +8,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/course.dart';
 import '../models/course_schedule_config.dart';
+import 'theme/theme_service.dart';
 
 class NotificationService {
   NotificationService._();
@@ -40,6 +41,7 @@ class NotificationService {
     'dormdevise/alarm_notifications',
   );
   static const String _androidNotificationIcon = 'icon_dormdevise_door';
+  Color get _androidNotificationColor => ThemeService.instance.primaryColor;
 
   bool _isInitialized = false;
 
@@ -338,6 +340,7 @@ class NotificationService {
           channelName,
           channelDescription: channelDescription,
           icon: _androidNotificationIcon,
+          color: _androidNotificationColor,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
@@ -415,6 +418,7 @@ class NotificationService {
           channelName,
           channelDescription: channelDescription,
           icon: _androidNotificationIcon,
+          color: _androidNotificationColor,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
