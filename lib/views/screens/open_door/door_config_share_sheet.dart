@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../utils/qr_transfer_codec.dart';
 import 'door_config_qr_scan_page.dart';
 
 /// 门锁配置的通用分享/导入菜单。
@@ -59,7 +60,14 @@ class DoorConfigShareSheet {
                           );
                           return;
                         }
-                        await onImport(raw);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        await _handleImport(
+                          context: context,
+                          raw: raw,
+                          onImport: onImport,
+                        );
                       },
                     ),
                   ],
@@ -102,7 +110,14 @@ class DoorConfigShareSheet {
                         if (raw == null || raw.trim().isEmpty) {
                           return;
                         }
-                        await onImport(raw);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        await _handleImport(
+                          context: context,
+                          raw: raw,
+                          onImport: onImport,
+                        );
                       },
                     ),
                   ],
@@ -120,6 +135,10 @@ class DoorConfigShareSheet {
     required String configLabel,
     required String payload,
   }) async {
+    final String qrPayload = QrTransferCodec.encodeText(
+      type: 'door_config',
+      text: payload,
+    );
     await showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -138,14 +157,15 @@ class DoorConfigShareSheet {
                       colorScheme.surface,
                 ),
                 child: QrImageView(
-                  data: payload,
+                  data: qrPayload,
                   size: 220,
                   version: QrVersions.auto,
+                  errorCorrectionLevel: QrErrorCorrectLevel.L,
                 ),
               ),
               const SizedBox(height: 12),
               Text(
-                '扫码即可导入当前$configLabel',
+                '扫码即可导入当前$configLabel，二维码内容已压缩',
                 style: TextStyle(
                   fontSize: 12,
                   color: colorScheme.onSurfaceVariant,
@@ -162,6 +182,21 @@ class DoorConfigShareSheet {
         );
       },
     );
+  }
+
+  static Future<void> _handleImport({
+    required BuildContext context,
+    required String raw,
+    required Future<void> Function(String raw) onImport,
+  }) async {
+    try {
+      await onImport(QrTransferCodec.decodeText(raw));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      AppToast.show(context, '导入失败：$error', variant: AppToastVariant.error);
+    }
   }
 }
 

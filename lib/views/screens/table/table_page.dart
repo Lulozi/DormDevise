@@ -10,6 +10,7 @@ import '../../../services/theme/theme_service.dart';
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
+import '../../../services/course_schedule_transfer_service.dart';
 import '../../widgets/bubble_popup.dart';
 import 'widgets/course_schedule_table.dart';
 import 'widgets/section_config_sheet.dart';
@@ -175,9 +176,16 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       context: context,
       anchorKey: _shareBtnKey,
       controller: controller,
-      tableName: _tableName,
-      semesterRange: _formatSemesterRange(),
-      currentWeek: _currentWeek,
+      bundle: CourseScheduleTransferBundle(
+        tableName: _tableName,
+        semesterStart: _currentSemesterStart,
+        maxWeek: _maxWeek,
+        showWeekend: _showWeekend,
+        showNonCurrentWeek: _showNonCurrentWeek,
+        isScheduleLocked: _isScheduleLocked,
+        scheduleConfig: _scheduleConfig,
+        courses: _courses,
+      ),
     );
 
     if (!mounted) return;

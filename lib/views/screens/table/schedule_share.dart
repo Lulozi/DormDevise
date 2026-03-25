@@ -3,35 +3,19 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import '../../../services/course_schedule_transfer_service.dart';
 import '../../widgets/bubble_popup.dart';
 
 /// 课表分享菜单逻辑。
 class ScheduleShare {
-  /// 统一生成课表分享链接，避免页面层拼接业务参数。
-  static String _buildShareLink({
-    required String tableName,
-    required String semesterRange,
-    required int currentWeek,
-  }) {
-    final String encodedName = Uri.encodeComponent(tableName);
-    final String encodedSemester = Uri.encodeComponent(semesterRange);
-    return 'https://dormdevise.app/schedule/share?name=$encodedName&semester=$encodedSemester&week=$currentWeek';
-  }
-
   /// 显示分享菜单气泡。
   static Future<void> show({
     required BuildContext context,
     required GlobalKey anchorKey,
     required BubblePopupController controller,
-    required String tableName,
-    required String semesterRange,
-    required int currentWeek,
+    required CourseScheduleTransferBundle bundle,
   }) async {
-    final String shareLink = _buildShareLink(
-      tableName: tableName,
-      semesterRange: semesterRange,
-      currentWeek: currentWeek,
-    );
+    final String shareCode = CourseScheduleTransferService.encodeBundle(bundle);
 
     await showBubblePopup(
       context: context,
@@ -44,23 +28,24 @@ class ScheduleShare {
           children: [
             _buildShareMenuItem(
               context: context,
-              text: '复制分享链接',
-              icon: FontAwesomeIcons.link,
-              onTap: () => _copyShareLink(
+              text: '复制导入码',
+              icon: FontAwesomeIcons.copy,
+              onTap: () => _copyShareCode(
                 context: context,
                 controller: controller,
-                shareLink: shareLink,
+                shareCode: shareCode,
               ),
             ),
             const Divider(height: 1, thickness: 0.5),
             _buildShareMenuItem(
               context: context,
-              text: '生成二维码',
+              text: '分享二维码',
               icon: FontAwesomeIcons.qrcode,
               onTap: () => _showQrCodeDialog(
                 context: context,
                 controller: controller,
-                shareLink: shareLink,
+                tableName: bundle.tableName,
+                shareCode: shareCode,
               ),
             ),
           ],
@@ -101,24 +86,25 @@ class ScheduleShare {
     );
   }
 
-  /// 复制分享链接。
-  static Future<void> _copyShareLink({
+  /// 复制课表导入码。
+  static Future<void> _copyShareCode({
     required BuildContext context,
     required BubblePopupController controller,
-    required String shareLink,
+    required String shareCode,
   }) async {
     await controller.dismiss();
     if (!context.mounted) return;
-    await Clipboard.setData(ClipboardData(text: shareLink));
+    await Clipboard.setData(ClipboardData(text: shareCode));
     if (!context.mounted) return;
-    AppToast.show(context, '分享链接已复制');
+    AppToast.show(context, '课表导入码已复制');
   }
 
   /// 展示二维码。
   static Future<void> _showQrCodeDialog({
     required BuildContext context,
     required BubblePopupController controller,
-    required String shareLink,
+    required String tableName,
+    required String shareCode,
   }) async {
     await controller.dismiss();
     if (!context.mounted) return;
@@ -132,6 +118,17 @@ class ScheduleShare {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Text(
+                tableName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -140,11 +137,16 @@ class ScheduleShare {
                       Theme.of(dialogContext).cardTheme.color ??
                       colorScheme.surface,
                 ),
-                child: QrImageView(data: shareLink, size: 180),
+                child: QrImageView(
+                  data: shareCode,
+                  size: 200,
+                  version: QrVersions.auto,
+                  errorCorrectionLevel: QrErrorCorrectLevel.L,
+                ),
               ),
               const SizedBox(height: 12),
               Text(
-                '扫码即可打开分享链接',
+                '扫码即可导入整张课表，二维码内容已压缩',
                 style: TextStyle(
                   fontSize: 12,
                   color: colorScheme.onSurfaceVariant,
