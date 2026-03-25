@@ -742,43 +742,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     }
 
     return Scaffold(
-      appBar: widget.showAppBar
-          ? AppBar(
-              title: const Text('MQTT配置'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.info_outline_rounded),
-                  tooltip: '查看MQTT连接情况',
-                  onPressed: () {
-                    final info = StringBuffer();
-                    info.writeln(
-                      '服务器: ${_hostController.text}:${_portController.text}',
-                    );
-                    info.writeln('Client ID: ${_clientIdController.text}');
-                    info.writeln('用户名: ${_usernameController.text}');
-                    info.writeln('主题: ${_topicController.text}');
-                    info.writeln('TLS: ${_withTls ? '启用' : '未启用'}');
-                    String statusText;
-                    if (_status.contains('连接成功') || _status.contains('订阅连接')) {
-                      statusText = '已连接，已订阅';
-                    } else if (_status.contains('消息已发送')) {
-                      statusText = '已连接，消息已发送';
-                    } else if (_status.contains('连接失败')) {
-                      statusText = '连接失败';
-                    } else if (_status.contains('发送失败')) {
-                      statusText = '发送失败';
-                    } else if (_status.contains('正在连接')) {
-                      statusText = '正在连接...';
-                    } else {
-                      statusText = _status.isNotEmpty ? _status : '未知';
-                    }
-                    info.writeln('连接状态: $statusText');
-                    _showBubble(context, info.toString());
-                  },
-                ),
-              ],
-            )
-          : null,
+      appBar: widget.showAppBar ? AppBar(title: const Text('MQTT配置')) : null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(

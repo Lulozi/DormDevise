@@ -222,6 +222,88 @@ class LocalDoorLockConfig {
     );
   }
 
+  /// 从分享/导入使用的可读对象恢复配置。
+  factory LocalDoorLockConfig.fromSharePayload(Map<dynamic, dynamic> payload) {
+    final List<String> importedPostUrls =
+        (payload['local_saved_post_urls'] as List<dynamic>? ?? <dynamic>[])
+            .map((dynamic item) => item.toString().trim())
+            .where((String item) => item.isNotEmpty)
+            .toSet()
+            .toList();
+
+    final List<SavedWifiInfo> importedWifis =
+        (payload['local_saved_wifis'] as List<dynamic>? ?? <dynamic>[])
+            .whereType<Map>()
+            .map(
+              (Map item) => SavedWifiInfo(
+                ssid: normalizeWifiValue(item['ssid']?.toString()),
+                bssid: normalizeWifiValue(item['bssid']?.toString()),
+              ),
+            )
+            .where((SavedWifiInfo wifi) => wifi.identity.isNotEmpty)
+            .toList();
+
+    final List<WifiPostMapping> importedMappings =
+        (payload['local_wifi_post_mappings'] as List<dynamic>? ?? <dynamic>[])
+            .whereType<Map>()
+            .map(
+              (Map item) => WifiPostMapping(
+                wifi: SavedWifiInfo(
+                  ssid: normalizeWifiValue(item['ssid']?.toString()),
+                  bssid: normalizeWifiValue(item['bssid']?.toString()),
+                ),
+                postUrl: item['postUrl']?.toString() ?? '',
+              ),
+            )
+            .where(
+              (WifiPostMapping mapping) =>
+                  mapping.identity.isNotEmpty &&
+                  mapping.normalizedPostUrl.isNotEmpty,
+            )
+            .toList();
+
+    return LocalDoorLockConfig(
+      postEnabled: payload['local_post_enabled'] == true,
+      postUrl: (payload['local_post_url']?.toString() ?? '').trim(),
+      preferPostWhenWifiMatched: payload['local_post_prefer_on_wifi'] != false,
+      multiPostEnabled: payload['local_multi_post_enabled'] == true,
+      wifiPostEnabled: payload['local_wifi_post_enabled'] != false,
+      savedPostUrls: importedPostUrls,
+      savedWifis: importedWifis,
+      wifiPostMappings: importedMappings,
+    );
+  }
+
+  /// 转换为适合分享/二维码导出的可读对象。
+  Map<String, Object?> toSharePayload() {
+    return <String, Object?>{
+      'local_post_enabled': postEnabled,
+      'local_post_url': postUrl.trim(),
+      'local_post_prefer_on_wifi': preferPostWhenWifiMatched,
+      'local_multi_post_enabled': multiPostEnabled,
+      'local_wifi_post_enabled': wifiPostEnabled,
+      'local_saved_post_urls': savedPostUrls
+          .map((String url) => url.trim())
+          .where((String url) => url.isNotEmpty)
+          .toList(growable: false),
+      'local_saved_wifis': savedWifis
+          .map(
+            (SavedWifiInfo wifi) =>
+                <String, String>{'ssid': wifi.ssid, 'bssid': wifi.bssid},
+          )
+          .toList(growable: false),
+      'local_wifi_post_mappings': wifiPostMappings
+          .map(
+            (WifiPostMapping mapping) => <String, String>{
+              'ssid': mapping.wifi.ssid,
+              'bssid': mapping.wifi.bssid,
+              'postUrl': mapping.normalizedPostUrl,
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
   /// 是否满足可发送 Post 请求的最小条件。
   bool get isPostReady {
     if (!postEnabled) {

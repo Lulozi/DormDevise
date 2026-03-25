@@ -508,28 +508,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
   }
 
   Map<String, dynamic> _buildSharePayload() {
-    return <String, dynamic>{
-      'local_post_enabled': _postEnabled,
-      'local_post_url': _normalizePostUrl(_postUrlController.text),
-      'local_post_prefer_on_wifi': _preferPostWhenWifiMatched,
-      'local_multi_post_enabled': _multiPostEnabled,
-      'local_wifi_post_enabled': _multiPostEnabled,
-      'local_saved_post_urls': _collectSavedPostUrls(),
-      'local_saved_wifis': _savedWifis
-          .map(
-            (wifi) => <String, String>{'ssid': wifi.ssid, 'bssid': wifi.bssid},
-          )
-          .toList(growable: false),
-      'local_wifi_post_mappings': _wifiPostMappings
-          .map(
-            (mapping) => <String, String>{
-              'ssid': mapping.wifi.ssid,
-              'bssid': mapping.wifi.bssid,
-              'postUrl': mapping.normalizedPostUrl,
-            },
-          )
-          .toList(growable: false),
-    };
+    return _buildCurrentConfig().toSharePayload();
   }
 
   String _buildSharePayloadText() {
@@ -548,64 +527,8 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       if (decoded is! Map) {
         throw const FormatException('不是有效的配置对象');
       }
-
-      final List<String> importedPostUrls =
-          (decoded['local_saved_post_urls'] as List<dynamic>? ?? <dynamic>[])
-              .map((dynamic item) => item.toString().trim())
-              .where((String item) => item.isNotEmpty)
-              .toSet()
-              .toList();
-
-      final List<SavedWifiInfo> importedWifis =
-          (decoded['local_saved_wifis'] as List<dynamic>? ?? <dynamic>[])
-              .whereType<Map>()
-              .map(
-                (Map item) => SavedWifiInfo(
-                  ssid: LocalDoorLockConfig.normalizeWifiValue(
-                    item['ssid']?.toString(),
-                  ),
-                  bssid: LocalDoorLockConfig.normalizeWifiValue(
-                    item['bssid']?.toString(),
-                  ),
-                ),
-              )
-              .where((SavedWifiInfo wifi) => wifi.identity.isNotEmpty)
-              .toList();
-
-      final List<WifiPostMapping> importedMappings =
-          (decoded['local_wifi_post_mappings'] as List<dynamic>? ?? <dynamic>[])
-              .whereType<Map>()
-              .map(
-                (Map item) => WifiPostMapping(
-                  wifi: SavedWifiInfo(
-                    ssid: LocalDoorLockConfig.normalizeWifiValue(
-                      item['ssid']?.toString(),
-                    ),
-                    bssid: LocalDoorLockConfig.normalizeWifiValue(
-                      item['bssid']?.toString(),
-                    ),
-                  ),
-                  postUrl: item['postUrl']?.toString() ?? '',
-                ),
-              )
-              .where(
-                (WifiPostMapping mapping) =>
-                    mapping.identity.isNotEmpty &&
-                    mapping.normalizedPostUrl.isNotEmpty,
-              )
-              .toList();
-
-      final LocalDoorLockConfig importedConfig = LocalDoorLockConfig(
-        postEnabled: decoded['local_post_enabled'] == true,
-        postUrl: _normalizePostUrl(decoded['local_post_url']?.toString() ?? ''),
-        preferPostWhenWifiMatched:
-            decoded['local_post_prefer_on_wifi'] != false,
-        multiPostEnabled: decoded['local_multi_post_enabled'] == true,
-        wifiPostEnabled: decoded['local_wifi_post_enabled'] != false,
-        savedPostUrls: importedPostUrls,
-        savedWifis: importedWifis,
-        wifiPostMappings: importedMappings,
-      );
+      final LocalDoorLockConfig importedConfig =
+          LocalDoorLockConfig.fromSharePayload(decoded);
 
       await LocalDoorLockConfigService.instance.saveConfig(importedConfig);
       if (!mounted) {
@@ -780,13 +703,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       }
     }
 
-    final config = LocalDoorLockConfig(
-      postEnabled: _postEnabled,
-      postUrl: _normalizePostUrl(_postUrlController.text),
-      preferPostWhenWifiMatched: _preferPostWhenWifiMatched,
-      multiPostEnabled: _multiPostEnabled,
-      wifiPostEnabled: _multiPostEnabled,
-      savedPostUrls: _collectSavedPostUrls(),
+    final config = _buildCurrentConfig(
       savedWifis: selectedWifis,
       wifiPostMappings: workingMappings,
     );
@@ -822,16 +739,26 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
 
   /// 判断当前 WiFi 是否已经存在于已保存列表。
   bool _isCurrentWifiSaved() {
+    return _buildCurrentConfig().isWifiMatched(
+      ssid: _currentWifi.ssid,
+      bssid: _currentWifi.bssid,
+    );
+  }
+
+  LocalDoorLockConfig _buildCurrentConfig({
+    List<SavedWifiInfo>? savedWifis,
+    List<WifiPostMapping>? wifiPostMappings,
+  }) {
     return LocalDoorLockConfig(
       postEnabled: _postEnabled,
-      postUrl: _postUrlController.text,
+      postUrl: _normalizePostUrl(_postUrlController.text),
       preferPostWhenWifiMatched: _preferPostWhenWifiMatched,
       multiPostEnabled: _multiPostEnabled,
       wifiPostEnabled: _multiPostEnabled,
       savedPostUrls: _collectSavedPostUrls(),
-      savedWifis: _savedWifis,
-      wifiPostMappings: _wifiPostMappings,
-    ).isWifiMatched(ssid: _currentWifi.ssid, bssid: _currentWifi.bssid);
+      savedWifis: savedWifis ?? _savedWifis,
+      wifiPostMappings: wifiPostMappings ?? _wifiPostMappings,
+    );
   }
 
   bool _isWifiSelected(SavedWifiInfo wifi) {
