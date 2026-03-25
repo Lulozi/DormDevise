@@ -205,11 +205,6 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
         foregroundColor: Colors.white,
         actions: <Widget>[
           IconButton(
-            tooltip: '选择图片扫码',
-            onPressed: _isHandling ? null : _scanFromImage,
-            icon: const Icon(Icons.photo_library_outlined),
-          ),
-          IconButton(
             tooltip: _torchEnabled ? '关闭闪光灯' : '打开闪光灯',
             onPressed: _isHandling ? null : _toggleTorch,
             icon: Icon(
@@ -218,26 +213,35 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
                   : Icons.flashlight_off_rounded,
             ),
           ),
+          IconButton(
+            tooltip: '选择图片扫码',
+            onPressed: _isHandling ? null : _scanFromImage,
+            icon: const Icon(Icons.photo_library_outlined),
+          ),
         ],
       ),
       body: Stack(
         children: <Widget>[
-          MobileScanner(
-            controller: _controller,
-            onDetect: _handleBarcodeCapture,
-          ),
-          IgnorePointer(
-            child: Center(
-              child: Container(
-                width: 248,
-                height: 248,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: colorScheme.primary, width: 3),
+          if (_isHandling)
+            const ColoredBox(color: Colors.black)
+          else ...<Widget>[
+            MobileScanner(
+              controller: _controller,
+              onDetect: _handleBarcodeCapture,
+            ),
+            IgnorePointer(
+              child: Center(
+                child: Container(
+                  width: 248,
+                  height: 248,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: colorScheme.primary, width: 3),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
           Positioned(
             left: 20,
             right: 20,
