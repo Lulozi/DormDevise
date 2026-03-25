@@ -379,7 +379,7 @@ class _WebImportAutoLoginWebViewPageState
       }
 
       // 3. 按教学时段拆分跨时段课程（如 1-8 节 -> 上午 1-4 + 下午 5-8）
-      final CourseScheduleConfig fitConfig = _buildFitScheduleConfig();
+      final CourseScheduleConfig fitConfig = CourseScheduleConfig.fitDefaults();
       final List<Course> courses = splitCrossSegmentSessions(
         rawCourses,
         fitConfig,
@@ -457,47 +457,6 @@ class _WebImportAutoLoginWebViewPageState
       }
     }
     return lastWeek + 2;
-  }
-
-  /// 构建福州理工学院默认课表节次配置。
-  CourseScheduleConfig _buildFitScheduleConfig() {
-    return CourseScheduleConfig(
-      defaultClassDuration: const Duration(minutes: 45),
-      defaultBreakDuration: const Duration(minutes: 10),
-      segments: <ScheduleSegmentConfig>[
-        ScheduleSegmentConfig(
-          name: '上午',
-          startTime: TimeOfDay(hour: 8, minute: 30),
-          classCount: 4,
-          perBreakDurations: <Duration>[
-            Duration(minutes: 5),
-            Duration(minutes: 10),
-            Duration(minutes: 5),
-          ],
-        ),
-        ScheduleSegmentConfig(
-          name: '下午',
-          startTime: TimeOfDay(hour: 14, minute: 0),
-          classCount: 4,
-          perBreakDurations: <Duration>[
-            Duration(minutes: 5),
-            Duration(minutes: 10),
-            Duration(minutes: 5),
-          ],
-        ),
-        ScheduleSegmentConfig(
-          name: '晚上',
-          startTime: TimeOfDay(hour: 18, minute: 30),
-          classCount: 3,
-          classDuration: Duration(minutes: 45),
-          perBreakDurations: <Duration>[
-            Duration(minutes: 10),
-            Duration(minutes: 10),
-          ],
-        ),
-      ],
-      useSegmentBreakDurations: true,
-    );
   }
 
   /// 估算学期开始日期（春季 2 月下旬，秋季 9 月初）。
