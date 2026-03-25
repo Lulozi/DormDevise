@@ -127,7 +127,7 @@ class _AboutPageState extends State<AboutPage> {
   Future<void> _primeLatestVersionStatus() async {
     try {
       final UpdateCheckResult? latest = await UpdateCheckService.instance
-          .fetchAvailableUpdate();
+          .fetchAvailableUpdate(allowNetwork: false);
       if (!mounted) return;
       final bool hasNewer = latest != null;
       if (_hasNewerVersion != hasNewer) {
@@ -1240,44 +1240,22 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
   Future<List<String>?> _fetchReleaseNotes(String appVersionString) async {
     final normalizedVersion = appVersionString.split('+').first;
     final cacheKey = 'release_notes_$normalizedVersion';
-    final lastTimeKey = 'release_notes_last_fetch_time';
-    final lastSourceKey = 'release_notes_last_source';
-
     final prefs = await SharedPreferences.getInstance();
-    final currentSource = prefs.getString('update_source_type') ?? 'auto';
 
-    // 1. 检查缓存中的有效内容
     List<String> cachedNotes = [];
     final cachedValue = prefs.getString(cacheKey);
     if (cachedValue != null) {
       try {
         cachedNotes = List<String>.from(jsonDecode(cachedValue) as List);
-        // 如果缓存中有具体内容，直接使用，不再请求
-        if (cachedNotes.isNotEmpty) {
-          return cachedNotes;
-        }
+        return cachedNotes;
       } catch (_) {
-        // 缓存格式异常时忽略
+        cachedNotes = <String>[];
       }
-    }
-
-    // 2. 检查频率限制 (30s) 和 源切换
-    // 如果缓存是空的（说明上次没获取到或者还没获取过），且源没有变化，且距离上次获取不到 30秒
-    final lastSource = prefs.getString(lastSourceKey);
-    final lastTime = prefs.getInt(lastTimeKey) ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    if (cachedNotes.isEmpty &&
-        currentSource == lastSource &&
-        (now - lastTime) < 30000) {
-      // 返回 null 以显示“获取失败”
-      return null;
     }
 
     final appVersion = _safeParseVersion(appVersionString);
     if (appVersion == null) return const [];
 
-    // 辅助函数：尝试从发布列表中提取对应版本的说明
     List<String>? tryFindNotes(List<_ReleaseInfo> sourceReleases) {
       if (sourceReleases.isEmpty) return null;
 
@@ -1317,57 +1295,15 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
       return notes.isNotEmpty ? notes : null;
     }
 
-    // 定义单次获取逻辑
-    Future<List<String>?> fetchOnce() async {
-      try {
-        // 3.1 优先尝试根据配置获取
-        final configReleases = await _fetchAllReleasesBasedOnConfig();
-        var notes = tryFindNotes(configReleases);
-        if (notes != null) return notes;
-
-        // 3.2 仅在自动模式下进行跨源兜底
-        if (currentSource == 'auto') {
-          // 尝试 GitHub
-          try {
-            final github = await _loadReleasesFromGitHub();
-            notes = tryFindNotes(github);
-            if (notes != null) return notes;
-          } catch (_) {}
-
-          // 尝试 Gitee
-          try {
-            final gitee = await _loadReleasesFromGitee();
-            notes = tryFindNotes(gitee);
-            if (notes != null) return notes;
-          } catch (_) {}
-        }
-      } catch (_) {
-        return null;
-      }
-      return null;
-    }
-
-    // 3. 执行获取（含重试机制）
-    List<String>? result = await fetchOnce();
-
-    // 如果第一次获取失败或无内容，等待 5 秒后重试
-    if (result == null) {
-      await Future.delayed(const Duration(seconds: 5));
-      result = await fetchOnce();
-    }
-
-    // 4. 保存结果并返回
-    await prefs.setInt(lastTimeKey, DateTime.now().millisecondsSinceEpoch);
-    await prefs.setString(lastSourceKey, currentSource);
-
-    if (result != null) {
+    try {
+      final List<_ReleaseInfo> releases = await _fetchAllReleasesBasedOnConfig(
+        allowNetwork: false,
+      );
+      final List<String> result = tryFindNotes(releases) ?? const <String>[];
       await prefs.setString(cacheKey, jsonEncode(result));
       return result;
-    } else {
-      // 没找到内容，存个空列表
-      await prefs.setString(cacheKey, jsonEncode([]));
-      // 返回 null 以显示“获取失败”
-      return null;
+    } catch (_) {
+      return const <String>[];
     }
   }
 }
@@ -1467,10 +1403,12 @@ List<_ReleaseInfo>? _cachedReleases;
 String? _lastSourceType;
 String? _lastCustomApiUrl;
 Future<List<_ReleaseInfo>>? _pendingFetch;
+const Duration _releaseFeedCacheDuration = Duration(hours: 2);
 
 /// 根据配置获取所有发布信息
 Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
   bool forceRefresh = false,
+  bool allowNetwork = true,
 }) async {
   final prefs = await SharedPreferences.getInstance();
   final sourceType = prefs.getString('update_source_type') ?? 'auto';
@@ -1478,36 +1416,56 @@ Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
   final lastAttemptKey = 'update_last_attempt_time';
   final cacheDataKey = 'update_cached_releases_data';
 
-  // 1. 检查内存缓存 (5秒)
+  List<_ReleaseInfo>? readCachedReleases() {
+    final String? cachedJson = prefs.getString(cacheDataKey);
+    if (cachedJson == null) {
+      return null;
+    }
+    try {
+      final List<dynamic> list = jsonDecode(cachedJson);
+      return list.map((dynamic item) => _ReleaseInfo.fromJson(item)).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 1. 检查内存缓存。
   if (!forceRefresh &&
       _cachedReleases != null &&
       _lastFetchTime != null &&
       _lastSourceType == sourceType &&
       _lastCustomApiUrl == customApiUrl &&
-      DateTime.now().difference(_lastFetchTime!) < const Duration(seconds: 5)) {
+      DateTime.now().difference(_lastFetchTime!) < _releaseFeedCacheDuration) {
     return _cachedReleases!;
   }
 
-  // 2. 检查持久化缓存 (60秒)
+  // 2. 检查持久化缓存。
   final now = DateTime.now().millisecondsSinceEpoch;
   final lastAttempt = prefs.getInt(lastAttemptKey) ?? 0;
 
-  // 如果不是强制刷新，且距离上次尝试不足 60 秒，尝试读取本地缓存
-  if (!forceRefresh && (now - lastAttempt) < 60000) {
-    final cachedJson = prefs.getString(cacheDataKey);
-    if (cachedJson != null) {
-      try {
-        final List<dynamic> list = jsonDecode(cachedJson);
-        final releases = list.map((e) => _ReleaseInfo.fromJson(e)).toList();
-        if (releases.isNotEmpty) {
-          _cachedReleases = releases;
-          _lastFetchTime = DateTime.now();
-          _lastSourceType = sourceType;
-          _lastCustomApiUrl = customApiUrl;
-          return releases;
-        }
-      } catch (_) {}
+  if (!forceRefresh &&
+      (now - lastAttempt) < _releaseFeedCacheDuration.inMilliseconds) {
+    final List<_ReleaseInfo>? releases = readCachedReleases();
+    if (releases != null && releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+      return releases;
     }
+    return const <_ReleaseInfo>[];
+  }
+
+  if (!allowNetwork) {
+    final List<_ReleaseInfo>? releases = readCachedReleases();
+    if (releases != null && releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+      return releases;
+    }
+    return const <_ReleaseInfo>[];
   }
 
   // 3. 检查是否有正在进行的请求
@@ -1586,33 +1544,26 @@ Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
 
     List<_ReleaseInfo> releases = [];
     try {
-      // 第一次尝试
       releases = await fetchOnce();
-    } catch (_) {
-      // 第二次失败，等待 5 秒后重试
-      await Future.delayed(const Duration(seconds: 5));
-      try {
-        releases = await fetchOnce();
-      } catch (e) {
-        debugPrint('获取发布信息最终失败: $e');
-        // 最终失败，更新尝试时间，以便 60s 后再试
-        await prefs.setInt(
-          lastAttemptKey,
-          DateTime.now().millisecondsSinceEpoch,
-        );
-        // 尝试返回旧缓存
-        final cachedJson = prefs.getString(cacheDataKey);
-        if (cachedJson != null) {
-          try {
-            final List<dynamic> list = jsonDecode(cachedJson);
-            return list.map((e) => _ReleaseInfo.fromJson(e)).toList();
-          } catch (_) {}
-        }
-        return [];
-      }
+    } catch (e) {
+      debugPrint('获取发布信息失败: $e');
     }
 
-    // 获取成功，更新缓存
+    if (releases.isEmpty) {
+      await prefs.setInt(
+        lastAttemptKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      final cachedJson = prefs.getString(cacheDataKey);
+      if (cachedJson != null) {
+        try {
+          final List<dynamic> list = jsonDecode(cachedJson);
+          return list.map((e) => _ReleaseInfo.fromJson(e)).toList();
+        } catch (_) {}
+      }
+      return [];
+    }
+
     if (releases.isNotEmpty) {
       _cachedReleases = releases;
       _lastFetchTime = DateTime.now();

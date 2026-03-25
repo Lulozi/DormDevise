@@ -341,7 +341,7 @@ class ManagementScreenState extends State<ManagementScreen>
     try {
       final HomePageUpdatePromptPlan? promptPlan = await UpdateCheckService
           .instance
-          .fetchHomePageUpdatePrompt(forceRefresh: true);
+          .fetchHomePageUpdatePrompt();
       final UpdateCheckResult? result = promptPlan?.result;
       if (!mounted ||
           promptPlan == null ||

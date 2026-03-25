@@ -246,6 +246,7 @@ class UpdateCheckService {
   UpdateCheckService._();
 
   static final UpdateCheckService instance = UpdateCheckService._();
+  static const Duration _sharedReleaseCacheDuration = Duration(hours: 2);
   static const String _prefKeyUpdateTrack = 'update_track_preference';
   static const String _prefKeyHomePromptDeferredVersion =
       'update_home_prompt_deferred_version';
@@ -287,6 +288,7 @@ class UpdateCheckService {
 
   Future<UpdateCheckResult?> fetchAvailableUpdate({
     bool forceRefresh = false,
+    bool allowNetwork = true,
   }) async {
     final PackageInfo packageInfo = await PackageInfo.fromPlatform();
     final Version? currentVersion = safeParseVersion(packageInfo.version);
@@ -296,6 +298,7 @@ class UpdateCheckService {
 
     final UpdateReleaseInfo? latestRelease = await fetchLatestReleaseInfo(
       forceRefresh: forceRefresh,
+      allowNetwork: allowNetwork,
     );
     if (latestRelease == null || latestRelease.version == null) {
       return null;
@@ -440,15 +443,20 @@ class UpdateCheckService {
   Future<UpdateReleaseInfo?> fetchLatestReleaseInfo({
     bool forceRefresh = false,
     UpdateTrackPreference? trackPreference,
+    bool allowNetwork = true,
   }) async {
     final UpdateTrackPreference effectiveTrack =
         trackPreference ?? await getUpdateTrackPreference();
     if (effectiveTrack == UpdateTrackPreference.stable) {
-      return _loadLatestStableReleaseBasedOnConfig(forceRefresh: forceRefresh);
+      return _loadLatestStableReleaseBasedOnConfig(
+        forceRefresh: forceRefresh,
+        allowNetwork: allowNetwork,
+      );
     }
 
     final List<UpdateReleaseInfo> releases = await _loadReleasesBasedOnConfig(
       forceRefresh: forceRefresh,
+      allowNetwork: allowNetwork,
     );
     if (releases.isEmpty) {
       return null;
@@ -499,7 +507,23 @@ class UpdateCheckService {
 
   Future<UpdateReleaseInfo?> _loadLatestStableReleaseBasedOnConfig({
     bool forceRefresh = false,
+    bool allowNetwork = true,
   }) async {
+    if (!allowNetwork) {
+      return _pickLatestStableFromFeed(
+        await _loadReleasesBasedOnConfig(allowNetwork: false),
+      );
+    }
+
+    if (!forceRefresh) {
+      return _pickLatestStableFromFeed(
+        await _loadReleasesBasedOnConfig(
+          forceRefresh: false,
+          allowNetwork: true,
+        ),
+      );
+    }
+
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String sourceType = prefs.getString('update_source_type') ?? 'auto';
     final String? customApiUrl = prefs.getString('custom_update_api_url');
@@ -511,13 +535,15 @@ class UpdateCheckService {
               await _loadReleasesBasedOnConfig(forceRefresh: forceRefresh),
             );
       case 'gitee':
-        return _pickLatestStableFromFeed(await _loadReleasesFromGitee());
+        return _pickLatestStableFromFeed(
+          await _loadReleasesBasedOnConfig(forceRefresh: true),
+        );
       case 'custom':
         if (customApiUrl == null || customApiUrl.isEmpty) {
           return null;
         }
         return _pickLatestStableFromFeed(
-          await _loadReleasesFromCustom(customApiUrl),
+          await _loadReleasesBasedOnConfig(forceRefresh: true),
         );
       case 'auto':
       default:
@@ -943,12 +969,31 @@ class UpdateCheckService {
 
   Future<List<UpdateReleaseInfo>> _loadReleasesBasedOnConfig({
     bool forceRefresh = false,
+    bool allowNetwork = true,
   }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String sourceType = prefs.getString('update_source_type') ?? 'auto';
     final String? customApiUrl = prefs.getString('custom_update_api_url');
     final String lastAttemptKey = 'update_last_attempt_time';
     final String cacheDataKey = 'update_cached_releases_data';
+
+    List<UpdateReleaseInfo>? readCachedReleases() {
+      final String? cachedJson = prefs.getString(cacheDataKey);
+      if (cachedJson == null) {
+        return null;
+      }
+      try {
+        final List<dynamic> list = jsonDecode(cachedJson) as List<dynamic>;
+        return list
+            .map(
+              (dynamic item) =>
+                  UpdateReleaseInfo.fromJson(item as Map<String, dynamic>),
+            )
+            .toList(growable: false);
+      } catch (_) {
+        return null;
+      }
+    }
 
     if (!forceRefresh &&
         _cachedReleases != null &&
@@ -962,26 +1007,29 @@ class UpdateCheckService {
 
     final int now = DateTime.now().millisecondsSinceEpoch;
     final int lastAttempt = prefs.getInt(lastAttemptKey) ?? 0;
-    if (!forceRefresh && (now - lastAttempt) < 60000) {
-      final String? cachedJson = prefs.getString(cacheDataKey);
-      if (cachedJson != null) {
-        try {
-          final List<dynamic> list = jsonDecode(cachedJson) as List<dynamic>;
-          final List<UpdateReleaseInfo> releases = list
-              .map(
-                (dynamic item) =>
-                    UpdateReleaseInfo.fromJson(item as Map<String, dynamic>),
-              )
-              .toList(growable: false);
-          if (releases.isNotEmpty) {
-            _cachedReleases = releases;
-            _lastFetchTime = DateTime.now();
-            _lastSourceType = sourceType;
-            _lastCustomApiUrl = customApiUrl;
-            return releases;
-          }
-        } catch (_) {}
+    if (!forceRefresh &&
+        (now - lastAttempt) < _sharedReleaseCacheDuration.inMilliseconds) {
+      final List<UpdateReleaseInfo>? releases = readCachedReleases();
+      if (releases != null && releases.isNotEmpty) {
+        _cachedReleases = releases;
+        _lastFetchTime = DateTime.now();
+        _lastSourceType = sourceType;
+        _lastCustomApiUrl = customApiUrl;
+        return releases;
       }
+      return const <UpdateReleaseInfo>[];
+    }
+
+    if (!allowNetwork) {
+      final List<UpdateReleaseInfo>? releases = readCachedReleases();
+      if (releases != null && releases.isNotEmpty) {
+        _cachedReleases = releases;
+        _lastFetchTime = DateTime.now();
+        _lastSourceType = sourceType;
+        _lastCustomApiUrl = customApiUrl;
+        return releases;
+      }
+      return const <UpdateReleaseInfo>[];
     }
 
     if (_pendingFetch != null) {
@@ -1034,16 +1082,7 @@ class UpdateCheckService {
       try {
         releases = await fetchOnce();
       } catch (error) {
-        debugPrint('获取发布信息失败，准备重试: $error');
-      }
-
-      if (releases.isEmpty) {
-        await Future<void>.delayed(const Duration(seconds: 5));
-        try {
-          releases = await fetchOnce();
-        } catch (error) {
-          debugPrint('获取发布信息重试失败: $error');
-        }
+        debugPrint('获取发布信息失败: $error');
       }
 
       if (releases.isEmpty) {
@@ -1051,17 +1090,9 @@ class UpdateCheckService {
           lastAttemptKey,
           DateTime.now().millisecondsSinceEpoch,
         );
-        final String? cachedJson = prefs.getString(cacheDataKey);
-        if (cachedJson != null) {
-          try {
-            final List<dynamic> list = jsonDecode(cachedJson) as List<dynamic>;
-            return list
-                .map(
-                  (dynamic item) =>
-                      UpdateReleaseInfo.fromJson(item as Map<String, dynamic>),
-                )
-                .toList(growable: false);
-          } catch (_) {}
+        final List<UpdateReleaseInfo>? cached = readCachedReleases();
+        if (cached != null) {
+          return cached;
         }
         return const <UpdateReleaseInfo>[];
       }
