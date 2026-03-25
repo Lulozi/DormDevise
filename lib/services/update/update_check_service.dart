@@ -1008,10 +1008,6 @@ class UpdateCheckService {
             final List<UpdateReleaseInfo> gitee = await _safeFetch(
               _loadReleasesFromGitee,
             );
-            if (github.isEmpty && gitee.isEmpty) {
-              throw Exception('All sources failed in auto mode');
-            }
-
             final Map<String, UpdateReleaseInfo> merged =
                 <String, UpdateReleaseInfo>{};
             for (final UpdateReleaseInfo release in gitee) {
@@ -1037,32 +1033,37 @@ class UpdateCheckService {
       List<UpdateReleaseInfo> releases = <UpdateReleaseInfo>[];
       try {
         releases = await fetchOnce();
-      } catch (_) {
+      } catch (error) {
+        debugPrint('获取发布信息失败，准备重试: $error');
+      }
+
+      if (releases.isEmpty) {
         await Future<void>.delayed(const Duration(seconds: 5));
         try {
           releases = await fetchOnce();
         } catch (error) {
-          debugPrint('获取发布信息最终失败: $error');
-          await prefs.setInt(
-            lastAttemptKey,
-            DateTime.now().millisecondsSinceEpoch,
-          );
-          final String? cachedJson = prefs.getString(cacheDataKey);
-          if (cachedJson != null) {
-            try {
-              final List<dynamic> list =
-                  jsonDecode(cachedJson) as List<dynamic>;
-              return list
-                  .map(
-                    (dynamic item) => UpdateReleaseInfo.fromJson(
-                      item as Map<String, dynamic>,
-                    ),
-                  )
-                  .toList(growable: false);
-            } catch (_) {}
-          }
-          return const <UpdateReleaseInfo>[];
+          debugPrint('获取发布信息重试失败: $error');
         }
+      }
+
+      if (releases.isEmpty) {
+        await prefs.setInt(
+          lastAttemptKey,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        final String? cachedJson = prefs.getString(cacheDataKey);
+        if (cachedJson != null) {
+          try {
+            final List<dynamic> list = jsonDecode(cachedJson) as List<dynamic>;
+            return list
+                .map(
+                  (dynamic item) =>
+                      UpdateReleaseInfo.fromJson(item as Map<String, dynamic>),
+                )
+                .toList(growable: false);
+          } catch (_) {}
+        }
+        return const <UpdateReleaseInfo>[];
       }
 
       if (releases.isNotEmpty) {
@@ -1230,7 +1231,7 @@ Version? safeParseVersion(String raw) {
   }
 }
 
-int _compareReleaseOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
+int _compareReleaseFeedOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
   final Version? versionA = a.version;
   final Version? versionB = b.version;
   if (versionA != null && versionB != null) {
@@ -1257,23 +1258,11 @@ int _compareReleaseOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
     return 1;
   }
 
-  return 0;
-}
-
-int _compareReleaseFeedOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
-  final DateTime? dateA = a.publishedAt;
-  final DateTime? dateB = b.publishedAt;
-  if (dateA != null && dateB != null) {
-    final int dateOrder = dateB.compareTo(dateA);
-    if (dateOrder != 0) {
-      return dateOrder;
-    }
-  } else if (dateA != null) {
-    return -1;
-  } else if (dateB != null) {
-    return 1;
+  if (a.isPrerelease != b.isPrerelease) {
+    return a.isPrerelease ? 1 : -1;
   }
-  return _compareReleaseOrder(a, b);
+
+  return 0;
 }
 
 bool hasMajorOrMinorUpdate(Version candidate, Version baseline) {
