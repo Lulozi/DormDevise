@@ -348,8 +348,6 @@ class ManagementScreenState extends State<ManagementScreen>
             result,
             confirmLabel: '立即更新',
             secondaryLabel: promptPlan.secondaryLabel,
-            barrierDismissible: false,
-            allowSystemPop: false,
           );
       if (!mounted) {
         return;
