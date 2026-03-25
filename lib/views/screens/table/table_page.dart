@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:linked_scroll_controller/linked_scroll_controller.dart';
@@ -29,7 +31,7 @@ class TablePage extends StatefulWidget {
   State<TablePage> createState() => _TablePageState();
 }
 
-class _TablePageState extends State<TablePage> {
+class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   static final DateTime _defaultSemesterStart = DateTime(2025, 9, 1); // 默认周一
   static const List<String> _weekdayLabels = <String>[
     '周一',
@@ -65,15 +67,21 @@ class _TablePageState extends State<TablePage> {
   String _tableName = '我的课表';
   bool _showWeekend = false;
   bool _showNonCurrentWeek = true;
+  bool _isScheduleLocked = false;
   bool _isLoading = true;
   bool _isEditing = false;
   Object _editModeResetToken = Object();
   DateTime? _highlightDate;
+  CourseTableAdaptiveLayout? _adaptiveLayoutCache;
+  AdaptiveLayoutCacheKey? _adaptiveLayoutCacheKey;
+  int _adaptiveLayoutGeneration = 0;
 
   final GlobalKey _importBtnKey = GlobalKey();
   final GlobalKey _shareBtnKey = GlobalKey();
   BubblePopupController? _toolbarBubbleController;
   bool _isToolbarBubbleOpen = false;
+  Timer? _midnightRefreshTimer;
+  DateTime _lastObservedDate = _dateOnly(DateTime.now());
 
   List<int> get _visibleWeekdays =>
       _showWeekend ? <int>[1, 2, 3, 4, 5, 6, 7] : <int>[1, 2, 3, 4, 5];
@@ -120,7 +128,7 @@ class _TablePageState extends State<TablePage> {
         );
         // 课表创建成功后刷新课表数据
         if (result == true && mounted) {
-          _loadData();
+          _loadData(jumpToCurrentWeek: true);
         }
       },
       child: Padding(
@@ -206,16 +214,16 @@ class _TablePageState extends State<TablePage> {
             _buildImportMenuItem('web', '网页导入课表', Icons.language, controller),
             const Divider(height: 1, thickness: 0.5),
             _buildImportMenuItem(
-              'camera',
-              '拍照导入课表',
-              FontAwesomeIcons.camera,
+              'scan',
+              '扫码导入课表',
+              FontAwesomeIcons.qrcode,
               controller,
             ),
             const Divider(height: 1, thickness: 0.5),
             _buildImportMenuItem(
-              'scan',
-              '扫码导入课表',
-              FontAwesomeIcons.qrcode,
+              'camera',
+              '拍照导入课表',
+              FontAwesomeIcons.camera,
               controller,
             ),
             const Divider(height: 1, thickness: 0.5),
@@ -243,15 +251,125 @@ class _TablePageState extends State<TablePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scheduleConfig = CourseScheduleConfig.njuDefaults();
     _sections = _scheduleConfig.generateSections();
     _pageController = PageController(initialPage: 0);
     _scrollGroup = LinkedScrollControllerGroup();
     _timeColumnController = _scrollGroup.addAndGet();
-    _loadData();
+    _loadData(jumpToCurrentWeek: true);
+    _scheduleMidnightRefresh();
   }
 
-  Future<void> _loadData() async {
+  void _invalidateAdaptiveLayoutCache() {
+    _adaptiveLayoutCache = null;
+    _adaptiveLayoutCacheKey = null;
+    _adaptiveLayoutGeneration++;
+  }
+
+  static DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  int _clampDisplayedWeek(int week, {int? maxWeek}) {
+    final int effectiveMaxWeek = maxWeek ?? _maxWeek;
+    return week.clamp(1, effectiveMaxWeek);
+  }
+
+  void _refreshForCurrentDate({bool jumpToCurrentWeek = false}) {
+    final int resolvedWeek = _resolveCurrentWeekFromNow();
+    final int nextWeek = jumpToCurrentWeek
+        ? resolvedWeek
+        : _clampDisplayedWeek(_currentWeek);
+    final bool shouldSyncPage = nextWeek != _currentWeek;
+    setState(() {
+      _currentWeek = nextWeek;
+      _highlightDate = null;
+      _lastObservedDate = _dateOnly(DateTime.now());
+      _invalidateAdaptiveLayoutCache();
+    });
+    if (shouldSyncPage) {
+      _syncPageToCurrentWeek();
+    }
+  }
+
+  void _scheduleMidnightRefresh() {
+    _midnightRefreshTimer?.cancel();
+    final DateTime now = DateTime.now();
+    final DateTime nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    _midnightRefreshTimer = Timer(nextMidnight.difference(now), () {
+      if (!mounted) {
+        return;
+      }
+      _refreshForCurrentDate();
+      _scheduleMidnightRefresh();
+    });
+  }
+
+  int _resolveCurrentWeekFromNow() {
+    return _resolveWeekForDate(
+      now: DateTime.now(),
+      semesterStart: _currentSemesterStart,
+      maxWeek: _maxWeek,
+    );
+  }
+
+  int _resolveWeekForDate({
+    required DateTime now,
+    required DateTime semesterStart,
+    required int maxWeek,
+  }) {
+    final DateTime firstWeekStart = semesterStart.subtract(
+      Duration(days: semesterStart.weekday - 1),
+    );
+    final int diffDays = now.difference(firstWeekStart).inDays;
+    int resolvedWeek = (diffDays / 7).floor() + 1;
+    if (resolvedWeek < 1) {
+      resolvedWeek = 1;
+    }
+    if (resolvedWeek > maxWeek) {
+      resolvedWeek = maxWeek;
+    }
+    return resolvedWeek;
+  }
+
+  void _syncPageToCurrentWeek({bool animate = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) {
+        return;
+      }
+      final int targetPage = (_currentWeek - 1).clamp(0, _maxWeek - 1);
+      final int currentPage =
+          (_pageController.page ?? _pageController.initialPage).round();
+      if (currentPage == targetPage) {
+        return;
+      }
+      if (animate) {
+        _pageController.animateToPage(
+          targetPage,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+        );
+        return;
+      }
+      _pageController.jumpToPage(targetPage);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && mounted) {
+      final DateTime today = _dateOnly(DateTime.now());
+      if (today != _lastObservedDate) {
+        _refreshForCurrentDate();
+      }
+      _scheduleMidnightRefresh();
+      return;
+    }
+    _midnightRefreshTimer?.cancel();
+  }
+
+  Future<void> _loadData({bool jumpToCurrentWeek = false}) async {
     final service = CourseService.instance;
     final courses = await service.loadCourses();
     final config = await service.loadConfig();
@@ -260,6 +378,18 @@ class _TablePageState extends State<TablePage> {
     final tableName = await service.loadTableName();
     final showWeekend = await service.loadShowWeekend();
     final showNonCurrentWeek = await service.loadShowNonCurrentWeek();
+    final isScheduleLocked = await service.loadScheduleLocked();
+    final DateTime resolvedSemesterStart =
+        semesterStart ?? _defaultSemesterStart;
+    final int resolvedWeek = _resolveWeekForDate(
+      now: DateTime.now(),
+      semesterStart: resolvedSemesterStart,
+      maxWeek: maxWeek,
+    );
+    final int nextWeek = jumpToCurrentWeek
+        ? resolvedWeek
+        : _clampDisplayedWeek(_currentWeek, maxWeek: maxWeek);
+    final bool shouldSyncPage = nextWeek != _currentWeek;
 
     if (!mounted) return;
 
@@ -267,31 +397,29 @@ class _TablePageState extends State<TablePage> {
       _courses = courses;
       _scheduleConfig = config;
       _sections = _scheduleConfig.generateSections();
-      _currentSemesterStart = semesterStart ?? _defaultSemesterStart;
+      _currentSemesterStart = resolvedSemesterStart;
       _maxWeek = maxWeek;
       _tableName = tableName;
       _showWeekend = showWeekend;
       _showNonCurrentWeek = showNonCurrentWeek;
-
-      // 计算当前周
-      final int diffDays = DateTime.now().difference(_firstWeekStart).inDays;
-      _currentWeek = (diffDays / 7).floor() + 1;
-      if (_currentWeek < 1) _currentWeek = 1;
-      if (_currentWeek > _maxWeek) _currentWeek = _maxWeek;
+      _isScheduleLocked = isScheduleLocked;
+      _currentWeek = nextWeek;
+      _lastObservedDate = _dateOnly(DateTime.now());
+      _invalidateAdaptiveLayoutCache();
 
       _isLoading = false;
     });
 
-    // 跳转到当前周
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(_currentWeek - 1);
-      }
-    });
+    if (shouldSyncPage) {
+      _syncPageToCurrentWeek();
+    }
+    _scheduleMidnightRefresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _midnightRefreshTimer?.cancel();
     _toolbarBubbleController?.dismiss();
     _timeColumnController.dispose();
     for (final ScrollController controller in _weekScrollControllers.values) {
@@ -571,6 +699,7 @@ class _TablePageState extends State<TablePage> {
       setState(() {
         _scheduleConfig = result;
         _sections = _scheduleConfig.generateSections();
+        _invalidateAdaptiveLayoutCache();
       });
     }
   }
@@ -608,9 +737,7 @@ class _TablePageState extends State<TablePage> {
       isScrollControlled: true,
       builder: (BuildContext context) {
         return WeekSelectSheet(
-          currentWeek:
-              DateTime.now().difference(_firstWeekStart).inDays ~/ 7 +
-              1, // 近似计算当前周
+          currentWeek: _resolveCurrentWeekFromNow(),
           selectedWeek: _currentWeek,
           maxWeek: _maxWeek,
           onWeekSelected: _updateWeek,
@@ -621,6 +748,7 @@ class _TablePageState extends State<TablePage> {
 
   Future<void> _handleCourseAdded(Course newCourse) async {
     setState(() {
+      _invalidateAdaptiveLayoutCache();
       // 查找是否存在同名课程
       final int existingIndex = _courses.indexWhere(
         (c) => c.name == newCourse.name,
@@ -682,7 +810,7 @@ class _TablePageState extends State<TablePage> {
 
   /// 打开课程表设置页面。
   Future<void> _openScheduleSettings() async {
-    final result = await Navigator.of(context).push(
+    final Object? result = await Navigator.of(context).push(
       CupertinoPageRoute(
         builder: (BuildContext context) {
           return AllSchedulesPage(
@@ -693,44 +821,47 @@ class _TablePageState extends State<TablePage> {
             tableName: _tableName,
             showWeekend: _showWeekend,
             showNonCurrentWeek: _showNonCurrentWeek,
+            isScheduleLocked: _isScheduleLocked,
             onConfigChanged: (CourseScheduleConfig config) async {
               await CourseService.instance.saveConfig(config);
               setState(() {
                 _scheduleConfig = config;
                 _sections = _scheduleConfig.generateSections();
+                _invalidateAdaptiveLayoutCache();
               });
             },
             onSemesterStartChanged: (DateTime date) async {
               await CourseService.instance.saveSemesterStart(date);
+              final int nextWeek = _clampDisplayedWeek(_currentWeek);
+              final bool shouldSyncPage = nextWeek != _currentWeek;
               setState(() {
                 _currentSemesterStart = date;
-                // 更新当前周，基于新的第一周起始日期
-                final int diffDays = DateTime.now()
-                    .difference(_firstWeekStart)
-                    .inDays;
-                int newCurrent = (diffDays / 7).floor() + 1;
-                if (newCurrent < 1) newCurrent = 1;
-                if (newCurrent > _maxWeek) newCurrent = _maxWeek;
-                _currentWeek = newCurrent;
+                _currentWeek = nextWeek;
+                _lastObservedDate = _dateOnly(DateTime.now());
+                _invalidateAdaptiveLayoutCache();
               });
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (_pageController.hasClients) {
-                  _pageController.animateToPage(
-                    _currentWeek - 1,
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                  );
-                }
-              });
+              if (shouldSyncPage) {
+                _syncPageToCurrentWeek(animate: true);
+              }
             },
             onCurrentWeekChanged: (int week) {
               _updateWeek(week);
             },
             onMaxWeekChanged: (int max) async {
               await CourseService.instance.saveMaxWeek(max);
+              final int nextWeek = _clampDisplayedWeek(
+                _currentWeek,
+                maxWeek: max,
+              );
+              final bool shouldSyncPage = nextWeek != _currentWeek;
               setState(() {
                 _maxWeek = max;
+                _currentWeek = nextWeek;
+                _invalidateAdaptiveLayoutCache();
               });
+              if (shouldSyncPage) {
+                _syncPageToCurrentWeek();
+              }
             },
             onTableNameChanged: (String name) async {
               await CourseService.instance.saveTableName(name);
@@ -742,12 +873,20 @@ class _TablePageState extends State<TablePage> {
               await CourseService.instance.saveShowWeekend(show);
               setState(() {
                 _showWeekend = show;
+                _invalidateAdaptiveLayoutCache();
               });
             },
             onShowNonCurrentWeekChanged: (bool show) async {
               await CourseService.instance.saveShowNonCurrentWeek(show);
               setState(() {
                 _showNonCurrentWeek = show;
+                _invalidateAdaptiveLayoutCache();
+              });
+            },
+            onScheduleLockedChanged: (bool locked) async {
+              await CourseService.instance.saveScheduleLocked(locked);
+              setState(() {
+                _isScheduleLocked = locked;
               });
             },
             onOpenSectionSettings: () {
@@ -757,19 +896,16 @@ class _TablePageState extends State<TablePage> {
         },
       ),
     );
-    if (result == true) {
-      _loadData();
-    } else {
-      // 即使没有返回 true，也重新加载数据，以防是从创建页面直接返回（popUntil）
-      // 或者在设置页面切换了课表但没有通过正常返回传递结果
-      _loadData();
-    }
+    final bool shouldJumpToCurrentWeek = result == 'jump_to_current_week';
+    _loadData(jumpToCurrentWeek: shouldJumpToCurrentWeek);
   }
 
   /// 构建带有固定左列的分页课表视图。
   Widget _buildPagedTable(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
+        final MediaQueryData mediaQuery = MediaQuery.of(context);
+        final double textScale = mediaQuery.textScaler.scale(14) / 14;
         // 计算时间列宽度：
         // 紧凑布局，时间列尽量窄以留更多空间给课程卡片
         final double timeColumnWidth = constraints.maxWidth / 9.5;
@@ -778,20 +914,34 @@ class _TablePageState extends State<TablePage> {
         final double gridWidth = constraints.maxWidth - timeColumnWidth;
         final double dayWidth = gridWidth / _visibleWeekdays.length;
 
-        // 统一计算节高：基于字号和课程内容动态决定，
-        // 保证左侧时间列和右侧课程表使用相同节高。
-        final double effectiveSectionHeight =
-            CourseScheduleTable.resolveEffectiveSectionHeight(
-          context: context,
+        final AdaptiveLayoutCacheKey layoutCacheKey = AdaptiveLayoutCacheKey(
+          logicalWidth: constraints.maxWidth,
+          logicalHeight: constraints.maxHeight,
           dayWidth: dayWidth,
-          courses: _courses,
-          sections: _sections,
-          currentWeek: _currentWeek,
-          showNonCurrentWeek: _showNonCurrentWeek,
-          weekdayIndexes: _visibleWeekdays,
-          maxWeek: _maxWeek,
-          adaptiveDayCount: _visibleWeekdays.length,
+          devicePixelRatio: mediaQuery.devicePixelRatio,
+          textScale: textScale,
+          visibleDayCount: _visibleWeekdays.length,
+          generation: _adaptiveLayoutGeneration,
         );
+
+        if (_adaptiveLayoutCache == null ||
+            _adaptiveLayoutCacheKey != layoutCacheKey) {
+          _adaptiveLayoutCache = CourseScheduleTable.resolveAdaptiveLayout(
+            context: context,
+            dayWidth: dayWidth,
+            courses: _courses,
+            sections: _sections,
+            currentWeek: _currentWeek,
+            showNonCurrentWeek: _showNonCurrentWeek,
+            weekdayIndexes: _visibleWeekdays,
+            maxWeek: _maxWeek,
+            adaptiveDayCount: _visibleWeekdays.length,
+          );
+          _adaptiveLayoutCacheKey = layoutCacheKey;
+        }
+
+        final CourseTableAdaptiveLayout adaptiveLayout = _adaptiveLayoutCache!;
+        final double effectiveSectionHeight = adaptiveLayout.sectionHeight;
 
         return Row(
           children: <Widget>[
@@ -804,6 +954,7 @@ class _TablePageState extends State<TablePage> {
                 weekdays: const <String>[],
                 weekdayIndexes: const <int>[],
                 adaptiveDayCount: _visibleWeekdays.length,
+                adaptiveLayout: adaptiveLayout,
                 sectionHeight: effectiveSectionHeight,
                 maxWeek: _maxWeek,
                 onWeekChanged: _updateWeek,
@@ -820,6 +971,7 @@ class _TablePageState extends State<TablePage> {
                 timeColumnWidth: timeColumnWidth,
                 scrollController: _timeColumnController,
                 editModeResetToken: _editModeResetToken,
+                isScheduleLocked: _isScheduleLocked,
               ),
             ),
             Expanded(
@@ -846,6 +998,7 @@ class _TablePageState extends State<TablePage> {
                     currentWeek: targetWeek,
                     sections: _sections,
                     adaptiveDayCount: _visibleWeekdays.length,
+                    adaptiveLayout: adaptiveLayout,
                     sectionHeight: effectiveSectionHeight,
                     weekdays: _visibleWeekdays
                         .map((int day) => _weekdayLabels[day - 1])
@@ -869,6 +1022,7 @@ class _TablePageState extends State<TablePage> {
                     showNonCurrentWeek: _showNonCurrentWeek,
                     applySurface: false,
                     editModeResetToken: _editModeResetToken,
+                    isScheduleLocked: _isScheduleLocked,
                     onEditModeChanged: (isEditing) {
                       if (_isEditing != isEditing) {
                         setState(() {
@@ -880,6 +1034,7 @@ class _TablePageState extends State<TablePage> {
                         _addCourse(weekday: weekday, section: section),
                     onCourseChanged: (oldCourse, newCourse) async {
                       setState(() {
+                        _invalidateAdaptiveLayoutCache();
                         final index = _courses.indexOf(oldCourse);
                         if (index != -1) {
                           _courses[index] = newCourse;
@@ -889,6 +1044,7 @@ class _TablePageState extends State<TablePage> {
                     },
                     onCourseDeleted: (course) async {
                       setState(() {
+                        _invalidateAdaptiveLayoutCache();
                         _courses.remove(course);
                       });
                       await CourseService.instance.saveCourses(_courses);

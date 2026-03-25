@@ -8,18 +8,41 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/course.dart';
 import '../models/course_schedule_config.dart';
+import 'theme/theme_service.dart';
 
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
+  static final Int64List _messageVibrationPattern = Int64List.fromList(<int>[
+    0,
+    120,
+    80,
+    180,
+  ]);
+
+  String _buildReminderTitle(String courseName) => '课程：$courseName';
+
+  String _buildReminderBody({
+    required int reminderMinutes,
+    required String location,
+  }) {
+    final String timingText = reminderMinutes == 0
+        ? '现在将开始上课'
+        : '距离上课还有 $reminderMinutes 分钟';
+    return '$timingText\n地点：$location';
+  }
+
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  // 原生闹钟通知通道：用于调用 Android 侧自定义 RemoteViews
+  // Android 原生提醒通道：使用系统 AlarmManager 调度，降低进程被回收后的丢提醒风险。
   static const MethodChannel _alarmChannel = MethodChannel(
     'dormdevise/alarm_notifications',
   );
+  static const String _androidNotificationIcon = 'icon_dormdevise_notification';
+  Color get _androidNotificationColor =>
+      ThemeService.instance.notificationPreviewColor;
 
   bool _isInitialized = false;
 
@@ -60,7 +83,7 @@ class NotificationService {
     }
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings(_androidNotificationIcon);
 
     final DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
@@ -76,6 +99,7 @@ class NotificationService {
         );
 
     await _notificationsPlugin.initialize(initializationSettings);
+    await _ensureAndroidChannels();
     _isInitialized = true;
   }
 
@@ -100,8 +124,11 @@ class NotificationService {
   }
 
   Future<void> cancelAllReminders() async {
+    if (Platform.isAndroid) {
+      await _cancelNativeAlarms();
+      return;
+    }
     await _notificationsPlugin.cancelAll();
-    await _cancelNativeAlarms();
   }
 
   /// 重新调度所有课程提醒
@@ -116,6 +143,7 @@ class NotificationService {
     required DateTime semesterStart,
     required int reminderMinutes,
     required String method,
+    required bool enableVibration,
   }) async {
     if (!_isInitialized) await initialize();
     await cancelAllReminders();
@@ -128,11 +156,8 @@ class NotificationService {
 
     // 获取当前时间
     final now = DateTime.now();
-    // 预调度未来 7 天的课程
-    // 如果是闹钟模式，仅调度当天的课程（不设置隔天闹钟）
-    final endSchedule = method == 'alarm'
-        ? DateTime(now.year, now.month, now.day, 23, 59, 59)
-        : now.add(const Duration(days: 7));
+    // 提前调度更长时间，减少后台停留后提醒失效的概率。
+    final endSchedule = now.add(Duration(days: method == 'alarm' ? 7 : 30));
 
     // 生成所有节次的时间表
     final sections = config.generateSections();
@@ -160,66 +185,73 @@ class NotificationService {
           final reminderTime = classTime.subtract(
             Duration(minutes: reminderMinutes),
           );
+          final String title = _buildReminderTitle(course.name);
+          final String body = _buildReminderBody(
+            reminderMinutes: reminderMinutes,
+            location: session.location,
+          );
+          final bool isAlarm = method == 'alarm';
 
           // 如果提醒时间在当前时间之后，则进行调度
           // 或者如果是“立即”提醒且时间就在刚刚（2分钟内），则立即发送
           if (reminderTime.isAfter(now)) {
-            if (method == 'alarm') {
-              // 闹钟模式：仅允许课程尚未开始，且提醒时间<=90分钟
-              if (!classTime.isAfter(now)) {
-                continue;
-              }
-              if (reminderTime.difference(now).inMinutes > 90) {
-                continue;
-              }
+            if (isAlarm && !classTime.isAfter(now)) {
+              continue;
+            }
 
-              await _scheduleNativeAlarm(
+            if (Platform.isAndroid) {
+              await _scheduleAndroidReminder(
                 id: notificationId++,
-                course: course.name,
-                location: session.location,
-                minutes: reminderMinutes,
+                title: title,
+                body: body,
                 scheduledDate: reminderTime,
+                isAlarm: isAlarm,
+                enableVibration: enableVibration,
               );
-              scheduledCount++;
             } else {
-              // 使用普通通知
               await _scheduleNotification(
                 id: notificationId++,
-                title: '上课提醒: ${course.name}',
-                body: reminderMinutes == 0
-                    ? '现在开始上课\n地点: ${session.location}'
-                    : '还有 $reminderMinutes 分钟上课\n地点: ${session.location}',
+                title: title,
+                body: body,
                 scheduledDate: reminderTime,
                 method: method,
+                enableVibration: enableVibration,
               );
-              scheduledCount++;
             }
+            scheduledCount++;
           } else if (reminderMinutes == 0 &&
               reminderTime.isAfter(now.subtract(const Duration(minutes: 2)))) {
             debugPrint('Showing immediate notification for ${course.name}');
 
-            if (method == 'alarm') {
-              // 立即闹钟：只要课程未开始且同一天
-              if (classTime.day != now.day || !classTime.isAfter(now)) {
-                continue;
-              }
+            if (isAlarm &&
+                (classTime.day != now.day || !classTime.isAfter(now))) {
+              continue;
+            }
 
-              await _showNativeAlarm(
+            if (Platform.isAndroid) {
+              await _showAndroidReminder(
                 id: notificationId++,
-                course: course.name,
-                location: session.location,
-                minutes: 0,
+                title: title,
+                body: _buildReminderBody(
+                  reminderMinutes: 0,
+                  location: session.location,
+                ),
+                isAlarm: isAlarm,
+                enableVibration: enableVibration,
               );
-              scheduledCount++;
             } else {
               await _showNotification(
                 id: notificationId++,
-                title: '上课提醒: ${course.name}',
-                body: '现在开始上课\n地点: ${session.location}',
+                title: title,
+                body: _buildReminderBody(
+                  reminderMinutes: 0,
+                  location: session.location,
+                ),
                 method: method,
+                enableVibration: enableVibration,
               );
-              scheduledCount++;
             }
+            scheduledCount++;
           }
         }
       }
@@ -228,26 +260,91 @@ class NotificationService {
     debugPrint('Scheduled $scheduledCount reminders.');
   }
 
+  Future<void> _ensureAndroidChannels() async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+    if (androidImplementation == null) {
+      return;
+    }
+
+    await androidImplementation.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'course_alarm_channel_v6',
+        '课程闹钟',
+        description: '用于发送上课前的强提醒，遵循系统闹钟铃声与提醒设置',
+        importance: Importance.max,
+        enableVibration: true,
+        playSound: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+    await androidImplementation.createNotificationChannel(
+      AndroidNotificationChannel(
+        'course_notification_channel_v8',
+        '课程消息提醒',
+        description: '用于发送类似消息横幅的上课提醒',
+        importance: Importance.max,
+        enableVibration: true,
+        vibrationPattern: _messageVibrationPattern,
+        enableLights: true,
+        playSound: true,
+        audioAttributesUsage: AudioAttributesUsage.notification,
+      ),
+    );
+    await androidImplementation.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'course_notification_channel_v8_silent',
+        '课程消息提醒（无振动）',
+        description: '用于发送无振动的消息横幅提醒',
+        importance: Importance.max,
+        enableVibration: false,
+        enableLights: true,
+        playSound: true,
+        audioAttributesUsage: AudioAttributesUsage.notification,
+      ),
+    );
+  }
+
   Future<void> _showNotification({
     required int id,
     required String title,
     required String body,
     required String method,
+    required bool enableVibration,
   }) async {
     final isAlarm = method == 'alarm';
+    final String channelId = _resolveChannelId(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelName = _resolveChannelName(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelDescription = _resolveChannelDescription(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
     await _notificationsPlugin.show(
       id,
       title,
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          isAlarm
-              ? 'course_alarm_channel_v4'
-              : 'course_notification_channel_v4',
-          isAlarm ? '课程闹钟' : '课程提醒',
-          channelDescription: isAlarm ? '用于发送上课前的强提醒' : '用于发送上课前的提醒通知',
+          channelId,
+          channelName,
+          channelDescription: channelDescription,
+          icon: _androidNotificationIcon,
+          color: _androidNotificationColor,
+          colorized: false,
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
           ticker: '课程提醒',
           visibility: NotificationVisibility.public,
           category: isAlarm
@@ -256,18 +353,15 @@ class NotificationService {
           audioAttributesUsage: isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,
+          styleInformation: BigTextStyleInformation(body),
+          enableVibration: isAlarm ? true : enableVibration,
+          vibrationPattern: isAlarm || !enableVibration
+              ? null
+              : _messageVibrationPattern,
           // 闹钟模式下启用全屏通知（如果权限允许）
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
           additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
-          actions: <AndroidNotificationAction>[
-            AndroidNotificationAction(
-              'dismiss_$id',
-              '关闭',
-              showsUserInterface: true,
-              cancelNotification: true,
-            ),
-          ],
         ),
         iOS: const DarwinNotificationDetails(
           presentSound: true,
@@ -285,14 +379,33 @@ class NotificationService {
     required String body,
     required DateTime scheduledDate,
     required String method,
+    required bool enableVibration,
   }) async {
     final isAlarm = method == 'alarm';
+    final String channelId = _resolveChannelId(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelName = _resolveChannelName(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
+    final String channelDescription = _resolveChannelDescription(
+      isAlarm: isAlarm,
+      enableVibration: enableVibration,
+    );
 
     // 检查是否具有精确闹钟权限 (Android 12+)
     // 如果没有权限，zonedSchedule 可能会失败或不准确
     // 只有当时间确实已经过去时，才直接显示，否则即使只有 1 秒也进行调度，确保整点触发
     if (scheduledDate.isBefore(DateTime.now())) {
-      await _showNotification(id: id, title: title, body: body, method: method);
+      await _showNotification(
+        id: id,
+        title: title,
+        body: body,
+        method: method,
+        enableVibration: enableVibration,
+      );
       return;
     }
 
@@ -303,13 +416,14 @@ class NotificationService {
       tz.TZDateTime.from(scheduledDate, tz.local),
       NotificationDetails(
         android: AndroidNotificationDetails(
-          isAlarm
-              ? 'course_alarm_channel_v4'
-              : 'course_notification_channel_v4',
-          isAlarm ? '课程闹钟' : '课程提醒',
-          channelDescription: isAlarm ? '用于发送上课前的强提醒' : '用于发送上课前的提醒通知',
+          channelId,
+          channelName,
+          channelDescription: channelDescription,
+          icon: _androidNotificationIcon,
+          color: _androidNotificationColor,
+          colorized: false,
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
           ticker: '课程提醒',
           visibility: NotificationVisibility.public,
           category: isAlarm
@@ -318,17 +432,14 @@ class NotificationService {
           audioAttributesUsage: isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,
+          styleInformation: BigTextStyleInformation(body),
+          enableVibration: isAlarm ? true : enableVibration,
+          vibrationPattern: isAlarm || !enableVibration
+              ? null
+              : _messageVibrationPattern,
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
           additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
-          actions: <AndroidNotificationAction>[
-            AndroidNotificationAction(
-              'dismiss_$id',
-              '关闭',
-              showsUserInterface: true,
-              cancelNotification: true,
-            ),
-          ],
         ),
         iOS: const DarwinNotificationDetails(
           presentSound: true,
@@ -343,53 +454,94 @@ class NotificationService {
     );
   }
 
-  /// 使用原生自定义 RemoteViews 的闹钟调度（让“关闭”按钮出现在右侧）。
-  Future<void> _scheduleNativeAlarm({
+  String _resolveChannelId({
+    required bool isAlarm,
+    required bool enableVibration,
+  }) {
+    if (isAlarm) {
+      return 'course_alarm_channel_v6';
+    }
+    return enableVibration
+        ? 'course_notification_channel_v8'
+        : 'course_notification_channel_v8_silent';
+  }
+
+  String _resolveChannelName({
+    required bool isAlarm,
+    required bool enableVibration,
+  }) {
+    if (isAlarm) {
+      return '课程闹钟';
+    }
+    return enableVibration ? '课程消息提醒' : '课程消息提醒（无振动）';
+  }
+
+  String _resolveChannelDescription({
+    required bool isAlarm,
+    required bool enableVibration,
+  }) {
+    if (isAlarm) {
+      return '用于发送上课前的强提醒，遵循系统闹钟铃声与提醒设置';
+    }
+    return enableVibration ? '用于发送类似消息横幅的上课提醒' : '用于发送无振动的消息横幅提醒';
+  }
+
+  Future<void> _scheduleAndroidReminder({
     required int id,
-    required String course,
-    required String location,
-    required int minutes,
+    required String title,
+    required String body,
     required DateTime scheduledDate,
+    required bool isAlarm,
+    required bool enableVibration,
   }) async {
     if (!Platform.isAndroid) {
-      // 非 Android 平台兜底为普通通知调度
       await _scheduleNotification(
         id: id,
-        title: course,
-        body: '教室: $location',
+        title: title,
+        body: body,
         scheduledDate: scheduledDate,
-        method: 'notification',
+        method: isAlarm ? 'alarm' : 'notification',
+        enableVibration: enableVibration,
       );
       return;
     }
 
-    final triggerAtMillis = scheduledDate.millisecondsSinceEpoch;
     try {
       await _alarmChannel.invokeMethod('schedule', <String, dynamic>{
         'id': id,
-        'triggerAtMillis': triggerAtMillis,
-        'course': course,
-        'location': location,
-        'minutes': minutes,
+        'triggerAtMillis': scheduledDate.millisecondsSinceEpoch,
+        'title': title,
+        'body': body,
+        'isAlarm': isAlarm,
+        'enableVibration': enableVibration,
       });
     } catch (e) {
-      debugPrint('Native alarm schedule failed: $e');
+      debugPrint('Android reminder schedule failed, fallback to plugin: $e');
+      await _scheduleNotification(
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: scheduledDate,
+        method: isAlarm ? 'alarm' : 'notification',
+        enableVibration: enableVibration,
+      );
     }
   }
 
-  /// 立即展示原生闹钟通知。
-  Future<void> _showNativeAlarm({
+  Future<void> _showAndroidReminder({
     required int id,
-    required String course,
-    required String location,
-    required int minutes,
+    required String title,
+    required String body,
+    required bool isAlarm,
+    required bool enableVibration,
   }) async {
     if (!Platform.isAndroid) {
       await _showNotification(
         id: id,
-        title: course,
-        body: '教室: $location',
-        method: 'notification',
+        title: title,
+        body: body,
+        method: isAlarm ? 'alarm' : 'notification',
+        enableVibration: enableVibration,
       );
       return;
     }
@@ -397,12 +549,20 @@ class NotificationService {
     try {
       await _alarmChannel.invokeMethod('showNow', <String, dynamic>{
         'id': id,
-        'course': course,
-        'location': location,
-        'minutes': minutes,
+        'title': title,
+        'body': body,
+        'isAlarm': isAlarm,
+        'enableVibration': enableVibration,
       });
     } catch (e) {
-      debugPrint('Native alarm show failed: $e');
+      debugPrint('Android reminder show failed, fallback to plugin: $e');
+      await _showNotification(
+        id: id,
+        title: title,
+        body: body,
+        method: isAlarm ? 'alarm' : 'notification',
+        enableVibration: enableVibration,
+      );
     }
   }
 
@@ -413,6 +573,16 @@ class NotificationService {
       await _alarmChannel.invokeMethod('cancelAll');
     } catch (e) {
       debugPrint('Native alarm cancel failed: $e');
+    }
+  }
+
+  /// 让 Android 原生侧按照已持久化的提醒信息恢复系统调度。
+  Future<void> restoreNativeReminders() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _alarmChannel.invokeMethod('restore');
+    } catch (e) {
+      debugPrint('Native alarm restore failed: $e');
     }
   }
 

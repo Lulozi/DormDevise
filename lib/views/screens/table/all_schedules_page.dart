@@ -18,6 +18,7 @@ class AllSchedulesPage extends StatefulWidget {
   final String tableName;
   final bool showWeekend;
   final bool showNonCurrentWeek;
+  final bool isScheduleLocked;
   final ValueChanged<CourseScheduleConfig> onConfigChanged;
   final ValueChanged<DateTime> onSemesterStartChanged;
   final ValueChanged<int> onCurrentWeekChanged;
@@ -25,6 +26,7 @@ class AllSchedulesPage extends StatefulWidget {
   final ValueChanged<String> onTableNameChanged;
   final ValueChanged<bool> onShowWeekendChanged;
   final ValueChanged<bool> onShowNonCurrentWeekChanged;
+  final ValueChanged<bool> onScheduleLockedChanged;
   final VoidCallback onOpenSectionSettings;
 
   const AllSchedulesPage({
@@ -36,6 +38,7 @@ class AllSchedulesPage extends StatefulWidget {
     required this.tableName,
     required this.showWeekend,
     required this.showNonCurrentWeek,
+    required this.isScheduleLocked,
     required this.onConfigChanged,
     required this.onSemesterStartChanged,
     required this.onCurrentWeekChanged,
@@ -43,6 +46,7 @@ class AllSchedulesPage extends StatefulWidget {
     required this.onTableNameChanged,
     required this.onShowWeekendChanged,
     required this.onShowNonCurrentWeekChanged,
+    required this.onScheduleLockedChanged,
     required this.onOpenSectionSettings,
   });
 
@@ -58,6 +62,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   late int _maxWeek;
   late bool _showWeekend;
   late bool _showNonCurrentWeek;
+  late bool _isScheduleLocked;
 
   // _isAddMenuOpen 和 _addBtnKey 用于旧的气泡菜单，现在不再需要
   final GlobalKey _addBtnKey = GlobalKey();
@@ -74,6 +79,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
   // 动画状态标记
   String? _newlyAddedId;
   bool _shouldFlashNewlyAdded = true;
+  bool _shouldJumpToCurrentWeekOnExit = false;
 
   String? _initialScheduleId;
 
@@ -87,6 +93,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     _maxWeek = widget.maxWeek;
     _showWeekend = widget.showWeekend;
     _showNonCurrentWeek = widget.showNonCurrentWeek;
+    _isScheduleLocked = widget.isScheduleLocked;
     _loadSchedules();
   }
 
@@ -102,6 +109,19 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         _isLoading = false;
       });
     }
+  }
+
+  void _popWithRefreshResult() {
+    if (_initialScheduleId != null &&
+        _currentScheduleId != _initialScheduleId) {
+      Navigator.of(context).pop(
+        _shouldJumpToCurrentWeekOnExit
+            ? 'jump_to_current_week'
+            : 'refresh_only',
+      );
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   void _toggleSelectionMode() {
@@ -179,6 +199,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         final newShowNonCurrentWeek = await service.loadShowNonCurrentWeek(
           currentId,
         );
+        final newIsScheduleLocked = await service.loadScheduleLocked(currentId);
 
         if (mounted) {
           setState(() {
@@ -188,6 +209,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             _tableName = newTableName;
             _showWeekend = newShowWeekend;
             _showNonCurrentWeek = newShowNonCurrentWeek;
+            _isScheduleLocked = newIsScheduleLocked;
           });
         }
       }
@@ -247,6 +269,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     if (oldWidget.showNonCurrentWeek != widget.showNonCurrentWeek) {
       _showNonCurrentWeek = widget.showNonCurrentWeek;
     }
+    if (oldWidget.isScheduleLocked != widget.isScheduleLocked) {
+      _isScheduleLocked = widget.isScheduleLocked;
+    }
   }
 
   // BubblePopupController? _bubbleController;  // 不再需要
@@ -261,13 +286,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         if (_isSelectionMode) {
           _toggleSelectionMode();
         } else {
-          // 正常返回时，如果当前课表ID变了，也应该返回true
-          if (_initialScheduleId != null &&
-              _currentScheduleId != _initialScheduleId) {
-            Navigator.of(context).pop(true);
-          } else {
-            Navigator.of(context).pop();
-          }
+          _popWithRefreshResult();
         }
       },
       child: Scaffold(
@@ -292,7 +311,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                     Icons.arrow_back_ios_new,
                     color: colorScheme.onSurface,
                   ),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _popWithRefreshResult,
                 ),
           leadingWidth: _isSelectionMode ? 80 : null,
           title: Text(
@@ -342,6 +361,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                       setState(() {
                         _newlyAddedId = _schedules.first.id;
                         _shouldFlashNewlyAdded = true;
+                        _shouldJumpToCurrentWeekOnExit = true;
                       });
                     }
                   }
@@ -599,12 +619,12 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               if (!isCurrent) {
                 await CourseService.instance.switchSchedule(id);
                 if (context.mounted) {
-                  Navigator.of(context).pop(true);
+                  Navigator.of(context).pop('refresh_only');
                 }
               } else {
                 // 如果点击的是当前课表，且当前课表ID与进入页面时的ID不同（说明发生了切换或重建），则返回true刷新
                 if (_initialScheduleId != null && id != _initialScheduleId) {
-                  Navigator.of(context).pop(true);
+                  _popWithRefreshResult();
                 } else {
                   Navigator.of(context).pop();
                 }
@@ -731,6 +751,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
     String tableName;
     bool showWeekend;
     bool showNonCurrentWeek;
+    bool isScheduleLocked;
 
     if (scheduleId == _currentScheduleId) {
       config = _scheduleConfig;
@@ -740,6 +761,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       tableName = _tableName;
       showWeekend = _showWeekend;
       showNonCurrentWeek = _showNonCurrentWeek;
+      isScheduleLocked = _isScheduleLocked;
     } else {
       final service = CourseService.instance;
       config = await service.loadConfig(scheduleId);
@@ -749,6 +771,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
       tableName = await service.loadTableName(scheduleId);
       showWeekend = await service.loadShowWeekend(scheduleId);
       showNonCurrentWeek = await service.loadShowNonCurrentWeek(scheduleId);
+      isScheduleLocked = await service.loadScheduleLocked(scheduleId);
 
       final DateTime now = DateTime.now();
       final DateTime firstWeekStart = semesterStart.subtract(
@@ -775,6 +798,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
             tableName: tableName,
             showWeekend: showWeekend,
             showNonCurrentWeek: showNonCurrentWeek,
+            isScheduleLocked: isScheduleLocked,
             nameValidator: (name) async {
               final exists = _schedules.any(
                 (s) => s.name == name && s.id != scheduleId,
@@ -854,6 +878,17 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                 scheduleId,
               );
               showNonCurrentWeek = show; // 更新本地变量
+            },
+            onScheduleLockedChanged: (locked) async {
+              if (scheduleId == _currentScheduleId) {
+                widget.onScheduleLockedChanged(locked);
+                setState(() => _isScheduleLocked = locked);
+              }
+              await CourseService.instance.saveScheduleLocked(
+                locked,
+                scheduleId,
+              );
+              isScheduleLocked = locked;
             },
             onOpenSectionSettings: () {
               if (scheduleId == _currentScheduleId) {

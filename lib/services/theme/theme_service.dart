@@ -76,6 +76,16 @@ class ThemeService extends ChangeNotifier {
   /// 当前用户选择的主色调
   Color get primaryColor => _primaryColor;
 
+  /// 通知等系统着色场景使用的预览强调色。
+  ///
+  /// 白色/乌黑模式下避免直接返回纯白，改用与开关轨道一致的深灰。
+  Color get notificationPreviewColor {
+    if (isWhiteMode) {
+      return Colors.grey.shade700;
+    }
+    return _primaryColor;
+  }
+
   /// 当前是否启用了自定义主题颜色预览
   bool get isCustomPreviewEnabled => _isCustomPreviewEnabled;
 

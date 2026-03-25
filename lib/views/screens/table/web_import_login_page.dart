@@ -36,11 +36,29 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   bool _obscurePassword = true;
   bool _isSaving = false;
   bool _isLoading = true;
+  Uint8List? _cachedBadgeBytes;
+  ImageProvider<Object>? _schoolBadgeProvider;
 
   @override
   void initState() {
     super.initState();
+    _refreshSchoolBadge();
     _loadSavedCredentials();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _schoolBadgeProvider == null) {
+        return;
+      }
+      precacheImage(_schoolBadgeProvider!, context);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant WebImportLoginPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.school.badgeBase64 != widget.school.badgeBase64 ||
+        oldWidget.school.name != widget.school.name) {
+      _refreshSchoolBadge();
+    }
   }
 
   @override
@@ -64,6 +82,19 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     _passwordController.selection = TextSelection.collapsed(
       offset: _passwordController.text.length,
     );
+  }
+
+  void _refreshSchoolBadge() {
+    _cachedBadgeBytes = _decodeBadgeBytes(widget.school.badgeBase64);
+    if (_cachedBadgeBytes != null) {
+      _schoolBadgeProvider = MemoryImage(_cachedBadgeBytes!);
+      return;
+    }
+    if (widget.school.name == '福州理工学院') {
+      _schoolBadgeProvider = const AssetImage(_fitBadgeAsset);
+      return;
+    }
+    _schoolBadgeProvider = null;
   }
 
   /// 加载已保存的凭据（如果有）。
@@ -139,6 +170,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     if (_savedAccounts.isEmpty) {
       return;
     }
+    FocusScope.of(context).unfocus();
     setState(() {
       _isAccountListExpanded = !_isAccountListExpanded;
     });
@@ -285,23 +317,13 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
   /// 构建学校校徽，优先使用导入校徽，其次使用预设 FIT 校徽，最后降级为图标。
   Widget _buildSchoolBadge() {
-    final Uint8List? badgeBytes = _decodeBadgeBytes(widget.school.badgeBase64);
-    if (badgeBytes != null) {
+    if (_schoolBadgeProvider != null) {
       return ClipOval(
-        child: Image.memory(
-          badgeBytes,
+        child: Image(
+          image: _schoolBadgeProvider!,
           fit: BoxFit.cover,
-          filterQuality: FilterQuality.high,
-        ),
-      );
-    }
-
-    if (widget.school.name == '福州理工学院') {
-      return ClipOval(
-        child: Image.asset(
-          _fitBadgeAsset,
-          fit: BoxFit.cover,
-          filterQuality: FilterQuality.high,
+          filterQuality: FilterQuality.low,
+          gaplessPlayback: true,
         ),
       );
     }
@@ -326,68 +348,59 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   }
 
   Widget _buildSavedAccountPanel(ColorScheme colorScheme) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      child: !_isAccountListExpanded || _savedAccounts.isEmpty
-          ? const SizedBox.shrink()
-          : Container(
-              margin: const EdgeInsets.only(top: 8),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withAlpha(90),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colorScheme.outlineVariant),
+    if (!_isAccountListExpanded || _savedAccounts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withAlpha(90),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        children: List<Widget>.generate(_savedAccounts.length, (int index) {
+          final WebSchoolCredential account = _savedAccounts[index];
+          final bool isLast = index == _savedAccounts.length - 1;
+          return Column(
+            children: <Widget>[
+              ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 0,
+                ),
+                leading: Icon(
+                  Icons.account_circle_outlined,
+                  color: colorScheme.primary,
+                  size: 20,
+                ),
+                title: Text(
+                  account.username,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
+                ),
+                onTap: () => _selectAccount(account),
+                trailing: IconButton(
+                  tooltip: '删除账号',
+                  onPressed: () => _deleteSavedAccount(account.username),
+                  icon: Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: colorScheme.error,
+                  ),
+                ),
               ),
-              child: Column(
-                children: List<Widget>.generate(_savedAccounts.length, (
-                  int index,
-                ) {
-                  final WebSchoolCredential account = _savedAccounts[index];
-                  final bool isLast = index == _savedAccounts.length - 1;
-                  return Column(
-                    children: <Widget>[
-                      ListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 0,
-                        ),
-                        leading: Icon(
-                          Icons.account_circle_outlined,
-                          color: colorScheme.primary,
-                          size: 20,
-                        ),
-                        title: Text(
-                          account.username,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        onTap: () => _selectAccount(account),
-                        trailing: IconButton(
-                          tooltip: '删除账号',
-                          onPressed: () =>
-                              _deleteSavedAccount(account.username),
-                          icon: Icon(
-                            Icons.delete_outline,
-                            size: 20,
-                            color: colorScheme.error,
-                          ),
-                        ),
-                      ),
-                      if (!isLast)
-                        Divider(
-                          height: 1,
-                          color: colorScheme.outlineVariant.withAlpha(160),
-                        ),
-                    ],
-                  );
-                }),
-              ),
-            ),
+              if (!isLast)
+                Divider(
+                  height: 1,
+                  color: colorScheme.outlineVariant.withAlpha(160),
+                ),
+            ],
+          );
+        }),
+      ),
     );
   }
 
@@ -416,17 +429,17 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  // 学校图标与提示
-                  Center(
-                    child: SizedBox(
-                      width: 76,
-                      height: 76,
-                      child: _buildSchoolBadge(),
+          : ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+              children: <Widget>[
+                  RepaintBoundary(
+                    child: Center(
+                      child: SizedBox(
+                        width: 76,
+                        height: 76,
+                        child: _buildSchoolBadge(),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -440,164 +453,183 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                     ),
                   ),
                   const SizedBox(height: 32),
-
-                  // 表单卡片
-                  Container(
-                    decoration: BoxDecoration(
-                      color:
-                          Theme.of(context).cardTheme.color ??
-                          colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.02),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                  RepaintBoundary(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color:
+                            Theme.of(context).cardTheme.color ??
+                            colorScheme.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withAlpha(110),
                         ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        // 账号输入
-                        Text(
-                          '账号',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: colorScheme.onSurface,
-                            fontWeight: FontWeight.w500,
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            '账号',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _usernameController,
-                          focusNode: _usernameFocusNode,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: colorScheme.onSurface,
-                          ),
-                          onTap: _toggleAccountList,
-                          onChanged: _handleUsernameChanged,
-                          decoration: InputDecoration(
-                            hintText: '请输入学号或用户名',
-                            hintStyle: TextStyle(
-                              color: colorScheme.onSurface.withAlpha(102),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _usernameController,
+                            focusNode: _usernameFocusNode,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            enableIMEPersonalizedLearning: false,
+                            smartDashesType: SmartDashesType.disabled,
+                            smartQuotesType: SmartQuotesType.disabled,
+                            style: TextStyle(
                               fontSize: 15,
+                              color: colorScheme.onSurface,
                             ),
-                            prefixIcon: Icon(
-                              Icons.person_outline,
-                              color: colorScheme.primary,
-                              size: 22,
-                            ),
-                            suffixIcon: _savedAccounts.isEmpty
-                                ? null
-                                : IconButton(
-                                    onPressed: _toggleAccountList,
-                                    icon: Icon(
-                                      _isAccountListExpanded
-                                          ? Icons.keyboard_arrow_up_rounded
-                                          : Icons.keyboard_arrow_down_rounded,
-                                      color: colorScheme.onSurface.withAlpha(
-                                        153,
-                                      ),
-                                    ),
-                                  ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
-                            ),
-                            filled: true,
-                            fillColor: colorScheme.surfaceContainerHighest
-                                .withAlpha(128),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: colorScheme.primary,
-                                width: 1.5,
-                              ),
-                            ),
-                          ),
-                          textInputAction: TextInputAction.next,
-                        ),
-                        _buildSavedAccountPanel(colorScheme),
-                        const SizedBox(height: 20),
-
-                        // 密码输入
-                        Text(
-                          '密码',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: colorScheme.onSurface,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _passwordController,
-                          focusNode: _passwordFocusNode,
-                          obscureText: _obscurePassword,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: colorScheme.onSurface,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: '请输入密码',
-                            hintStyle: TextStyle(
-                              color: colorScheme.onSurface.withAlpha(102),
-                              fontSize: 15,
-                            ),
-                            prefixIcon: Icon(
-                              Icons.lock_outline,
-                              color: colorScheme.primary,
-                              size: 22,
-                            ),
-                            suffixIcon: IconButton(
-                              onPressed: () {
+                            onTap: () {
+                              if (_isAccountListExpanded) {
                                 setState(() {
-                                  _obscurePassword = !_obscurePassword;
+                                  _isAccountListExpanded = false;
                                 });
-                              },
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: colorScheme.onSurface.withAlpha(128),
+                              }
+                            },
+                            onChanged: _handleUsernameChanged,
+                            onTapOutside: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
+                            decoration: InputDecoration(
+                              hintText: '请输入学号或用户名',
+                              hintStyle: TextStyle(
+                                color: colorScheme.onSurface.withAlpha(102),
+                                fontSize: 15,
+                              ),
+                              prefixIcon: Icon(
+                                Icons.person_outline,
+                                color: colorScheme.primary,
                                 size: 22,
                               ),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
-                            ),
-                            filled: true,
-                            fillColor: colorScheme.surfaceContainerHighest
-                                .withAlpha(128),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: colorScheme.primary,
-                                width: 1.5,
+                              suffixIcon: _savedAccounts.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      onPressed: _toggleAccountList,
+                                      icon: Icon(
+                                        _isAccountListExpanded
+                                            ? Icons.keyboard_arrow_up_rounded
+                                            : Icons.keyboard_arrow_down_rounded,
+                                        color: colorScheme.onSurface.withAlpha(
+                                          153,
+                                        ),
+                                      ),
+                                    ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
+                              filled: true,
+                              fillColor: colorScheme.surfaceContainerHighest
+                                  .withAlpha(128),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: colorScheme.primary,
+                                  width: 1.5,
+                                ),
                               ),
                             ),
+                            textInputAction: TextInputAction.next,
                           ),
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _saveCredentialsAndOpenWebLogin(),
-                        ),
-                      ],
+                          _buildSavedAccountPanel(colorScheme),
+                          const SizedBox(height: 20),
+                          Text(
+                            '密码',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _passwordController,
+                            focusNode: _passwordFocusNode,
+                            obscureText: _obscurePassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            enableIMEPersonalizedLearning: false,
+                            smartDashesType: SmartDashesType.disabled,
+                            smartQuotesType: SmartQuotesType.disabled,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: colorScheme.onSurface,
+                            ),
+                            onTap: () {
+                              if (_isAccountListExpanded) {
+                                setState(() {
+                                  _isAccountListExpanded = false;
+                                });
+                              }
+                            },
+                            onTapOutside: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
+                            decoration: InputDecoration(
+                              hintText: '请输入密码',
+                              hintStyle: TextStyle(
+                                color: colorScheme.onSurface.withAlpha(102),
+                                fontSize: 15,
+                              ),
+                              prefixIcon: Icon(
+                                Icons.lock_outline,
+                                color: colorScheme.primary,
+                                size: 22,
+                              ),
+                              suffixIcon: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: colorScheme.onSurface.withAlpha(128),
+                                  size: 22,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
+                              filled: true,
+                              fillColor: colorScheme.surfaceContainerHighest
+                                  .withAlpha(128),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: colorScheme.primary,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) =>
+                                _saveCredentialsAndOpenWebLogin(),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // 安全提示
                   Row(
                     children: <Widget>[
                       Icon(
@@ -618,14 +650,10 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                     ],
                   ),
                   const SizedBox(height: 32),
-
-                  // 保存按钮
                   SizedBox(
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: _isSaving
-                          ? null
-                          : _saveCredentialsAndOpenWebLogin,
+                      onPressed: _isSaving ? null : _saveCredentialsAndOpenWebLogin,
                       child: _isSaving
                           ? SizedBox(
                               width: 22,
@@ -644,8 +672,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                             ),
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
     );
   }

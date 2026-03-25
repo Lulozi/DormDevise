@@ -26,6 +26,9 @@ class CreateScheduleSettingsPage extends StatefulWidget {
   /// 预填充是否显示非本周课程。
   final bool? initialShowNonCurrentWeek;
 
+  /// 预填充课程表是否锁定。
+  final bool initialLockSchedule;
+
   /// 从外部导入的课程列表（透传给下一步的课程页面）。
   final List<Course> initialCourses;
 
@@ -37,6 +40,7 @@ class CreateScheduleSettingsPage extends StatefulWidget {
     this.initialMaxWeek,
     this.initialShowWeekend,
     this.initialShowNonCurrentWeek,
+    this.initialLockSchedule = false,
     this.initialCourses = const <Course>[],
   });
 
@@ -63,6 +67,7 @@ class _CreateScheduleSettingsPageState
   String _tableName = '我的课表';
   bool _showWeekend = false;
   bool _showNonCurrentWeek = true;
+  bool _isScheduleLocked = false;
 
   @override
   void initState() {
@@ -87,6 +92,7 @@ class _CreateScheduleSettingsPageState
     if (widget.initialShowNonCurrentWeek != null) {
       _showNonCurrentWeek = widget.initialShowNonCurrentWeek!;
     }
+    _isScheduleLocked = widget.initialLockSchedule;
   }
 
   @override
@@ -127,6 +133,7 @@ class _CreateScheduleSettingsPageState
           tableName: name,
           showWeekend: _showWeekend,
           showNonCurrentWeek: _showNonCurrentWeek,
+          isScheduleLocked: _isScheduleLocked,
           initialCourses: widget.initialCourses,
         ),
       ),
@@ -241,6 +248,7 @@ class _CreateScheduleSettingsPageState
         tableName: _tableName,
         showWeekend: _showWeekend,
         showNonCurrentWeek: _showNonCurrentWeek,
+        isScheduleLocked: _isScheduleLocked,
         onConfigChanged: (v) => setState(() => _scheduleConfig = v),
         onSemesterStartChanged: (v) => setState(() => _semesterStart = v),
         onCurrentWeekChanged: (v) => setState(() => _currentWeek = v),
@@ -249,6 +257,7 @@ class _CreateScheduleSettingsPageState
         onShowWeekendChanged: (v) => setState(() => _showWeekend = v),
         onShowNonCurrentWeekChanged: (v) =>
             setState(() => _showNonCurrentWeek = v),
+        onScheduleLockedChanged: (v) => setState(() => _isScheduleLocked = v),
         onOpenSectionSettings: _openSectionSettings,
       ),
     );

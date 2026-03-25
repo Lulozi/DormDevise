@@ -3,6 +3,7 @@ package com.lulo.dormdevise
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -67,28 +68,69 @@ class MainActivity : FlutterActivity() {
 				"schedule" -> {
 					val id = call.argument<Int>("id") ?: 0
 					val triggerAtMillis = call.argument<Long>("triggerAtMillis") ?: 0L
-					val course = call.argument<String>("course") ?: "课程"
-					val location = call.argument<String>("location") ?: "未知教室"
-					val minutes = call.argument<Int>("minutes") ?: 0
-					AlarmNotificationScheduler.schedule(applicationContext, id, triggerAtMillis, course, location, minutes)
+					val title = call.argument<String>("title") ?: "课程提醒"
+					val body = call.argument<String>("body") ?: ""
+					val isAlarm = call.argument<Boolean>("isAlarm") ?: false
+					val enableVibration = call.argument<Boolean>("enableVibration") ?: true
+					AlarmNotificationScheduler.schedule(
+						context = applicationContext,
+						id = id,
+						triggerAtMillis = triggerAtMillis,
+						title = title,
+						body = body,
+						isAlarm = isAlarm,
+						enableVibration = enableVibration
+					)
 					result.success(null)
 				}
 				"showNow" -> {
 					val id = call.argument<Int>("id") ?: 0
-					val course = call.argument<String>("course") ?: "课程"
-					val location = call.argument<String>("location") ?: "未知教室"
-					val minutes = call.argument<Int>("minutes") ?: 0
-					AlarmNotificationScheduler.showNow(applicationContext, id, course, location, minutes)
+					val title = call.argument<String>("title") ?: "课程提醒"
+					val body = call.argument<String>("body") ?: ""
+					val isAlarm = call.argument<Boolean>("isAlarm") ?: false
+					val enableVibration = call.argument<Boolean>("enableVibration") ?: true
+					AlarmNotificationScheduler.showNow(
+						context = applicationContext,
+						id = id,
+						title = title,
+						body = body,
+						isAlarm = isAlarm,
+						enableVibration = enableVibration
+					)
 					result.success(null)
 				}
 				"cancelAll" -> {
 					AlarmNotificationScheduler.cancelAll(applicationContext)
 					result.success(null)
 				}
+				"restore" -> {
+					AlarmNotificationScheduler.restoreAll(applicationContext)
+					result.success(null)
+				}
                 "list" -> {
                     val ids = AlarmNotificationScheduler.getScheduledIds(applicationContext)
                     result.success(ids)
                 }
+				else -> result.notImplemented()
+			}
+		}
+
+		MethodChannel(
+			flutterEngine.dartExecutor.binaryMessenger,
+			"dormdevise/window"
+		).setMethodCallHandler { call, result ->
+			when (call.method) {
+				"setSoftInputMode" -> {
+					val mode = when (call.argument<String>("mode")) {
+						"adjustNothing" -> WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+						"adjustPan" -> WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+						else -> WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+					}
+					runOnUiThread {
+						window.setSoftInputMode(mode)
+						result.success(null)
+					}
+				}
 				else -> result.notImplemented()
 			}
 		}

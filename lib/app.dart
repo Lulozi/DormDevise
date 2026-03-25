@@ -1,13 +1,15 @@
 import 'dart:async';
 
 import 'package:dormdevise/views/screens/open_door/open_door_page.dart';
-import 'package:dormdevise/views/screens/open_door/open_door_settings_page.dart';
+import 'package:dormdevise/views/screens/open_door/door_lock_config_page.dart';
 import 'package:dormdevise/views/screens/open_door/door_widget_prompt_page.dart';
 import 'package:dormdevise/widgets/door_widget_dialog.dart';
 import 'package:dormdevise/views/screens/person/person_page.dart';
 import 'package:dormdevise/views/screens/table/table_page.dart';
+import 'package:dormdevise/services/course_service.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/theme/theme_service.dart';
+import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -123,6 +125,9 @@ class ManagementScreenState extends State<ManagementScreen>
   bool _navLocked = false;
   StreamSubscription<Uri?>? _widgetLaunchSubscription;
   bool _widgetDialogVisible = false;
+  bool _updatePromptVisible = false;
+  bool _updateCheckInProgress = false;
+  DateTime _lastReminderRefreshAt = DateTime.now();
 
   /// 根据原始页面索引构建对应的业务页面。
   ///
@@ -211,6 +216,18 @@ class ManagementScreenState extends State<ManagementScreen>
     _bindWidgetLaunchEvents();
     // 提前请求通知权限
     UpdateDownloadService.instance.initializeNotifications();
+    UpdateDownloadService.instance.setAppInForeground(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) {
+          return;
+        }
+        unawaited(
+          UpdateDownloadService.instance.resumePendingInstallIfNeeded(),
+        );
+        unawaited(_checkForUpdatesOnLaunch());
+      });
+    });
   }
 
   /// 移除绑定并释放控制器资源。
@@ -220,6 +237,29 @@ class ManagementScreenState extends State<ManagementScreen>
     _widgetLaunchSubscription?.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+
+  static DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final bool isForeground = state == AppLifecycleState.resumed;
+    UpdateDownloadService.instance.setAppInForeground(isForeground);
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+    unawaited(UpdateDownloadService.instance.resumePendingInstallIfNeeded());
+    final DateTime now = DateTime.now();
+    final bool crossedDay = _dateOnly(now) != _dateOnly(_lastReminderRefreshAt);
+    final bool exceededRefreshWindow =
+        now.difference(_lastReminderRefreshAt) >= const Duration(hours: 6);
+    if (crossedDay || exceededRefreshWindow) {
+      _lastReminderRefreshAt = now;
+      unawaited(CourseService.instance.initializeReminders(force: true));
+    }
+    unawaited(_checkForUpdatesOnLaunch());
   }
 
   /// 绑定桌面微件事件流，支持轻点微件后自动弹出滑动对话框。
@@ -270,6 +310,48 @@ class ManagementScreenState extends State<ManagementScreen>
         break;
       default:
         break;
+    }
+  }
+
+  Future<void> _checkForUpdatesOnLaunch() async {
+    if (_updateCheckInProgress ||
+        _widgetDialogVisible ||
+        _updatePromptVisible) {
+      return;
+    }
+    if (UpdateDownloadService.instance.coordinator.isDownloading) {
+      return;
+    }
+    _updateCheckInProgress = true;
+    if (await UpdateDownloadService.instance.hasPendingInstall()) {
+      _updateCheckInProgress = false;
+      return;
+    }
+    try {
+      final UpdateCheckResult? result = await UpdateCheckService.instance
+          .fetchAvailableUpdate(forceRefresh: true);
+      if (!mounted ||
+          result == null ||
+          !result.hasCompatibleAsset ||
+          _widgetDialogVisible) {
+        return;
+      }
+
+      _updatePromptVisible = true;
+      final bool? shouldStartUpdate = await UpdateCheckService.instance
+          .showUpdateAvailableDialog(context, result, confirmLabel: '立即更新');
+      if (!mounted || shouldStartUpdate != true) {
+        return;
+      }
+      await UpdateCheckService.instance.startBackgroundUpdate(
+        asset: result.asset,
+        releaseVersion: result.latestVersion,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('启动更新检查失败: $error\n$stackTrace');
+    } finally {
+      _updatePromptVisible = false;
+      _updateCheckInProgress = false;
     }
   }
 

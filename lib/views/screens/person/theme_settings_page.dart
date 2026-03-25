@@ -1028,6 +1028,7 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
   late double _switchThumbTone;
   bool _isSwitchThumbToneManuallyAdjusted = false;
   bool _previewSwitchValue = true;
+  bool _isPickerInteracting = false;
 
   @override
   void initState() {
@@ -1063,6 +1064,15 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
   void _syncSwitchThumbToneIfNeeded() {
     if (_isSwitchThumbToneManuallyAdjusted) return;
     _switchThumbTone = _resolveAutoSwitchThumbTone(_pickerColor);
+  }
+
+  void _setPickerInteracting(bool value) {
+    if (!mounted || _isPickerInteracting == value) {
+      return;
+    }
+    setState(() {
+      _isPickerInteracting = value;
+    });
   }
 
   @override
@@ -1105,6 +1115,9 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                 ],
               ),
               child: SingleChildScrollView(
+                physics: _isPickerInteracting
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1240,6 +1253,8 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                           hue: _hue,
                           saturation: _saturation,
                           brightness: _brightness,
+                          onInteractionStart: () => _setPickerInteracting(true),
+                          onInteractionEnd: () => _setPickerInteracting(false),
                           onChanged: (s, v) => setState(() {
                             _saturation = s;
                             _brightness = v;
@@ -1257,6 +1272,10 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                             height: 24,
                             child: _HueSlider(
                               hue: _hue,
+                              onInteractionStart: () =>
+                                  _setPickerInteracting(true),
+                              onInteractionEnd: () =>
+                                  _setPickerInteracting(false),
                               onChanged: (h) => setState(() {
                                 _hue = h;
                                 _syncSwitchThumbToneIfNeeded();
@@ -1290,6 +1309,10 @@ class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
                             height: 24,
                             child: _GraySlider(
                               value: _switchThumbTone,
+                              onInteractionStart: () =>
+                                  _setPickerInteracting(true),
+                              onInteractionEnd: () =>
+                                  _setPickerInteracting(false),
                               onChanged: (v) => setState(() {
                                 _switchThumbTone = v;
                                 _isSwitchThumbToneManuallyAdjusted = true;
@@ -1485,12 +1508,16 @@ class _SVPicker extends StatelessWidget {
   final double saturation;
   final double brightness;
   final void Function(double saturation, double brightness) onChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
 
   const _SVPicker({
     required this.hue,
     required this.saturation,
     required this.brightness,
     required this.onChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
   });
 
   void _handleInteraction(Offset localPosition, Size size) {
@@ -1503,36 +1530,40 @@ class _SVPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        return GestureDetector(
-          // onPanDown 让 PanGestureRecognizer 立即参与竞争，
-          // 赢过 SingleChildScrollView 的 VerticalDragGestureRecognizer，
-          // 确保手指在色板上滑动时只调色而不滚动弹窗页面。
-          onPanDown: (_) {},
-          onPanStart: (d) =>
-              _handleInteraction(d.localPosition, constraints.biggest),
-          onPanUpdate: (d) =>
-              _handleInteraction(d.localPosition, constraints.biggest),
-          child: CustomPaint(
-            painter: _SVPainter(hue: hue),
-            child: Stack(
-              children: [
-                // 圆形选择指示器
-                Positioned(
-                  left: saturation * constraints.maxWidth - 8,
-                  top: (1.0 - brightness) * constraints.maxHeight - 8,
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 4),
-                      ],
+        return Listener(
+          onPointerDown: (_) => onInteractionStart?.call(),
+          onPointerUp: (_) => onInteractionEnd?.call(),
+          onPointerCancel: (_) => onInteractionEnd?.call(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) =>
+                _handleInteraction(d.localPosition, constraints.biggest),
+            onPanStart: (d) =>
+                _handleInteraction(d.localPosition, constraints.biggest),
+            onPanUpdate: (d) =>
+                _handleInteraction(d.localPosition, constraints.biggest),
+            child: CustomPaint(
+              painter: _SVPainter(hue: hue),
+              child: Stack(
+                children: [
+                  // 圆形选择指示器
+                  Positioned(
+                    left: saturation * constraints.maxWidth - 8,
+                    top: (1.0 - brightness) * constraints.maxHeight - 8,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 4),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1585,8 +1616,15 @@ class _SVPainter extends CustomPainter {
 class _HueSlider extends StatelessWidget {
   final double hue;
   final ValueChanged<double> onChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
 
-  const _HueSlider({required this.hue, required this.onChanged});
+  const _HueSlider({
+    required this.hue,
+    required this.onChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+  });
 
   void _handleInteraction(Offset localPosition, double width) {
     final h = (localPosition.dx / width).clamp(0.0, 1.0) * 360;
@@ -1598,29 +1636,36 @@ class _HueSlider extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        return GestureDetector(
-          onPanStart: (d) => _handleInteraction(d.localPosition, width),
-          onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
-          child: CustomPaint(
-            painter: _HuePainter(),
-            child: Stack(
-              children: [
-                Positioned(
-                  left: (hue / 360.0) * width - 6,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 12,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 3),
-                      ],
+        return Listener(
+          onPointerDown: (_) => onInteractionStart?.call(),
+          onPointerUp: (_) => onInteractionEnd?.call(),
+          onPointerCancel: (_) => onInteractionEnd?.call(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => _handleInteraction(d.localPosition, width),
+            onPanStart: (d) => _handleInteraction(d.localPosition, width),
+            onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
+            child: CustomPaint(
+              painter: _HuePainter(),
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: (hue / 360.0) * width - 6,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 12,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 3),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1633,8 +1678,15 @@ class _HueSlider extends StatelessWidget {
 class _GraySlider extends StatelessWidget {
   final double value;
   final ValueChanged<double> onChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
 
-  const _GraySlider({required this.value, required this.onChanged});
+  const _GraySlider({
+    required this.value,
+    required this.onChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+  });
 
   void _handleInteraction(Offset localPosition, double width) {
     final normalized = (localPosition.dx / width).clamp(0.0, 1.0);
@@ -1646,29 +1698,36 @@ class _GraySlider extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        return GestureDetector(
-          onPanStart: (d) => _handleInteraction(d.localPosition, width),
-          onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
-          child: CustomPaint(
-            painter: _GrayPainter(),
-            child: Stack(
-              children: [
-                Positioned(
-                  left: value.clamp(0.0, 1.0) * width - 6,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 12,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 3),
-                      ],
+        return Listener(
+          onPointerDown: (_) => onInteractionStart?.call(),
+          onPointerUp: (_) => onInteractionEnd?.call(),
+          onPointerCancel: (_) => onInteractionEnd?.call(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => _handleInteraction(d.localPosition, width),
+            onPanStart: (d) => _handleInteraction(d.localPosition, width),
+            onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
+            child: CustomPaint(
+              painter: _GrayPainter(),
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: value.clamp(0.0, 1.0) * width - 6,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 12,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 3),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

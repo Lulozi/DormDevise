@@ -154,30 +154,69 @@ class CourseScheduleConfig {
     this.useSegmentBreakDurations = false,
   }) : segments = List<ScheduleSegmentConfig>.unmodifiable(segments);
 
-  /// 返回基于南京大学常见排课的默认配置（上下午 4 节，晚上 3 节）。
+  /// 返回手动新建课表时使用的默认节次配置。
   factory CourseScheduleConfig.njuDefaults() {
     return CourseScheduleConfig(
-      defaultClassDuration: const Duration(minutes: 45),
-      defaultBreakDuration: const Duration(minutes: 10),
+      defaultClassDuration: const Duration(minutes: 40),
+      defaultBreakDuration: const Duration(minutes: 15),
       segments: <ScheduleSegmentConfig>[
-        const ScheduleSegmentConfig(
+        ScheduleSegmentConfig(
           name: '上午',
           startTime: TimeOfDay(hour: 8, minute: 30),
           classCount: 4,
+          perBreakDurations: <Duration>[
+            Duration(minutes: 15),
+            Duration(minutes: 30),
+            Duration(minutes: 15),
+          ],
         ),
         const ScheduleSegmentConfig(
           name: '下午',
+          startTime: TimeOfDay(hour: 14, minute: 30),
+          classCount: 3,
+        ),
+      ],
+      useSegmentBreakDurations: true,
+    );
+  }
+
+  /// 返回福州理工学院导入课表时使用的默认节次配置。
+  factory CourseScheduleConfig.fitDefaults() {
+    return CourseScheduleConfig(
+      defaultClassDuration: const Duration(minutes: 45),
+      defaultBreakDuration: const Duration(minutes: 5),
+      segments: <ScheduleSegmentConfig>[
+        ScheduleSegmentConfig(
+          name: '上午',
+          startTime: TimeOfDay(hour: 8, minute: 30),
+          classCount: 4,
+          perBreakDurations: <Duration>[
+            Duration(minutes: 5),
+            Duration(minutes: 15),
+            Duration(minutes: 5),
+          ],
+        ),
+        ScheduleSegmentConfig(
+          name: '下午',
           startTime: TimeOfDay(hour: 14, minute: 0),
           classCount: 4,
+          perBreakDurations: <Duration>[
+            Duration(minutes: 5),
+            Duration(minutes: 10),
+            Duration(minutes: 5),
+          ],
         ),
-        const ScheduleSegmentConfig(
+        ScheduleSegmentConfig(
           name: '晚上',
           startTime: TimeOfDay(hour: 18, minute: 30),
           classCount: 3,
-          classDuration: Duration(minutes: 45),
+          perBreakDurations: <Duration>[
+            Duration(minutes: 10),
+            Duration(minutes: 10),
+          ],
         ),
       ],
-      useSegmentBreakDurations: false,
+      useSegmentBreakDurations: true,
     );
   }
 

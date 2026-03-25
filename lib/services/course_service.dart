@@ -23,9 +23,12 @@ class CourseService {
   static const String _showWeekendKey = 'course_service_show_weekend';
   static const String _showNonCurrentWeekKey =
       'course_service_show_non_current_week';
+  static const String _scheduleLockedKey = 'course_service_schedule_locked';
   static const String _reminderEnabledKey = 'course_service_reminder_enabled';
   static const String _reminderTimeKey = 'course_service_reminder_time';
   static const String _reminderMethodKey = 'course_service_reminder_method';
+  static const String _reminderVibrationKey =
+      'course_service_reminder_vibration';
 
   static const String _schedulesKey = 'course_service_schedules';
   static const String _currentScheduleIdKey =
@@ -258,6 +261,20 @@ class CourseService {
     await prefs.setBool(key, show);
   }
 
+  /// 加载课程表是否锁定。
+  Future<bool> loadScheduleLocked([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_scheduleLockedKey, scheduleId);
+    return prefs.getBool(key) ?? false;
+  }
+
+  /// 保存课程表是否锁定。
+  Future<void> saveScheduleLocked(bool locked, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_scheduleLockedKey, scheduleId);
+    await prefs.setBool(key, locked);
+  }
+
   /// 删除课程表
   Future<void> deleteSchedules(List<String> ids) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -292,6 +309,7 @@ class CourseService {
         await saveMaxWeek(20, newId);
         await saveShowWeekend(false, newId);
         await saveShowNonCurrentWeek(true, newId);
+        await saveScheduleLocked(false, newId);
       }
     }
 
@@ -306,9 +324,11 @@ class CourseService {
       await prefs.remove('${_tableNameKey}_$id');
       await prefs.remove('${_showWeekendKey}_$id');
       await prefs.remove('${_showNonCurrentWeekKey}_$id');
+      await prefs.remove('${_scheduleLockedKey}_$id');
       await prefs.remove('${_reminderEnabledKey}_$id');
       await prefs.remove('${_reminderTimeKey}_$id');
       await prefs.remove('${_reminderMethodKey}_$id');
+      await prefs.remove('${_reminderVibrationKey}_$id');
     }
   }
 
@@ -360,42 +380,63 @@ class CourseService {
     await _rescheduleReminders(scheduleId);
   }
 
+  /// 加载课程提醒振动开关。
+  Future<bool> loadReminderVibration([String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final String key = await _getKey(_reminderVibrationKey, scheduleId);
+    return prefs.getBool(key) ?? true;
+  }
+
+  /// 保存课程提醒振动开关。
+  Future<void> saveReminderVibration(bool enabled, [String? scheduleId]) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = await _getKey(_reminderVibrationKey, scheduleId);
+    await prefs.setBool(key, enabled);
+    await _rescheduleReminders(scheduleId);
+  }
+
   /// 批量保存课程提醒设置
   Future<void> saveAllReminderSettings({
     required bool enabled,
     required int time,
     required String method,
+    required bool vibrationEnabled,
     String? scheduleId,
   }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final enabledKey = await _getKey(_reminderEnabledKey, scheduleId);
     final timeKey = await _getKey(_reminderTimeKey, scheduleId);
     final methodKey = await _getKey(_reminderMethodKey, scheduleId);
+    final vibrationKey = await _getKey(_reminderVibrationKey, scheduleId);
 
     await prefs.setBool(enabledKey, enabled);
     await prefs.setInt(timeKey, time);
     await prefs.setString(methodKey, method);
+    await prefs.setBool(vibrationKey, vibrationEnabled);
 
     await _rescheduleReminders(scheduleId);
   }
 
-  /// 初始化/刷新提醒（通常在应用启动时调用）
-  /// 初始化/刷新提醒（通常在应用启动时调用）
-  /// - 默认行为：如果方法为 `alarm` 且已存在原生闹钟 ID，则不在启动时重新调度，避免重复创建。
-  /// - 如果需要强制重调度（例如用户修改了课程或提醒设置），请传入 `force = true`。
+  /// 初始化/刷新提醒（通常在应用启动时调用）。
+  /// 为了避免系统回收后出现“本地记录还在，但实际闹钟已丢失”的假状态，
+  /// 启动时会先尝试恢复原生持久化的提醒；恢复失败时再按当前课程数据重排。
   Future<void> initializeReminders({bool force = false}) async {
+    final enabled = await loadReminderEnabled();
+    if (!enabled) {
+      await NotificationService.instance.cancelAllReminders();
+      return;
+    }
+
     if (!force) {
-      final method = await loadReminderMethod();
-      if (method == 'alarm') {
-        final nativeIds = await NotificationService.instance
-            .getNativeAlarmIds();
-        if (nativeIds.isNotEmpty) {
-          debugPrint(
-            'Native alarms already exist; skipping reschedule on startup.',
-          );
-          return;
-        }
+      await NotificationService.instance.restoreNativeReminders();
+      final nativeIds = await NotificationService.instance.getNativeAlarmIds();
+      if (nativeIds.isNotEmpty) {
+        debugPrint('Native reminder schedule restored from persisted entries.');
+        return;
       }
+    } else {
+      debugPrint('Force refresh reminder schedule requested.');
     }
     await _rescheduleReminders();
   }
@@ -416,6 +457,7 @@ class CourseService {
     final semesterStart = await loadSemesterStart(scheduleId);
     final reminderTime = await loadReminderTime(scheduleId);
     final reminderMethod = await loadReminderMethod(scheduleId);
+    final reminderVibration = await loadReminderVibration(scheduleId);
 
     // 如果未设置开学时间，使用默认策略（与 TablePage/deleteSchedules 逻辑尽量保持一致）
     final DateTime effectiveStart =
@@ -435,6 +477,7 @@ class CourseService {
       semesterStart: effectiveStart,
       reminderMinutes: reminderTime,
       method: reminderMethod,
+      enableVibration: reminderMethod == 'notification' && reminderVibration,
     );
   }
 }
