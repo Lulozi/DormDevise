@@ -357,14 +357,6 @@ class NotificationService {
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
           additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
-          actions: <AndroidNotificationAction>[
-            AndroidNotificationAction(
-              'dismiss_$id',
-              '关闭',
-              showsUserInterface: true,
-              cancelNotification: true,
-            ),
-          ],
         ),
         iOS: const DarwinNotificationDetails(
           presentSound: true,
@@ -441,14 +433,6 @@ class NotificationService {
           fullScreenIntent: isAlarm,
           // 使用 additionalFlags 开启 FLAG_INSISTENT (4)，使声音循环播放直到用户处理
           additionalFlags: isAlarm ? Int32List.fromList(<int>[4]) : null,
-          actions: <AndroidNotificationAction>[
-            AndroidNotificationAction(
-              'dismiss_$id',
-              '关闭',
-              showsUserInterface: true,
-              cancelNotification: true,
-            ),
-          ],
         ),
         iOS: const DarwinNotificationDetails(
           presentSound: true,
