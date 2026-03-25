@@ -441,6 +441,12 @@ class UpdateCheckService {
     bool forceRefresh = false,
     UpdateTrackPreference? trackPreference,
   }) async {
+    final UpdateTrackPreference effectiveTrack =
+        trackPreference ?? await getUpdateTrackPreference();
+    if (effectiveTrack == UpdateTrackPreference.stable) {
+      return _loadLatestStableReleaseBasedOnConfig(forceRefresh: forceRefresh);
+    }
+
     final List<UpdateReleaseInfo> releases = await _loadReleasesBasedOnConfig(
       forceRefresh: forceRefresh,
     );
@@ -448,8 +454,6 @@ class UpdateCheckService {
       return null;
     }
 
-    final UpdateTrackPreference effectiveTrack =
-        trackPreference ?? await getUpdateTrackPreference();
     return selectPreferredRelease(releases, preference: effectiveTrack);
   }
 
@@ -489,8 +493,90 @@ class UpdateCheckService {
     if (candidates.isEmpty) {
       return null;
     }
-    candidates.sort(_compareReleaseOrder);
+    candidates.sort(_compareReleaseFeedOrder);
     return candidates.first;
+  }
+
+  Future<UpdateReleaseInfo?> _loadLatestStableReleaseBasedOnConfig({
+    bool forceRefresh = false,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String sourceType = prefs.getString('update_source_type') ?? 'auto';
+    final String? customApiUrl = prefs.getString('custom_update_api_url');
+
+    switch (sourceType) {
+      case 'github':
+        return await _safeFetchSingle(_loadLatestReleaseFromGitHub) ??
+            _pickLatestStableFromFeed(
+              await _loadReleasesBasedOnConfig(forceRefresh: forceRefresh),
+            );
+      case 'gitee':
+        return _pickLatestStableFromFeed(await _loadReleasesFromGitee());
+      case 'custom':
+        if (customApiUrl == null || customApiUrl.isEmpty) {
+          return null;
+        }
+        return _pickLatestStableFromFeed(
+          await _loadReleasesFromCustom(customApiUrl),
+        );
+      case 'auto':
+      default:
+        final List<UpdateReleaseInfo> candidates = <UpdateReleaseInfo>[
+          ...[
+            await _safeFetchSingle(_loadLatestReleaseFromGitHub),
+            await _safeFetchSingle(() async {
+              final List<UpdateReleaseInfo> releases =
+                  await _loadReleasesFromGitee();
+              return _pickLatestStableFromFeed(releases);
+            }),
+          ].whereType<UpdateReleaseInfo>(),
+        ];
+        final UpdateReleaseInfo? merged = _mergeReleaseCandidates(candidates);
+        if (merged != null) {
+          return merged;
+        }
+        return _pickLatestStableFromFeed(
+          await _loadReleasesBasedOnConfig(forceRefresh: forceRefresh),
+        );
+    }
+  }
+
+  UpdateReleaseInfo? _pickLatestStableFromFeed(
+    List<UpdateReleaseInfo> releases,
+  ) {
+    final List<UpdateReleaseInfo> stable = releases
+        .where(
+          (UpdateReleaseInfo release) =>
+              !release.isDraft && !release.isPrerelease,
+        )
+        .toList();
+    if (stable.isEmpty) {
+      return null;
+    }
+    stable.sort(_compareReleaseFeedOrder);
+    return stable.first;
+  }
+
+  UpdateReleaseInfo? _mergeReleaseCandidates(List<UpdateReleaseInfo> releases) {
+    if (releases.isEmpty) {
+      return null;
+    }
+    UpdateReleaseInfo selected = releases.first;
+    for (final UpdateReleaseInfo candidate in releases.skip(1)) {
+      final int order = _compareReleaseFeedOrder(candidate, selected);
+      if (order < 0) {
+        selected = candidate;
+        continue;
+      }
+      if (order == 0) {
+        final String selectedBody = selected.body?.trim() ?? '';
+        final String candidateBody = candidate.body?.trim() ?? '';
+        if (candidateBody.isNotEmpty && selectedBody.isEmpty) {
+          selected = candidate;
+        }
+      }
+    }
+    return selected;
   }
 
   Future<List<String>> ensureSupportedAbis() async {
@@ -1046,6 +1132,16 @@ class UpdateCheckService {
     }
   }
 
+  Future<UpdateReleaseInfo?> _safeFetchSingle(
+    Future<UpdateReleaseInfo?> Function() loader,
+  ) async {
+    try {
+      return await loader();
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _releaseKey(UpdateReleaseInfo release) {
     if (release.version != null) {
       return release.version.toString();
@@ -1059,6 +1155,14 @@ class UpdateCheckService {
     );
   }
 
+  Future<UpdateReleaseInfo?> _loadLatestReleaseFromGitHub() async {
+    return _fetchRelease(
+      Uri.parse(
+        'https://api.github.com/repos/Lulozi/DormDevise/releases/latest',
+      ),
+    );
+  }
+
   Future<List<UpdateReleaseInfo>> _loadReleasesFromGitee() async {
     return _fetchReleases(
       Uri.parse('https://gitee.com/api/v5/repos/lulo/DormDevise/releases'),
@@ -1067,6 +1171,22 @@ class UpdateCheckService {
 
   Future<List<UpdateReleaseInfo>> _loadReleasesFromCustom(String url) async {
     return _fetchReleases(Uri.parse(url));
+  }
+
+  Future<UpdateReleaseInfo?> _fetchRelease(Uri uri) async {
+    final http.Response response = await http.get(
+      uri,
+      headers: const <String, String>{
+        'Accept': 'application/json',
+        'User-Agent': 'DormDevise-App',
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('API 返回状态码 ${response.statusCode} ($uri)');
+    }
+    final Map<String, dynamic> json =
+        jsonDecode(response.body) as Map<String, dynamic>;
+    return UpdateReleaseInfo.fromJson(json);
   }
 
   Future<List<UpdateReleaseInfo>> _fetchReleases(Uri uri) async {
@@ -1138,6 +1258,22 @@ int _compareReleaseOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
   }
 
   return 0;
+}
+
+int _compareReleaseFeedOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
+  final DateTime? dateA = a.publishedAt;
+  final DateTime? dateB = b.publishedAt;
+  if (dateA != null && dateB != null) {
+    final int dateOrder = dateB.compareTo(dateA);
+    if (dateOrder != 0) {
+      return dateOrder;
+    }
+  } else if (dateA != null) {
+    return -1;
+  } else if (dateB != null) {
+    return 1;
+  }
+  return _compareReleaseOrder(a, b);
 }
 
 bool hasMajorOrMinorUpdate(Version candidate, Version baseline) {

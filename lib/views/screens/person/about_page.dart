@@ -481,8 +481,9 @@ class _AboutPageState extends State<AboutPage> {
     final bool showBusyIndicator = _checkingUpdate;
     final String versionHint =
         _versionActionMode == _VersionActionMode.showDownload
-        ? '点击版本查看下载进度，长按切换更新通道（当前：${_updateTrackPreference.label}）'
-        : '点击版本检查更新，长按切换更新通道（当前：${_updateTrackPreference.label}）';
+        ? '点击版本查看下载进度，长按切换更新通道'
+        : '点击版本检查更新，长按切换更新通道';
+    final String versionTrackHint = '（当前通道：${_updateTrackPreference.label}）';
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
       body: SafeArea(
@@ -499,6 +500,7 @@ class _AboutPageState extends State<AboutPage> {
               updateTrackPreference: _updateTrackPreference,
               onCheckUpdate: _handleCheckForUpdates,
               onUpdateTrackChanged: _handleUpdateTrackChanged,
+              versionTrackHint: versionTrackHint,
               onOpenRepository: _openRepository,
               onOpenReleasePage: _openReleasePage,
               onOpenBilibiliPage: _openBilibiliPage,
@@ -570,6 +572,7 @@ class _AboutHeader extends StatelessWidget {
   final bool tapDisabled;
   final bool downloadInProgress;
   final String versionHint;
+  final String versionTrackHint;
   final UpdateTrackPreference updateTrackPreference;
   final Future<void> Function() onCheckUpdate;
   final Future<void> Function(UpdateTrackPreference preference)
@@ -586,6 +589,7 @@ class _AboutHeader extends StatelessWidget {
     required this.tapDisabled,
     required this.downloadInProgress,
     required this.versionHint,
+    required this.versionTrackHint,
     required this.updateTrackPreference,
     required this.onCheckUpdate,
     required this.onUpdateTrackChanged,
@@ -674,6 +678,14 @@ class _AboutHeader extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               versionHint,
+              style: textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              versionTrackHint,
               style: textTheme.labelSmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -903,9 +915,7 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
           final borderColor = Color.lerp(baseBorder, highlightBorder, progress);
 
           return Chip(
-            label: Text(
-              '版本 ${widget.version} · ${widget.updateTrackPreference.label}',
-            ),
+            label: Text('版本 ${widget.version}'),
             avatar: buildAvatar(),
             backgroundColor: backgroundColor ?? baseBackground,
             side: BorderSide(color: borderColor ?? baseBorder),
