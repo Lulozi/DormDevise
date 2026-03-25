@@ -40,8 +40,9 @@ class NotificationService {
   static const MethodChannel _alarmChannel = MethodChannel(
     'dormdevise/alarm_notifications',
   );
-  static const String _androidNotificationIcon = 'icon_dormdevise_door';
-  Color get _androidNotificationColor => ThemeService.instance.primaryColor;
+  static const String _androidNotificationIcon = 'icon_dormdevise_notification';
+  Color get _androidNotificationColor =>
+      ThemeService.instance.notificationPreviewColor;
 
   bool _isInitialized = false;
 
@@ -341,13 +342,14 @@ class NotificationService {
           channelDescription: channelDescription,
           icon: _androidNotificationIcon,
           color: _androidNotificationColor,
+          colorized: false,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
           visibility: NotificationVisibility.public,
           category: isAlarm
               ? AndroidNotificationCategory.alarm
-              : AndroidNotificationCategory.message,
+              : AndroidNotificationCategory.reminder,
           audioAttributesUsage: isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,
@@ -419,13 +421,14 @@ class NotificationService {
           channelDescription: channelDescription,
           icon: _androidNotificationIcon,
           color: _androidNotificationColor,
+          colorized: false,
           importance: Importance.max,
           priority: Priority.max,
           ticker: '课程提醒',
           visibility: NotificationVisibility.public,
           category: isAlarm
               ? AndroidNotificationCategory.alarm
-              : AndroidNotificationCategory.message,
+              : AndroidNotificationCategory.reminder,
           audioAttributesUsage: isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,

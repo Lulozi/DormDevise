@@ -170,8 +170,9 @@ class UpdateDownloadService {
   static const String _pendingInstallAwaitingResumeKey =
       'update_download_pending_install_awaiting_resume';
   static const String _installNotificationPayload = 'update_install';
-  static const String _androidNotificationIcon = 'icon_dormdevise_door';
-  Color get _androidNotificationColor => ThemeService.instance.primaryColor;
+  static const String _androidNotificationIcon = 'icon_dormdevise_notification';
+  Color get _androidNotificationColor =>
+      ThemeService.instance.notificationPreviewColor;
 
   // 全局下载状态管理
   final ValueNotifier<DownloadProgress?> progressNotifier =
@@ -250,6 +251,7 @@ class UpdateDownloadService {
           channelDescription: _channelDescription,
           icon: _androidNotificationIcon,
           color: _androidNotificationColor,
+          colorized: false,
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
           playSound: false,
@@ -290,6 +292,7 @@ class UpdateDownloadService {
           channelDescription: _channelDescription,
           icon: _androidNotificationIcon,
           color: _androidNotificationColor,
+          colorized: false,
           importance: Importance.high,
           priority: Priority.high,
           visibility: NotificationVisibility.public,

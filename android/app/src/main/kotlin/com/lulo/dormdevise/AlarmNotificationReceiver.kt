@@ -9,7 +9,6 @@ import android.content.Intent
 import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 
 /**
  * 负责展示、打开与关闭课程提醒通知。
@@ -63,6 +62,8 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
     companion object {
         private const val FLUTTER_SHARED_PREFERENCES_NAME = "FlutterSharedPreferences"
         private const val THEME_PRIMARY_COLOR_KEY = "flutter.theme_primary_color"
+        private const val THEME_CUSTOM_PREVIEW_ENABLED_KEY = "flutter.theme_custom_preview_enabled"
+        private const val WHITE_MODE_NOTIFICATION_COLOR = -10395295 // Colors.grey.shade700
 
         const val ACTION_SHOW = "com.lulo.dormdevise.ALARM_SHOW"
         const val ACTION_DISMISS = "com.lulo.dormdevise.ALARM_DISMISS"
@@ -129,9 +130,6 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             }
 
             builder.setContentIntent(contentPendingIntent)
-            if (!isAlarm) {
-                builder.setTimeoutAfter(3_000L)
-            }
             if (isAlarm && canUseFullScreenIntent(manager)) {
                 builder.setFullScreenIntent(contentPendingIntent, true)
             }
@@ -166,18 +164,23 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
         }
 
         private fun resolveNotificationColor(context: Context): Int {
-            val fallbackColor = ContextCompat.getColor(context, R.color.widget_primary)
             val preferences = context.getSharedPreferences(
                 FLUTTER_SHARED_PREFERENCES_NAME,
                 Context.MODE_PRIVATE,
             )
-            if (preferences.contains(THEME_PRIMARY_COLOR_KEY)) {
-                return preferences.getLong(
-                    THEME_PRIMARY_COLOR_KEY,
-                    fallbackColor.toLong(),
-                ).toInt()
+            val customPreviewEnabled = preferences.getBoolean(
+                THEME_CUSTOM_PREVIEW_ENABLED_KEY,
+                false,
+            )
+            val storedColor = preferences.getLong(
+                THEME_PRIMARY_COLOR_KEY,
+                0xFFFFFFFFL,
+            ).toInt()
+
+            if (!customPreviewEnabled && storedColor == 0xFFFFFFFF.toInt()) {
+                return WHITE_MODE_NOTIFICATION_COLOR
             }
-            return fallbackColor
+            return storedColor
         }
     }
 }
