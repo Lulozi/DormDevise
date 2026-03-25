@@ -17,8 +17,9 @@ import 'widgets/section_config_sheet.dart';
 import 'widgets/week_select_sheet.dart';
 import 'course_edit_page.dart';
 import 'all_schedules_page.dart';
-import 'camera_import_schedule_page.dart';
-import 'file_import_schedule_page.dart';
+// import 'camera_import_schedule_page.dart';
+// import 'file_import_schedule_page.dart';
+import 'import_code_schedule_page.dart';
 import 'scan_import_schedule_page.dart';
 import 'schedule_share.dart';
 import 'web_import_schedule_page.dart';
@@ -119,9 +120,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         // 每种导入方式独立成页，后续方便分别扩展。
         final Widget page = switch (value) {
           'web' => const WebImportSchedulePage(),
-          'camera' => const CameraImportSchedulePage(),
+          'code' => const ImportCodeSchedulePage(),
           'scan' => const ScanImportSchedulePage(),
-          'file' => const FileImportSchedulePage(),
+          // 'camera' => const CameraImportSchedulePage(),
+          // 'file' => const FileImportSchedulePage(),
           _ => const WebImportSchedulePage(),
         };
         final bool? result = await Navigator.of(context).push<bool>(
@@ -197,7 +199,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     }
   }
 
-  /// 显示导入方法菜单，去掉手动选项。
+  /// 显示导入方法菜单，当前保留网页、扫码和导入码入口。
   Future<void> _showImportMenu() async {
     await _dismissToolbarBubble();
     if (!mounted) return;
@@ -215,7 +217,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       anchorKey: _importBtnKey,
       controller: controller,
       content: SizedBox(
-        width: 160,
+        width: 184,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -229,18 +231,25 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             ),
             const Divider(height: 1, thickness: 0.5),
             _buildImportMenuItem(
-              'camera',
-              '拍照导入课表',
-              FontAwesomeIcons.camera,
+              'code',
+              '导入码导入课表',
+              Icons.content_paste_rounded,
               controller,
             ),
-            const Divider(height: 1, thickness: 0.5),
-            _buildImportMenuItem(
-              'file',
-              '文件导入课表',
-              FontAwesomeIcons.folderOpen,
-              controller,
-            ),
+            // const Divider(height: 1, thickness: 0.5),
+            // _buildImportMenuItem(
+            //   'camera',
+            //   '拍照导入课表',
+            //   FontAwesomeIcons.camera,
+            //   controller,
+            // ),
+            // const Divider(height: 1, thickness: 0.5),
+            // _buildImportMenuItem(
+            //   'file',
+            //   '文件导入课表',
+            //   FontAwesomeIcons.folderOpen,
+            //   controller,
+            // ),
           ],
         ),
       ),
