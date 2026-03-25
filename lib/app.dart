@@ -11,6 +11,7 @@ import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
+import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -328,9 +329,12 @@ class ManagementScreenState extends State<ManagementScreen>
       return;
     }
     try {
-      final UpdateCheckResult? result = await UpdateCheckService.instance
-          .fetchAvailableUpdate(forceRefresh: true);
+      final HomePageUpdatePromptPlan? promptPlan = await UpdateCheckService
+          .instance
+          .fetchHomePageUpdatePrompt(forceRefresh: true);
+      final UpdateCheckResult? result = promptPlan?.result;
       if (!mounted ||
+          promptPlan == null ||
           result == null ||
           !result.hasCompatibleAsset ||
           _widgetDialogVisible) {
@@ -338,11 +342,39 @@ class ManagementScreenState extends State<ManagementScreen>
       }
 
       _updatePromptVisible = true;
-      final bool? shouldStartUpdate = await UpdateCheckService.instance
-          .showUpdateAvailableDialog(context, result, confirmLabel: '立即更新');
-      if (!mounted || shouldStartUpdate != true) {
+      final UpdateDialogAction action = await UpdateCheckService.instance
+          .showUpdateAvailableDialog(
+            context,
+            result,
+            confirmLabel: '立即更新',
+            secondaryLabel: promptPlan.secondaryLabel,
+            barrierDismissible: false,
+            allowSystemPop: false,
+          );
+      if (!mounted) {
         return;
       }
+      if (action == UpdateDialogAction.secondary) {
+        if (promptPlan.secondaryAction ==
+            HomePageUpdatePromptSecondaryAction.cancel) {
+          await UpdateCheckService.instance.cancelHomePageUpdatePrompt(
+            result.latestVersion,
+          );
+        } else {
+          await UpdateCheckService.instance.deferHomePageUpdatePrompt(
+            result.latestVersion,
+          );
+        }
+        if (mounted) {
+          AppToast.show(context, promptPlan.feedbackMessage);
+        }
+        return;
+      }
+      if (action != UpdateDialogAction.confirm) {
+        return;
+      }
+
+      await UpdateCheckService.instance.clearHomePageUpdatePromptState();
       await UpdateCheckService.instance.startBackgroundUpdate(
         asset: result.asset,
         releaseVersion: result.latestVersion,

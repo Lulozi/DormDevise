@@ -51,6 +51,65 @@ enum UpdateStartStatus {
   noCompatibleAsset,
 }
 
+enum UpdateTrackPreference {
+  stable('stable', '稳定版'),
+  preview('preview', '预览版'),
+  latest('latest', '最新版');
+
+  const UpdateTrackPreference(this.storageValue, this.label);
+
+  final String storageValue;
+  final String label;
+
+  static UpdateTrackPreference fromStorage(String? value) {
+    for (final UpdateTrackPreference preference in values) {
+      if (preference.storageValue == value) {
+        return preference;
+      }
+    }
+    return UpdateTrackPreference.stable;
+  }
+}
+
+enum UpdateDialogAction { confirm, secondary, dismissed }
+
+enum HomePageUpdatePromptSecondaryAction { postpone, cancel }
+
+class HomePageUpdatePromptPlan {
+  const HomePageUpdatePromptPlan({
+    required this.result,
+    required this.secondaryAction,
+    required this.completedDeferrals,
+  });
+
+  final UpdateCheckResult result;
+  final HomePageUpdatePromptSecondaryAction secondaryAction;
+  final int completedDeferrals;
+
+  String get secondaryLabel =>
+      secondaryAction == HomePageUpdatePromptSecondaryAction.postpone
+      ? '推迟本次更新'
+      : '取消本次推送';
+
+  int? get nextDelayDays {
+    if (secondaryAction != HomePageUpdatePromptSecondaryAction.postpone) {
+      return null;
+    }
+    if (completedDeferrals >= _homePageUpdatePromptDelayDays.length) {
+      return null;
+    }
+    return _homePageUpdatePromptDelayDays[completedDeferrals];
+  }
+
+  String get feedbackMessage {
+    final int? delayDays = nextDelayDays;
+    if (delayDays != null) {
+      return '已推迟本次更新 $delayDays 天';
+    }
+    return '已取消本次推送，后续仅在主版本或次版本更新后提醒';
+  }
+}
+
 /// 标准化后的版本发布信息。
 class UpdateReleaseInfo {
   const UpdateReleaseInfo({
@@ -187,6 +246,15 @@ class UpdateCheckService {
   UpdateCheckService._();
 
   static final UpdateCheckService instance = UpdateCheckService._();
+  static const String _prefKeyUpdateTrack = 'update_track_preference';
+  static const String _prefKeyHomePromptDeferredVersion =
+      'update_home_prompt_deferred_version';
+  static const String _prefKeyHomePromptDeferStep =
+      'update_home_prompt_defer_step';
+  static const String _prefKeyHomePromptDeferUntil =
+      'update_home_prompt_defer_until';
+  static const String _prefKeyHomePromptCanceledVersion =
+      'update_home_prompt_canceled_version';
 
   DateTime? _lastFetchTime;
   List<UpdateReleaseInfo>? _cachedReleases;
@@ -195,6 +263,27 @@ class UpdateCheckService {
   Future<List<UpdateReleaseInfo>>? _pendingFetch;
   List<String>? _cachedSupportedAbis;
   Future<List<String>>? _supportedAbisFuture;
+
+  Future<UpdateTrackPreference> getUpdateTrackPreference() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    return UpdateTrackPreference.fromStorage(
+      prefs.getString(_prefKeyUpdateTrack),
+    );
+  }
+
+  Future<void> setUpdateTrackPreference(
+    UpdateTrackPreference preference,
+  ) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final UpdateTrackPreference current = UpdateTrackPreference.fromStorage(
+      prefs.getString(_prefKeyUpdateTrack),
+    );
+    if (current == preference) {
+      return;
+    }
+    await prefs.setString(_prefKeyUpdateTrack, preference.storageValue);
+    await clearHomePageUpdatePromptState(prefs: prefs);
+  }
 
   Future<UpdateCheckResult?> fetchAvailableUpdate({
     bool forceRefresh = false,
@@ -240,8 +329,117 @@ class UpdateCheckService {
     );
   }
 
+  Future<HomePageUpdatePromptPlan?> fetchHomePageUpdatePrompt({
+    bool forceRefresh = false,
+  }) async {
+    final UpdateCheckResult? result = await fetchAvailableUpdate(
+      forceRefresh: forceRefresh,
+    );
+    if (result == null) {
+      return null;
+    }
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final Version latestVersion = result.latestVersion;
+    final Version? canceledVersion = _readStoredVersion(
+      prefs,
+      _prefKeyHomePromptCanceledVersion,
+    );
+    if (canceledVersion != null) {
+      if (!hasMajorOrMinorUpdate(latestVersion, canceledVersion)) {
+        return null;
+      }
+      await _clearHomePageCancelState(prefs: prefs);
+    }
+
+    final Version? deferredVersion = _readStoredVersion(
+      prefs,
+      _prefKeyHomePromptDeferredVersion,
+    );
+    final int storedStep = _readDeferredStep(prefs);
+    final int deferUntilMillis =
+        prefs.getInt(_prefKeyHomePromptDeferUntil) ?? 0;
+    if (deferredVersion == null) {
+      if (storedStep > 0 || deferUntilMillis > 0) {
+        await _clearHomePageDelayState(prefs: prefs);
+      }
+      return HomePageUpdatePromptPlan(
+        result: result,
+        secondaryAction: HomePageUpdatePromptSecondaryAction.postpone,
+        completedDeferrals: 0,
+      );
+    }
+
+    if (latestVersion != deferredVersion) {
+      await _clearHomePageDelayState(prefs: prefs);
+      return HomePageUpdatePromptPlan(
+        result: result,
+        secondaryAction: HomePageUpdatePromptSecondaryAction.postpone,
+        completedDeferrals: 0,
+      );
+    }
+
+    if (deferUntilMillis > DateTime.now().millisecondsSinceEpoch) {
+      return null;
+    }
+
+    return HomePageUpdatePromptPlan(
+      result: result,
+      secondaryAction: storedStep >= _homePageUpdatePromptDelayDays.length
+          ? HomePageUpdatePromptSecondaryAction.cancel
+          : HomePageUpdatePromptSecondaryAction.postpone,
+      completedDeferrals: storedStep,
+    );
+  }
+
+  Future<void> deferHomePageUpdatePrompt(Version releaseVersion) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final Version? storedVersion = _readStoredVersion(
+      prefs,
+      _prefKeyHomePromptDeferredVersion,
+    );
+    final int previousStep =
+        storedVersion != null && storedVersion == releaseVersion
+        ? _readDeferredStep(prefs)
+        : 0;
+    final int nextStep = previousStep >= _homePageUpdatePromptDelayDays.length
+        ? _homePageUpdatePromptDelayDays.length
+        : previousStep + 1;
+    final int delayDays = _homePageUpdatePromptDelayDays[nextStep - 1];
+
+    await prefs.setString(
+      _prefKeyHomePromptDeferredVersion,
+      releaseVersion.toString(),
+    );
+    await prefs.setInt(_prefKeyHomePromptDeferStep, nextStep);
+    await prefs.setInt(
+      _prefKeyHomePromptDeferUntil,
+      DateTime.now().add(Duration(days: delayDays)).millisecondsSinceEpoch,
+    );
+    await _clearHomePageCancelState(prefs: prefs);
+  }
+
+  Future<void> cancelHomePageUpdatePrompt(Version releaseVersion) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _prefKeyHomePromptCanceledVersion,
+      releaseVersion.toString(),
+    );
+    await _clearHomePageDelayState(prefs: prefs);
+  }
+
+  Future<void> clearHomePageUpdatePromptState({
+    SharedPreferences? prefs,
+  }) async {
+    final SharedPreferences effectivePrefs =
+        prefs ?? await SharedPreferences.getInstance();
+    await _clearHomePageCancelState(prefs: effectivePrefs);
+    await _clearHomePageDelayState(prefs: effectivePrefs);
+  }
+
   Future<UpdateReleaseInfo?> fetchLatestReleaseInfo({
     bool forceRefresh = false,
+    UpdateTrackPreference? trackPreference,
   }) async {
     final List<UpdateReleaseInfo> releases = await _loadReleasesBasedOnConfig(
       forceRefresh: forceRefresh,
@@ -250,20 +448,46 @@ class UpdateCheckService {
       return null;
     }
 
-    final List<UpdateReleaseInfo> stable = releases
-        .where(
-          (UpdateReleaseInfo release) =>
-              !release.isDraft && !release.isPrerelease,
-        )
+    final UpdateTrackPreference effectiveTrack =
+        trackPreference ?? await getUpdateTrackPreference();
+    return selectPreferredRelease(releases, preference: effectiveTrack);
+  }
+
+  UpdateReleaseInfo? selectPreferredRelease(
+    List<UpdateReleaseInfo> releases, {
+    required UpdateTrackPreference preference,
+  }) {
+    final List<UpdateReleaseInfo> published = releases
+        .where((UpdateReleaseInfo release) => !release.isDraft)
         .toList();
-    final List<UpdateReleaseInfo> candidates = stable.isNotEmpty
-        ? stable
-        : releases
-              .where((UpdateReleaseInfo release) => !release.isDraft)
+    if (published.isEmpty) {
+      return null;
+    }
+
+    List<UpdateReleaseInfo> candidates;
+    switch (preference) {
+      case UpdateTrackPreference.stable:
+        candidates = published
+            .where((UpdateReleaseInfo release) => !release.isPrerelease)
+            .toList();
+        break;
+      case UpdateTrackPreference.preview:
+        candidates = published
+            .where((UpdateReleaseInfo release) => release.isPrerelease)
+            .toList();
+        if (candidates.isEmpty) {
+          candidates = published
+              .where((UpdateReleaseInfo release) => !release.isPrerelease)
               .toList();
+        }
+        break;
+      case UpdateTrackPreference.latest:
+        candidates = List<UpdateReleaseInfo>.from(published);
+        break;
+    }
+
     if (candidates.isEmpty) {
-      releases.sort(_compareReleaseOrder);
-      return releases.first;
+      return null;
     }
     candidates.sort(_compareReleaseOrder);
     return candidates.first;
@@ -424,22 +648,26 @@ class UpdateCheckService {
     }
   }
 
-  Future<bool?> showUpdateAvailableDialog(
+  Future<UpdateDialogAction> showUpdateAvailableDialog(
     BuildContext context,
     UpdateCheckResult result, {
     String confirmLabel = '立即更新',
-  }) {
+    String secondaryLabel = '稍后',
+    bool barrierDismissible = true,
+    bool allowSystemPop = true,
+  }) async {
     final UpdateReleaseAsset? asset = result.asset;
     final List<String> highlights = result.highlights;
     final String? description = result.body?.trim();
     final String sizeLabel = formatUpdateFileSize(asset?.size ?? 0);
 
-    return showDialog<bool>(
+    final UpdateDialogAction? action = await showDialog<UpdateDialogAction>(
       context: context,
+      barrierDismissible: barrierDismissible,
       builder: (BuildContext dialogContext) {
         final TextTheme textTheme = Theme.of(dialogContext).textTheme;
         final ColorScheme colorScheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
+        final Widget dialog = AlertDialog(
           title: Text('发现新版本 ${result.versionLabel}'),
           content: SingleChildScrollView(
             child: Column(
@@ -484,17 +712,24 @@ class UpdateCheckService {
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('稍后'),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(UpdateDialogAction.secondary),
+              child: Text(secondaryLabel),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(UpdateDialogAction.confirm),
               child: Text(confirmLabel),
             ),
           ],
         );
+        if (!allowSystemPop) {
+          return PopScope(canPop: false, child: dialog);
+        }
+        return dialog;
       },
     );
+    return action ?? UpdateDialogAction.dismissed;
   }
 
   Future<UpdateStartResult> startBackgroundUpdate({
@@ -774,6 +1009,33 @@ class UpdateCheckService {
     }
   }
 
+  int _readDeferredStep(SharedPreferences prefs) {
+    final int stored = prefs.getInt(_prefKeyHomePromptDeferStep) ?? 0;
+    return stored.clamp(0, _homePageUpdatePromptDelayDays.length).toInt();
+  }
+
+  Version? _readStoredVersion(SharedPreferences prefs, String key) {
+    final String? raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    return safeParseVersion(raw);
+  }
+
+  Future<void> _clearHomePageDelayState({
+    required SharedPreferences prefs,
+  }) async {
+    await prefs.remove(_prefKeyHomePromptDeferredVersion);
+    await prefs.remove(_prefKeyHomePromptDeferStep);
+    await prefs.remove(_prefKeyHomePromptDeferUntil);
+  }
+
+  Future<void> _clearHomePageCancelState({
+    required SharedPreferences prefs,
+  }) async {
+    await prefs.remove(_prefKeyHomePromptCanceledVersion);
+  }
+
   Future<List<UpdateReleaseInfo>> _safeFetch(
     Future<List<UpdateReleaseInfo>> Function() loader,
   ) async {
@@ -837,6 +1099,8 @@ enum _AndroidApkVariant {
   unknown,
 }
 
+const List<int> _homePageUpdatePromptDelayDays = <int>[7, 14, 21];
+
 Version? safeParseVersion(String raw) {
   try {
     final String sanitized = raw.split('+').first;
@@ -874,6 +1138,13 @@ int _compareReleaseOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
   }
 
   return 0;
+}
+
+bool hasMajorOrMinorUpdate(Version candidate, Version baseline) {
+  if (candidate.major != baseline.major) {
+    return candidate.major > baseline.major;
+  }
+  return candidate.minor > baseline.minor;
 }
 
 _AndroidApkVariant _inferAndroidApkVariant(UpdateReleaseAsset asset) {
