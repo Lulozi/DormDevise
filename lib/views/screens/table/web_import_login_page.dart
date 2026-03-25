@@ -1,7 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../models/web_school.dart';
 import '../../../services/web_school_service.dart';
@@ -24,9 +24,6 @@ class WebImportLoginPage extends StatefulWidget {
 
 class _WebImportLoginPageState extends State<WebImportLoginPage> {
   static const String _fitBadgeAsset = 'assets/images/schoolBadge/FIT.jpg';
-  static const MethodChannel _windowChannel = MethodChannel(
-    'dormdevise/window',
-  );
 
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -39,17 +36,33 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   bool _obscurePassword = true;
   bool _isSaving = false;
   bool _isLoading = true;
+  Uint8List? _cachedBadgeBytes;
+  ImageProvider<Object>? _schoolBadgeProvider;
 
   @override
   void initState() {
     super.initState();
+    _refreshSchoolBadge();
     _loadSavedCredentials();
-    _applyLoginKeyboardMode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _schoolBadgeProvider == null) {
+        return;
+      }
+      precacheImage(_schoolBadgeProvider!, context);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant WebImportLoginPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.school.badgeBase64 != widget.school.badgeBase64 ||
+        oldWidget.school.name != widget.school.name) {
+      _refreshSchoolBadge();
+    }
   }
 
   @override
   void dispose() {
-    _restoreDefaultKeyboardMode();
     _usernameController.dispose();
     _passwordController.dispose();
     _usernameFocusNode.dispose();
@@ -71,22 +84,17 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     );
   }
 
-  Future<void> _applyLoginKeyboardMode() async {
-    try {
-      await _windowChannel.invokeMethod<void>(
-        'setSoftInputMode',
-        <String, dynamic>{'mode': 'adjustNothing'},
-      );
-    } catch (_) {}
-  }
-
-  Future<void> _restoreDefaultKeyboardMode() async {
-    try {
-      await _windowChannel.invokeMethod<void>(
-        'setSoftInputMode',
-        <String, dynamic>{'mode': 'adjustResize'},
-      );
-    } catch (_) {}
+  void _refreshSchoolBadge() {
+    _cachedBadgeBytes = _decodeBadgeBytes(widget.school.badgeBase64);
+    if (_cachedBadgeBytes != null) {
+      _schoolBadgeProvider = MemoryImage(_cachedBadgeBytes!);
+      return;
+    }
+    if (widget.school.name == '福州理工学院') {
+      _schoolBadgeProvider = const AssetImage(_fitBadgeAsset);
+      return;
+    }
+    _schoolBadgeProvider = null;
   }
 
   /// 加载已保存的凭据（如果有）。
@@ -260,7 +268,6 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     });
 
     try {
-      await _restoreDefaultKeyboardMode();
       await WebSchoolService.instance.saveCredentials(
         schoolName: widget.school.name,
         username: username,
@@ -289,7 +296,6 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
         // 返回登录页后重置焦点，防止输入法误弹。
         _resetInputFocusState();
-        await _applyLoginKeyboardMode();
 
         // 课表创建成功后一路回退到课表主页
         if (result == true && mounted) {
@@ -311,23 +317,13 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
   /// 构建学校校徽，优先使用导入校徽，其次使用预设 FIT 校徽，最后降级为图标。
   Widget _buildSchoolBadge() {
-    final Uint8List? badgeBytes = _decodeBadgeBytes(widget.school.badgeBase64);
-    if (badgeBytes != null) {
+    if (_schoolBadgeProvider != null) {
       return ClipOval(
-        child: Image.memory(
-          badgeBytes,
+        child: Image(
+          image: _schoolBadgeProvider!,
           fit: BoxFit.cover,
-          filterQuality: FilterQuality.high,
-        ),
-      );
-    }
-
-    if (widget.school.name == '福州理工学院') {
-      return ClipOval(
-        child: Image.asset(
-          _fitBadgeAsset,
-          fit: BoxFit.cover,
-          filterQuality: FilterQuality.high,
+          filterQuality: FilterQuality.low,
+          gaplessPlayback: true,
         ),
       );
     }
@@ -413,7 +409,6 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -434,55 +429,45 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : MediaQuery.removeViewInsets(
-              context: context,
-              removeBottom: true,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => FocusScope.of(context).unfocus(),
-                child: ListView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                  children: <Widget>[
-                    Center(
+          : ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+              children: <Widget>[
+                  RepaintBoundary(
+                    child: Center(
                       child: SizedBox(
                         width: 76,
                         height: 76,
                         child: _buildSchoolBadge(),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '登录教务系统',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '登录教务系统',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
                     ),
-                    const SizedBox(height: 32),
-                    // 表单卡片
-                    Container(
+                  ),
+                  const SizedBox(height: 32),
+                  RepaintBoundary(
+                    child: Container(
                       decoration: BoxDecoration(
                         color:
                             Theme.of(context).cardTheme.color ??
                             colorScheme.surface,
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: <BoxShadow>[
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withAlpha(110),
+                        ),
                       ),
                       padding: const EdgeInsets.all(20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          // 账号输入框
                           Text(
                             '账号',
                             style: TextStyle(
@@ -495,6 +480,11 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                           TextField(
                             controller: _usernameController,
                             focusNode: _usernameFocusNode,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            enableIMEPersonalizedLearning: false,
+                            smartDashesType: SmartDashesType.disabled,
+                            smartQuotesType: SmartQuotesType.disabled,
                             style: TextStyle(
                               fontSize: 15,
                               color: colorScheme.onSurface,
@@ -507,6 +497,8 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                               }
                             },
                             onChanged: _handleUsernameChanged,
+                            onTapOutside: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
                             decoration: InputDecoration(
                               hintText: '请输入学号或用户名',
                               hintStyle: TextStyle(
@@ -550,12 +542,10 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                                 ),
                               ),
                             ),
-                            scrollPadding: EdgeInsets.zero,
                             textInputAction: TextInputAction.next,
                           ),
                           _buildSavedAccountPanel(colorScheme),
                           const SizedBox(height: 20),
-                          // 密码输入框
                           Text(
                             '密码',
                             style: TextStyle(
@@ -569,6 +559,11 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                             controller: _passwordController,
                             focusNode: _passwordFocusNode,
                             obscureText: _obscurePassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            enableIMEPersonalizedLearning: false,
+                            smartDashesType: SmartDashesType.disabled,
+                            smartQuotesType: SmartQuotesType.disabled,
                             style: TextStyle(
                               fontSize: 15,
                               color: colorScheme.onSurface,
@@ -580,6 +575,8 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                                 });
                               }
                             },
+                            onTapOutside: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
                             decoration: InputDecoration(
                               hintText: '请输入密码',
                               hintStyle: TextStyle(
@@ -624,7 +621,6 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                                 ),
                               ),
                             ),
-                            scrollPadding: EdgeInsets.zero,
                             textInputAction: TextInputAction.done,
                             onSubmitted: (_) =>
                                 _saveCredentialsAndOpenWebLogin(),
@@ -632,55 +628,51 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    // 安全提示
-                    Row(
-                      children: <Widget>[
-                        Icon(
-                          Icons.shield_outlined,
-                          size: 14,
-                          color: colorScheme.onSurface.withAlpha(102),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            '您的账号密码经过加密后仅存储在本设备，不会上传至任何服务器',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.onSurface.withAlpha(102),
-                            ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      Icon(
+                        Icons.shield_outlined,
+                        size: 14,
+                        color: colorScheme.onSurface.withAlpha(102),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '您的账号密码经过加密后仅存储在本设备，不会上传至任何服务器',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.onSurface.withAlpha(102),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    SizedBox(
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: _isSaving
-                            ? null
-                            : _saveCredentialsAndOpenWebLogin,
-                        child: _isSaving
-                            ? SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: colorScheme.onPrimary,
-                                ),
-                              )
-                            : const Text(
-                                '登录',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _isSaving ? null : _saveCredentialsAndOpenWebLogin,
+                      child: _isSaving
+                          ? SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.onPrimary,
+                              ),
+                            )
+                          : const Text(
+                              '登录',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
             ),
     );
   }
