@@ -57,7 +57,7 @@ class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage> {
       final bool confirmed = await ScheduleImportPreviewDialog.show(
         context,
         bundle,
-        cancelLabel: '返回修改',
+        cancelLabel: '取消',
       );
       if (!mounted || !confirmed) {
         return;

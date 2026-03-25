@@ -6,7 +6,7 @@ class ScheduleImportPreviewDialog extends StatelessWidget {
   const ScheduleImportPreviewDialog({
     super.key,
     required this.bundle,
-    this.cancelLabel = '继续扫描',
+    this.cancelLabel = '取消',
   });
 
   final CourseScheduleTransferBundle bundle;
@@ -15,7 +15,7 @@ class ScheduleImportPreviewDialog extends StatelessWidget {
   static Future<bool> show(
     BuildContext context,
     CourseScheduleTransferBundle bundle, {
-    String cancelLabel = '继续扫描',
+    String cancelLabel = '取消',
   }) async {
     final bool? result = await showDialog<bool>(
       context: context,
@@ -81,7 +81,7 @@ class ScheduleImportPreviewDialog extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _DialogActionButton(
-                    label: '确认导入',
+                    label: '确认',
                     isPrimary: true,
                     onTap: () => Navigator.of(context).pop(true),
                   ),
@@ -115,30 +115,48 @@ class _DialogActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final Color borderColor = isPrimary
-        ? colorScheme.primary
-        : colorScheme.outline.withValues(alpha: 0.42);
+    final BorderRadius borderRadius = BorderRadius.circular(18);
+    final RoundedRectangleBorder shape = RoundedRectangleBorder(
+      borderRadius: borderRadius,
+      side: isPrimary
+          ? BorderSide.none
+          : BorderSide(color: colorScheme.primary),
+    );
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 48,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isPrimary ? colorScheme.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: borderColor),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: isPrimary ? colorScheme.onPrimary : colorScheme.onSurface,
-          ),
-        ),
-      ),
+    return SizedBox(
+      height: 48,
+      child: isPrimary
+          ? ElevatedButton(
+              onPressed: onTap,
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+                shape: shape,
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          : OutlinedButton(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colorScheme.primary,
+                side: BorderSide(color: colorScheme.primary),
+                shape: shape,
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
     );
   }
 }
