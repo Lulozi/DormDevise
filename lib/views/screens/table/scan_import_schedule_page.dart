@@ -1,8 +1,9 @@
 import 'package:dormdevise/services/course_schedule_transfer_service.dart';
 import 'package:dormdevise/services/course_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import 'package:dormdevise/views/screens/table/widgets/schedule_import_preview_dialog.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 /// 扫码导入课表页面。
@@ -19,25 +20,36 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
   bool _torchEnabled = false;
 
   Future<void> _handleBarcodeCapture(BarcodeCapture capture) async {
-    final String rawValue = capture.barcodes
+    await _handleImport(_extractRawValue(capture.barcodes));
+  }
+
+  String _extractRawValue(Iterable<Barcode> barcodes) {
+    return barcodes
         .map((Barcode barcode) => barcode.rawValue?.trim())
         .whereType<String>()
         .firstWhere((String value) => value.isNotEmpty, orElse: () => '');
-    if (rawValue.isEmpty) {
-      return;
-    }
-    await _handleImport(rawValue);
   }
 
-  Future<void> _handleImport(String raw) async {
-    if (_isHandling) {
+  Future<void> _handleImport(
+    String raw, {
+    bool shouldPauseScanner = true,
+    bool skipBusyCheck = false,
+  }) async {
+    if (raw.isEmpty) {
+      return;
+    }
+    if (!skipBusyCheck && _isHandling) {
       return;
     }
 
-    setState(() {
-      _isHandling = true;
-    });
-    await _controller.stop();
+    if (!_isHandling) {
+      setState(() {
+        _isHandling = true;
+      });
+    }
+    if (shouldPauseScanner) {
+      await _controller.stop();
+    }
 
     try {
       final CourseScheduleTransferBundle bundle =
@@ -46,7 +58,10 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
         return;
       }
 
-      final bool confirmed = await _showImportPreview(bundle);
+      final bool confirmed = await ScheduleImportPreviewDialog.show(
+        context,
+        bundle,
+      );
       if (!mounted) {
         return;
       }
@@ -106,86 +121,61 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
     return error.message;
   }
 
-  Future<void> _importFromClipboard() async {
-    final ClipboardData? data = await Clipboard.getData('text/plain');
-    final String raw = data?.text?.trim() ?? '';
-    if (raw.isEmpty) {
+  Future<void> _scanFromImage() async {
+    if (_isHandling) {
+      return;
+    }
+
+    setState(() {
+      _isHandling = true;
+    });
+    await _controller.stop();
+
+    try {
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      final String path =
+          result != null && result.files.isNotEmpty
+          ? result.files.first.path?.trim() ?? ''
+          : '';
+      if (path.isEmpty) {
+        await _resumeScanning();
+        return;
+      }
+
+      final BarcodeCapture? capture = await _controller.analyzeImage(path);
+      final String raw = _extractRawValue(capture?.barcodes ?? <Barcode>[]);
+      if (raw.isEmpty) {
+        if (!mounted) {
+          return;
+        }
+        AppToast.show(
+          context,
+          '未识别到二维码，请换一张更清晰的图片',
+          variant: AppToastVariant.warning,
+        );
+        await _resumeScanning();
+        return;
+      }
+
+      await _handleImport(
+        raw,
+        shouldPauseScanner: false,
+        skipBusyCheck: true,
+      );
+    } catch (error) {
       if (!mounted) {
         return;
       }
-      AppToast.show(context, '剪贴板内容为空', variant: AppToastVariant.warning);
-      return;
+      AppToast.show(
+        context,
+        '图片识别失败：$error',
+        variant: AppToastVariant.error,
+      );
+      await _resumeScanning();
     }
-    await _handleImport(raw);
-  }
-
-  Future<bool> _showImportPreview(CourseScheduleTransferBundle bundle) async {
-    final bool? result = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        final ColorScheme colorScheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          title: const Text('导入课表'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              _InfoLine(label: '名称', value: bundle.tableName),
-              _InfoLine(
-                label: '学期开始',
-                value: _formatDate(bundle.semesterStart),
-              ),
-              _InfoLine(label: '课程数量', value: '${bundle.courses.length} 门'),
-              _InfoLine(label: '最大周数', value: '${bundle.maxWeek} 周'),
-              _InfoLine(label: '周末显示', value: bundle.showWeekend ? '显示' : '隐藏'),
-              _InfoLine(
-                label: '锁定状态',
-                value: bundle.isScheduleLocked ? '已锁定' : '未锁定',
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '将作为一张新课表导入，若重名会自动追加“导入”后缀。',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                      child: const Text('继续扫描'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                      child: const Text('确认导入'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    return result == true;
-  }
-
-  String _formatDate(DateTime value) {
-    final String month = value.month.toString().padLeft(2, '0');
-    final String day = value.day.toString().padLeft(2, '0');
-    return '${value.year}-$month-$day';
   }
 
   Future<void> _toggleTorch() async {
@@ -215,9 +205,9 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
         foregroundColor: Colors.white,
         actions: <Widget>[
           IconButton(
-            tooltip: '粘贴导入码',
-            onPressed: _isHandling ? null : _importFromClipboard,
-            icon: const Icon(Icons.content_paste_rounded),
+            tooltip: '选择图片扫码',
+            onPressed: _isHandling ? null : _scanFromImage,
+            icon: const Icon(Icons.photo_library_outlined),
           ),
           IconButton(
             tooltip: _torchEnabled ? '关闭闪光灯' : '打开闪光灯',
@@ -274,7 +264,7 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '也可以直接粘贴剪贴板中的导入码',
+                      '也可以点击右上角从图片中识别课表二维码',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.72),
@@ -283,46 +273,6 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
                     ),
                   ],
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            width: 68,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
               ),
             ),
           ),
