@@ -3459,7 +3459,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     if (currentSegment == '下午' && nextSegment == '晚上') {
       return '晚修';
     }
-    return '课间休息';
+    return '休息时间';
   }
 
   /// 计算分隔行高度，使视觉节奏更紧凑。
