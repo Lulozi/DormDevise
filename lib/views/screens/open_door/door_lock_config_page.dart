@@ -14,10 +14,17 @@ import 'mqtt_settings_page.dart';
 
 /// 门锁配置页，集中承载 HTTP 与 MQTT 两类开门配置。
 class OpenDoorSettingsPage extends StatefulWidget {
-  const OpenDoorSettingsPage({super.key, this.initialTabIndex = 0});
+  const OpenDoorSettingsPage({
+    super.key,
+    this.initialTabIndex = 0,
+    this.initialImportPayload,
+  });
 
   /// 指定初始展示的标签索引，默认显示 HTTP 配置。
   final int initialTabIndex;
+
+  /// 如果通过外部跳转携带了门锁配置文本（JSON），页面加载后会询问是否导入该配置。
+  final String? initialImportPayload;
 
   @override
   State<OpenDoorSettingsPage> createState() => _OpenDoorSettingsPageState();
@@ -39,6 +46,35 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       vsync: this,
       initialIndex: initialIndex,
     );
+    // 如果页面是通过跳转并携带了初始导入文本，则在首帧后询问用户是否导入
+    if (widget.initialImportPayload != null &&
+        widget.initialImportPayload!.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final bool? confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text('检测到门锁配置'),
+              content: const Text('检测到分享的门锁配置，是否导入此配置？'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('导入'),
+                ),
+              ],
+            );
+          },
+        );
+        if (confirmed == true && mounted) {
+          await _importConfigFromText(widget.initialImportPayload!);
+        }
+      });
+    }
   }
 
   @override

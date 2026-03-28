@@ -2,13 +2,18 @@ import 'package:dormdevise/services/course_schedule_transfer_service.dart';
 import 'package:dormdevise/services/course_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/views/screens/table/widgets/schedule_import_preview_dialog.dart';
+import 'package:dormdevise/utils/qr_transfer_codec.dart';
+import 'package:dormdevise/views/screens/open_door/door_lock_config_page.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 /// 扫码导入课表页面。
 class ScanImportSchedulePage extends StatefulWidget {
-  const ScanImportSchedulePage({super.key});
+  const ScanImportSchedulePage({super.key, this.initialRaw});
+
+  /// 如果通过跳转传入了初始要导入的原始二维码内容，将在页面加载后自动尝试导入。
+  final String? initialRaw;
 
   @override
   State<ScanImportSchedulePage> createState() => _ScanImportSchedulePageState();
@@ -35,6 +40,49 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
     bool shouldPauseScanner = true,
     bool skipBusyCheck = false,
   }) async {
+    // 首先尝试识别是否为本应用自定义的二维码负载，如果是其它类型（例如门锁配置），
+    // 则提示用户是否跳转到对应页面进行导入。
+    try {
+      final decoded = QrTransferCodec.tryDecode(raw);
+      if (decoded != null &&
+          decoded.type != CourseScheduleTransferService.payloadType) {
+        if (decoded.type == 'door_config') {
+          final bool? go = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('识别到门锁配置'),
+                content: const Text('扫描结果为门锁配置，是否跳转到门锁配置页面以导入？'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('跳转'),
+                  ),
+                ],
+              );
+            },
+          );
+          if (go == true) {
+            // 将已解码的文本传递给门锁配置页，后者会询问是否导入
+            final String decodedText = decoded.text;
+            if (!Navigator.of(context).mounted) return;
+            await Navigator.of(context).push<bool>(
+              MaterialPageRoute<bool>(
+                builder: (_) =>
+                    OpenDoorSettingsPage(initialImportPayload: decodedText),
+              ),
+            );
+            return;
+          }
+        }
+      }
+    } catch (_) {
+      // ignore decoding errors here and continue with normal schedule import flow
+    }
     if (raw.isEmpty) {
       return;
     }
@@ -183,6 +231,18 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // 如果页面是通过跳转并携带了初始二维码内容，则在首帧后自动处理一次导入。
+    if (widget.initialRaw != null && widget.initialRaw!.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _handleImport(widget.initialRaw!);
+      });
+    }
   }
 
   @override

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../utils/qr_transfer_codec.dart';
+import '../table/scan_import_schedule_page.dart';
 import 'door_config_qr_scan_page.dart';
 
 /// 门锁配置的通用分享/导入菜单。
@@ -190,9 +191,45 @@ class DoorConfigShareSheet {
     required Future<void> Function(String raw) onImport,
   }) async {
     try {
+      // 先尝试识别是否为其他类型的本应用负载（例如课表导入码），若是则提示是否跳转到对应页面
+      final decoded = QrTransferCodec.tryDecode(raw);
+      if (decoded != null && decoded.type != 'door_config') {
+        if (decoded.type == 'schedule') {
+          final bool? go = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('识别到课表导入码'),
+                content: const Text('扫描结果为课表导入码，是否跳转到课表导入页面以导入该课表？'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('跳转'),
+                  ),
+                ],
+              );
+            },
+          );
+          if (go == true) {
+            // 直接导航到扫码导入课表页面，并把原始二维码内容传入以便自动导入或预览
+            if (!Navigator.of(context).mounted) return;
+            await Navigator.of(context).push<bool>(
+              MaterialPageRoute<bool>(
+                builder: (_) => ScanImportSchedulePage(initialRaw: raw),
+              ),
+            );
+            return;
+          }
+        }
+      }
+
       await onImport(QrTransferCodec.decodeText(raw));
     } catch (error) {
-      if (!context.mounted) {
+      if (!Navigator.of(context).mounted) {
         return;
       }
       AppToast.show(context, '导入失败：$error', variant: AppToastVariant.error);
