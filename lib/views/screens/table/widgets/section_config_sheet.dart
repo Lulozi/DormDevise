@@ -1305,14 +1305,19 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       children: staticHours
                           .map(
                             (int hour) => Center(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${hour.toString().padLeft(2, '0')}时',
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSurface,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2.0,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '${hour.toString().padLeft(2, '0')}时',
+                                    style: TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurface,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1338,14 +1343,19 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       children: staticMinutes
                           .map(
                             (int minute) => Center(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${minute.toString().padLeft(2, '0')}分',
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSurface,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2.0,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '${minute.toString().padLeft(2, '0')}分',
+                                    style: TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurface,
+                                    ),
                                   ),
                                 ),
                               ),
