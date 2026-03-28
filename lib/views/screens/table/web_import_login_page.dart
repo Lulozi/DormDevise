@@ -433,245 +433,246 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
               children: <Widget>[
-                  RepaintBoundary(
-                    child: Center(
-                      child: SizedBox(
-                        width: 76,
-                        height: 76,
-                        child: _buildSchoolBadge(),
-                      ),
+                RepaintBoundary(
+                  child: Center(
+                    child: SizedBox(
+                      width: 76,
+                      height: 76,
+                      child: _buildSchoolBadge(),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '登录教务系统',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '登录教务系统',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
                   ),
-                  const SizedBox(height: 32),
-                  RepaintBoundary(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color:
-                            Theme.of(context).cardTheme.color ??
-                            colorScheme.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: colorScheme.outlineVariant.withAlpha(110),
-                        ),
+                ),
+                const SizedBox(height: 32),
+                RepaintBoundary(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color:
+                          Theme.of(context).cardTheme.color ??
+                          colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: colorScheme.outlineVariant.withAlpha(110),
                       ),
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            '账号',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.w500,
-                            ),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '账号',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w500,
                           ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _usernameController,
-                            focusNode: _usernameFocusNode,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            enableIMEPersonalizedLearning: false,
-                            smartDashesType: SmartDashesType.disabled,
-                            smartQuotesType: SmartQuotesType.disabled,
-                            style: TextStyle(
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _usernameController,
+                          focusNode: _usernameFocusNode,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          enableIMEPersonalizedLearning: false,
+                          smartDashesType: SmartDashesType.disabled,
+                          smartQuotesType: SmartQuotesType.disabled,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: colorScheme.onSurface,
+                          ),
+                          onTap: () {
+                            if (_isAccountListExpanded) {
+                              setState(() {
+                                _isAccountListExpanded = false;
+                              });
+                            }
+                          },
+                          onChanged: _handleUsernameChanged,
+                          onTapOutside: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          decoration: InputDecoration(
+                            hintText: '请输入学号或用户名',
+                            hintStyle: TextStyle(
+                              color: colorScheme.onSurface.withAlpha(102),
                               fontSize: 15,
-                              color: colorScheme.onSurface,
                             ),
-                            onTap: () {
-                              if (_isAccountListExpanded) {
-                                setState(() {
-                                  _isAccountListExpanded = false;
-                                });
-                              }
-                            },
-                            onChanged: _handleUsernameChanged,
-                            onTapOutside: (_) =>
-                                FocusManager.instance.primaryFocus?.unfocus(),
-                            decoration: InputDecoration(
-                              hintText: '请输入学号或用户名',
-                              hintStyle: TextStyle(
-                                color: colorScheme.onSurface.withAlpha(102),
-                                fontSize: 15,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.person_outline,
-                                color: colorScheme.primary,
-                                size: 22,
-                              ),
-                              suffixIcon: _savedAccounts.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      onPressed: _toggleAccountList,
-                                      icon: Icon(
-                                        _isAccountListExpanded
-                                            ? Icons.keyboard_arrow_up_rounded
-                                            : Icons.keyboard_arrow_down_rounded,
-                                        color: colorScheme.onSurface.withAlpha(
-                                          153,
-                                        ),
+                            prefixIcon: Icon(
+                              Icons.person_outline,
+                              color: colorScheme.primary,
+                              size: 22,
+                            ),
+                            suffixIcon: _savedAccounts.isEmpty
+                                ? null
+                                : IconButton(
+                                    onPressed: _toggleAccountList,
+                                    icon: Icon(
+                                      _isAccountListExpanded
+                                          ? Icons.keyboard_arrow_up_rounded
+                                          : Icons.keyboard_arrow_down_rounded,
+                                      color: colorScheme.onSurface.withAlpha(
+                                        153,
                                       ),
                                     ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 14,
-                              ),
-                              filled: true,
-                              fillColor: colorScheme.surfaceContainerHighest
-                                  .withAlpha(128),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: colorScheme.primary,
-                                  width: 1.5,
-                                ),
-                              ),
+                                  ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
                             ),
-                            textInputAction: TextInputAction.next,
-                          ),
-                          _buildSavedAccountPanel(colorScheme),
-                          const SizedBox(height: 20),
-                          Text(
-                            '密码',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.w500,
+                            filled: true,
+                            fillColor: colorScheme.surfaceContainerHighest
+                                .withAlpha(128),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _passwordController,
-                            focusNode: _passwordFocusNode,
-                            obscureText: _obscurePassword,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            enableIMEPersonalizedLearning: false,
-                            smartDashesType: SmartDashesType.disabled,
-                            smartQuotesType: SmartQuotesType.disabled,
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: colorScheme.onSurface,
-                            ),
-                            onTap: () {
-                              if (_isAccountListExpanded) {
-                                setState(() {
-                                  _isAccountListExpanded = false;
-                                });
-                              }
-                            },
-                            onTapOutside: (_) =>
-                                FocusManager.instance.primaryFocus?.unfocus(),
-                            decoration: InputDecoration(
-                              hintText: '请输入密码',
-                              hintStyle: TextStyle(
-                                color: colorScheme.onSurface.withAlpha(102),
-                                fontSize: 15,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.lock_outline,
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
                                 color: colorScheme.primary,
-                                size: 22,
-                              ),
-                              suffixIcon: IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  color: colorScheme.onSurface.withAlpha(128),
-                                  size: 22,
-                                ),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 14,
-                              ),
-                              filled: true,
-                              fillColor: colorScheme.surfaceContainerHighest
-                                  .withAlpha(128),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: colorScheme.primary,
-                                  width: 1.5,
-                                ),
+                                width: 1.5,
                               ),
                             ),
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) =>
-                                _saveCredentialsAndOpenWebLogin(),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: <Widget>[
-                      Icon(
-                        Icons.shield_outlined,
-                        size: 14,
-                        color: colorScheme.onSurface.withAlpha(102),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '您的账号密码经过加密后仅存储在本设备，不会上传至任何服务器',
+                          textInputAction: TextInputAction.next,
+                        ),
+                        _buildSavedAccountPanel(colorScheme),
+                        const SizedBox(height: 20),
+                        Text(
+                          '密码',
                           style: TextStyle(
-                            fontSize: 11,
-                            color: colorScheme.onSurface.withAlpha(102),
+                            fontSize: 13,
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _saveCredentialsAndOpenWebLogin,
-                      child: _isSaving
-                          ? SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: colorScheme.onPrimary,
-                              ),
-                            )
-                          : const Text(
-                              '登录',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _passwordController,
+                          focusNode: _passwordFocusNode,
+                          obscureText: _obscurePassword,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          enableIMEPersonalizedLearning: false,
+                          smartDashesType: SmartDashesType.disabled,
+                          smartQuotesType: SmartQuotesType.disabled,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: colorScheme.onSurface,
+                          ),
+                          onTap: () {
+                            if (_isAccountListExpanded) {
+                              setState(() {
+                                _isAccountListExpanded = false;
+                              });
+                            }
+                          },
+                          onTapOutside: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          decoration: InputDecoration(
+                            hintText: '请输入密码',
+                            hintStyle: TextStyle(
+                              color: colorScheme.onSurface.withAlpha(102),
+                              fontSize: 15,
+                            ),
+                            prefixIcon: Icon(
+                              Icons.lock_outline,
+                              color: colorScheme.primary,
+                              size: 22,
+                            ),
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                color: colorScheme.onSurface.withAlpha(128),
+                                size: 22,
                               ),
                             ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                            filled: true,
+                            fillColor: colorScheme.surfaceContainerHighest
+                                .withAlpha(128),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: colorScheme.primary,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _saveCredentialsAndOpenWebLogin(),
+                        ),
+                      ],
                     ),
                   ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.shield_outlined,
+                      size: 14,
+                      color: colorScheme.onSurface.withAlpha(102),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '您的账号密码经过加密后仅存储在本设备，不会上传至任何服务器',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurface.withAlpha(102),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isSaving
+                        ? null
+                        : _saveCredentialsAndOpenWebLogin,
+                    child: _isSaving
+                        ? SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.onPrimary,
+                            ),
+                          )
+                        : const Text(
+                            '登录',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ),
               ],
             ),
     );

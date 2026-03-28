@@ -98,10 +98,12 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
   }
 
   Future<String> _buildSharePayloadText() async {
-    final LocalDoorLockConfig localConfig =
-        await LocalDoorLockConfigService.instance.loadConfig(forceRefresh: true);
-    final MqttConfig mqttConfig =
-        await MqttConfigService.instance.loadConfig(forceRefresh: true);
+    final LocalDoorLockConfig localConfig = await LocalDoorLockConfigService
+        .instance
+        .loadConfig(forceRefresh: true);
+    final MqttConfig mqttConfig = await MqttConfigService.instance.loadConfig(
+      forceRefresh: true,
+    );
     final Map<String, Object?> payload = <String, Object?>{
       'door_lock_bundle_version': 1,
       ...localConfig.toSharePayload(),
@@ -116,11 +118,7 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       if (!mounted) {
         return;
       }
-      AppToast.show(
-        context,
-        '导入内容为空',
-        variant: AppToastVariant.warning,
-      );
+      AppToast.show(context, '导入内容为空', variant: AppToastVariant.warning);
       return;
     }
 
@@ -150,8 +148,8 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       }
 
       if (hasMqttConfig) {
-        final MqttConfig currentConfig =
-            await MqttConfigService.instance.loadConfig(forceRefresh: true);
+        final MqttConfig currentConfig = await MqttConfigService.instance
+            .loadConfig(forceRefresh: true);
         final MqttConfig importedConfig = MqttConfig.fromStorage(
           Map<String, Object?>.from(decoded),
         );
@@ -169,20 +167,12 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       setState(() {
         _pageRevision++;
       });
-      AppToast.show(
-        context,
-        '门锁配置已导入并保存',
-        variant: AppToastVariant.success,
-      );
+      AppToast.show(context, '门锁配置已导入并保存', variant: AppToastVariant.success);
     } catch (error) {
       if (!mounted) {
         return;
       }
-      AppToast.show(
-        context,
-        '导入失败：$error',
-        variant: AppToastVariant.error,
-      );
+      AppToast.show(context, '导入失败：$error', variant: AppToastVariant.error);
     }
   }
 }

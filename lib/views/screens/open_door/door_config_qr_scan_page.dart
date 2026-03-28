@@ -80,8 +80,7 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
         type: FileType.image,
         allowMultiple: false,
       );
-      final String path =
-          result != null && result.files.isNotEmpty
+      final String path = result != null && result.files.isNotEmpty
           ? result.files.first.path?.trim() ?? ''
           : '';
       if (path.isEmpty) {
@@ -90,7 +89,9 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
       }
 
       final BarcodeCapture? capture = await _controller.analyzeImage(path);
-      final String rawValue = _extractRawValue(capture?.barcodes ?? <Barcode>[]);
+      final String rawValue = _extractRawValue(
+        capture?.barcodes ?? <Barcode>[],
+      );
       if (rawValue.isEmpty) {
         if (!mounted) {
           return;
@@ -109,11 +110,7 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
       if (!mounted) {
         return;
       }
-      AppToast.show(
-        context,
-        '图片识别失败：$error',
-        variant: AppToastVariant.error,
-      );
+      AppToast.show(context, '图片识别失败：$error', variant: AppToastVariant.error);
       await _resumeScanning();
     }
   }
@@ -192,11 +189,12 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 child: Text(
-                  _isHandling
-                      ? '正在解析二维码，请稍候...'
-                      : '将门锁配置二维码放入取景框中，或点击右上角从图片识别',
+                  _isHandling ? '正在解析二维码，请稍候...' : '将门锁配置二维码放入取景框中，或点击右上角从图片识别',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                 ),

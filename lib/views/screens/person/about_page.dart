@@ -1550,10 +1550,7 @@ Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
     }
 
     if (releases.isEmpty) {
-      await prefs.setInt(
-        lastAttemptKey,
-        DateTime.now().millisecondsSinceEpoch,
-      );
+      await prefs.setInt(lastAttemptKey, DateTime.now().millisecondsSinceEpoch);
       final cachedJson = prefs.getString(cacheDataKey);
       if (cachedJson != null) {
         try {

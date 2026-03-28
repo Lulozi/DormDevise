@@ -136,8 +136,7 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
         type: FileType.image,
         allowMultiple: false,
       );
-      final String path =
-          result != null && result.files.isNotEmpty
+      final String path = result != null && result.files.isNotEmpty
           ? result.files.first.path?.trim() ?? ''
           : '';
       if (path.isEmpty) {
@@ -160,20 +159,12 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
         return;
       }
 
-      await _handleImport(
-        raw,
-        shouldPauseScanner: false,
-        skipBusyCheck: true,
-      );
+      await _handleImport(raw, shouldPauseScanner: false, skipBusyCheck: true);
     } catch (error) {
       if (!mounted) {
         return;
       }
-      AppToast.show(
-        context,
-        '图片识别失败：$error',
-        variant: AppToastVariant.error,
-      );
+      AppToast.show(context, '图片识别失败：$error', variant: AppToastVariant.error);
       await _resumeScanning();
     }
   }
