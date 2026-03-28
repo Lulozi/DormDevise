@@ -79,8 +79,8 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   late bool _showWeekend;
   late bool _showNonCurrentWeek;
   late bool _isScheduleLocked;
-  bool _showInCalendar = false;
-  bool _enableDesktopWidget = false;
+  final bool _showInCalendar = false;
+  final bool _enableDesktopWidget = false;
   late String _tableName;
   String? _colorAllocationAction;
 
