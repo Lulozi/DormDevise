@@ -140,21 +140,6 @@ class _CourseEditPageState extends State<CourseEditPage> {
         });
 
         // 检查默认的 2 节课程是否会跨越分段（例如上午 -> 下午）
-        bool isCrossSegment = false;
-        if (_scheduleConfig != null) {
-          final tempSession = CourseSession(
-            weekday: widget.initialWeekday!,
-            startSection: widget.initialSection!,
-            sectionCount: 2,
-            location: '',
-            startWeek: 1,
-            endWeek: widget.maxWeek,
-            weekType: CourseWeekType.all,
-          );
-          if (_isCrossSegment(tempSession)) {
-            isCrossSegment = true;
-          }
-        }
 
         if (nextSectionOccupied) {
           initialCount = 1;
@@ -233,19 +218,6 @@ class _CourseEditPageState extends State<CourseEditPage> {
     setState(() {
       _suggestions = uniqueMatches.values.toList();
     });
-  }
-
-  ({int start, int end})? _getSegmentRange(int section) {
-    if (_scheduleConfig == null) return null;
-    int segStart = 1;
-    for (var segment in _scheduleConfig!.segments) {
-      int segEnd = segStart + segment.classCount - 1;
-      if (section >= segStart && section <= segEnd) {
-        return (start: segStart, end: segEnd);
-      }
-      segStart += segment.classCount;
-    }
-    return null;
   }
 
   bool _isCrossSegment(CourseSession session) {
