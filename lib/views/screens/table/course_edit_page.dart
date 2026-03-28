@@ -156,7 +156,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
           }
         }
 
-        if (nextSectionOccupied || isCrossSegment) {
+        if (nextSectionOccupied) {
           initialCount = 1;
         }
 
@@ -320,13 +320,11 @@ class _CourseEditPageState extends State<CourseEditPage> {
     if (!mounted || index >= _sessions.length) return;
 
     var updatedSession = _sessions[index];
-    bool wasReverseOrder = false;
 
     // 0. 归一化处理：如果结束时间小于开始时间，自动交换
     final currentEnd =
         updatedSession.startSection + updatedSession.sectionCount - 1;
     if (currentEnd < updatedSession.startSection) {
-      wasReverseOrder = true;
       final newStart = currentEnd;
       final newEnd = updatedSession.startSection;
       final newCount = newEnd - newStart + 1;
@@ -348,34 +346,6 @@ class _CourseEditPageState extends State<CourseEditPage> {
       // 1. 收集不需要移除的会话
       final List<CourseSession> keptSessions = [];
 
-      // 判断是否跨段（Inter-segment）
-      // 如果调整后的时间跨越了作息表定义的时段边界（例如从上午跨到下午），则视为“大调整”，清除当天其他所有课程
-      // 如果调整仍在同一时段内（例如 1-4 调整为 1-2），则仅清除重叠课程，保留其他时段
-      // 特殊情况：如果是反向选择（B < A），则强制视为大调整，清除当天其他课程
-      bool isInterSegment = false;
-      if (wasReverseOrder) {
-        isInterSegment = true;
-      } else if (_scheduleConfig != null) {
-        bool contained = false;
-        int segStart = 1;
-        for (var segment in _scheduleConfig!.segments) {
-          int segEnd = segStart + segment.classCount - 1;
-          final uEnd =
-              updatedSession.startSection + updatedSession.sectionCount - 1;
-
-          // 检查是否完全包含在当前段内
-          if (updatedSession.startSection >= segStart && uEnd <= segEnd) {
-            contained = true;
-            break;
-          }
-          segStart += segment.classCount;
-        }
-        // 如果没有被任何一个段完全包含，则是跨段
-        if (!contained) {
-          isInterSegment = true;
-        }
-      }
-
       for (int i = 0; i < _sessions.length; i++) {
         if (i == index) continue; // 跳过当前正在编辑的会话
 
@@ -387,24 +357,15 @@ class _CourseEditPageState extends State<CourseEditPage> {
           continue;
         }
 
-        // 同一天的会话处理
-        if (isInterSegment) {
-          // 跨段调整：清除当天所有其他课程
-          continue;
-        } else {
-          // 段内调整：仅清除重叠的
-          final sEnd = s.startSection + s.sectionCount - 1;
-          final uEnd =
-              updatedSession.startSection + updatedSession.sectionCount - 1;
+        // 同一天的会话：仅清除与更新区间重叠的会话，跨段调整不再视为清除当天所有课程
+        final sEnd = s.startSection + s.sectionCount - 1;
+        final uEnd =
+            updatedSession.startSection + updatedSession.sectionCount - 1;
 
-          bool isOverlapping = false;
-          if (s.startSection <= uEnd && sEnd >= updatedSession.startSection) {
-            isOverlapping = true;
-          }
-
-          if (!isOverlapping) {
-            keptSessions.add(s);
-          }
+        final bool isOverlapping =
+            s.startSection <= uEnd && sEnd >= updatedSession.startSection;
+        if (!isOverlapping) {
+          keptSessions.add(s);
         }
       }
 
@@ -662,31 +623,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
       return;
     }
 
-    // 校验跨段
-    if (_scheduleConfig != null) {
-      for (var session in _sessions) {
-        int segStart = 1;
-        for (int i = 0; i < _scheduleConfig!.segments.length; i++) {
-          final segment = _scheduleConfig!.segments[i];
-          int segEnd = segStart + segment.classCount - 1;
-          final uStart = session.startSection;
-          final uEnd = session.startSection + session.sectionCount - 1;
-
-          // 检查是否跨越了当前段的结束边界
-          if (uStart >= segStart && uStart <= segEnd && uEnd > segEnd) {
-            String errorMsg = '课程时间不能跨越时段';
-            if (i == 0) {
-              errorMsg = '课程时间不能跨越午休';
-            } else if (i == 1) {
-              errorMsg = '课程时间不能跨越晚修';
-            }
-            AppToast.show(context, errorMsg, variant: AppToastVariant.warning);
-            return;
-          }
-          segStart += segment.classCount;
-        }
-      }
-    }
+    // 允许跨段选择：不再在保存时阻止用户跨越时段设置课节
 
     // 确认临时颜色为永久
     _temporaryAutoColor = null;
@@ -1544,40 +1481,22 @@ class _CourseEditPageState extends State<CourseEditPage> {
                     initialItem: session.startSection - 1,
                   ),
                   onSelectedItemChanged: (newIndex) {
-                    final newStart = newIndex + 1;
+                    final newStart = min(max(newIndex + 1, 1), _totalSections);
                     // 计算当前的结束时间
                     final currentEnd =
                         session.startSection + session.sectionCount - 1;
 
-                    // 验证跨段
-                    int validatedStart = newStart;
+                    int validatedStart;
+                    int newCount;
 
-                    // 情况1: newStart > currentEnd (发生交换)
-                    // 实际区间变为 [currentEnd, newStart]
+                    // 如果用户选择的起始大于当前结束，视为交换（反向选择）
                     if (newStart > currentEnd) {
-                      final range = _getSegmentRange(currentEnd);
-                      if (range != null && newStart > range.end) {
-                        validatedStart = range.end;
-                        // 强制刷新 UI
-                        setState(() {
-                          _pickerResetVersion++;
-                        });
-                      }
+                      validatedStart = currentEnd;
+                      newCount = newStart - currentEnd + 1;
+                    } else {
+                      validatedStart = newStart;
+                      newCount = currentEnd - validatedStart + 1;
                     }
-                    // 情况2: newStart <= currentEnd (正常)
-                    // 实际区间变为 [newStart, currentEnd]
-                    else {
-                      final range = _getSegmentRange(currentEnd);
-                      if (range != null && newStart < range.start) {
-                        validatedStart = range.start;
-                        // 强制刷新 UI
-                        setState(() {
-                          _pickerResetVersion++;
-                        });
-                      }
-                    }
-
-                    final newCount = currentEnd - validatedStart + 1;
 
                     final newSession = CourseSession(
                       weekday: session.weekday,
@@ -1615,24 +1534,15 @@ class _CourseEditPageState extends State<CourseEditPage> {
                     initialItem: endSection - 1,
                   ),
                   onSelectedItemChanged: (newIndex) {
-                    final newEnd = newIndex + 1;
+                    final newEnd = min(max(newIndex + 1, 1), _totalSections);
 
                     final int oldStart = session.startSection;
                     final int oldEnd =
                         session.startSection + session.sectionCount - 1;
 
-                    // 情况：选择的结束 < 当前起始 -> 视为反向选择，交换为 [newEnd, oldEnd]
+                    // 反向选择：newEnd < oldStart，交换为 [newEnd, oldEnd]
                     if (newEnd < oldStart) {
-                      int validatedNewStart = newEnd;
-                      final seg = _getSegmentRange(oldStart);
-                      if (seg != null && validatedNewStart < seg.start) {
-                        // 不允许跨段，修正到当前段起始
-                        validatedNewStart = seg.start;
-                        setState(() {
-                          _pickerResetVersion++;
-                        });
-                      }
-
+                      final int validatedNewStart = newEnd;
                       final int newCount = oldEnd - validatedNewStart + 1;
                       final newSession = CourseSession(
                         weekday: session.weekday,
@@ -1648,32 +1558,14 @@ class _CourseEditPageState extends State<CourseEditPage> {
                       return;
                     }
 
-                    // 常规情况：结束 >= 起始，按原有逻辑验证并修正
+                    // 常规情况：结束 >= 起始
                     int validatedEnd = newEnd;
-                    final range = _getSegmentRange(session.startSection);
+                    if (validatedEnd < oldStart) validatedEnd = oldStart;
 
-                    if (range != null) {
-                      // 如果结束时间超过了当前段的结束时间
-                      if (newEnd > range.end) {
-                        validatedEnd = range.end;
-                        setState(() {
-                          _pickerResetVersion++;
-                        });
-                      }
-                    }
-
-                    // 限制结束节次不能小于开始节次（防御性修正）
-                    if (validatedEnd < session.startSection) {
-                      validatedEnd = session.startSection;
-                      setState(() {
-                        _pickerResetVersion++;
-                      });
-                    }
-
-                    final newCount = validatedEnd - session.startSection + 1;
+                    final newCount = validatedEnd - oldStart + 1;
                     final newSession = CourseSession(
                       weekday: session.weekday,
-                      startSection: session.startSection,
+                      startSection: oldStart,
                       sectionCount: newCount,
                       location: session.location,
                       startWeek: session.startWeek,
