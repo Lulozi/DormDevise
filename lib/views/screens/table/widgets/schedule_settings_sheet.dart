@@ -369,24 +369,27 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               children: [
                 _buildSwitchTile(
                   title: '课程提醒',
+                  subtitle: '暂时停用功能，等待后续版本修复',
                   value: _isReminderMethodEnabled,
-                  onChanged: (bool value) async {
-                    setState(() {
-                      _isReminderMethodEnabled = value;
-                      if (!value) {
-                        _isReminderTimeExpanded = false;
-                      }
-                      if (!widget.saveNotificationImmediately) {
-                        _hasReminderChanged = true;
-                      }
-                    });
-                    if (widget.saveNotificationImmediately) {
-                      await CourseService.instance.saveReminderEnabled(
-                        value,
-                        widget.scheduleId,
-                      );
-                    }
-                  },
+                  // 已注释：暂时禁用课程提醒开关回调，界面仅展示灰色开关样式
+                  // onChanged: (bool value) async {
+                  //   setState(() {
+                  //     _isReminderMethodEnabled = value;
+                  //     if (!value) {
+                  //       _isReminderTimeExpanded = false;
+                  //     }
+                  //     if (!widget.saveNotificationImmediately) {
+                  //       _hasReminderChanged = true;
+                  //     }
+                  //   });
+                  //   if (widget.saveNotificationImmediately) {
+                  //     await CourseService.instance.saveReminderEnabled(
+                  //       value,
+                  //       widget.scheduleId,
+                  //     );
+                  //   }
+                  // },
+                  onChanged: null,
                 ),
                 AnimatedCrossFade(
                   firstChild: Container(),
@@ -471,24 +474,18 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           children: [
             _buildSwitchTile(
               title: '启用日历显示',
-              subtitle: '暂未接入功能，当前仅展示开关样式',
+              subtitle: '暂未接入功能，等待后续版本更新',
               value: _showInCalendar,
-              onChanged: (bool value) {
-                setState(() {
-                  _showInCalendar = value;
-                });
-              },
+              // 禁用交互，展示为灰色
+              onChanged: null,
             ),
             _buildDivider(),
             _buildSwitchTile(
               title: '启用桌面组件',
-              subtitle: '暂未接入功能，当前仅展示开关样式',
+              subtitle: '暂未接入功能，等待后续版本更新',
               value: _enableDesktopWidget,
-              onChanged: (bool value) {
-                setState(() {
-                  _enableDesktopWidget = value;
-                });
-              },
+              // 禁用交互，展示为灰色
+              onChanged: null,
             ),
           ],
         ),
@@ -991,9 +988,10 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     required String title,
     String? subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    ValueChanged<bool>? onChanged,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final bool disabled = onChanged == null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -1004,7 +1002,12 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: disabled
+                        ? colorScheme.onSurfaceVariant
+                        : colorScheme.onSurface,
+                  ),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 4),
@@ -1012,7 +1015,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                     subtitle,
                     style: TextStyle(
                       fontSize: 12,
-                      color: colorScheme.onSurfaceVariant,
+                      color: disabled
+                          ? colorScheme.onSurfaceVariant
+                          : colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
