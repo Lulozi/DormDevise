@@ -773,17 +773,21 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     if (sectionIndex == 0) {
       // 如果是该时段的第一节课
       if (segmentIndex > 0) {
-        // 必须晚于上一时段的结束时间
+        // 必须晚于上一时段的结束时间（如果上一时段有课程）
         final _MutableSegment prevSegment = _segments[segmentIndex - 1];
-        final TimeOfDay prevSegmentEnd = _buildSectionPreviews(
+        final List<_SectionPreview> prevPreviews = _buildSectionPreviews(
           prevSegment,
           0,
-        ).last.end;
+        );
+        if (prevPreviews.isNotEmpty) {
+          final TimeOfDay prevSegmentEnd = prevPreviews.last.end;
 
-        if (_compareTimeOfDay(newStart, prevSegmentEnd) < 0) {
-          _showToast('开始时间不能早于上一时段结束时间');
-          return;
+          if (_compareTimeOfDay(newStart, prevSegmentEnd) < 0) {
+            _showToast('开始时间不能早于上一时段结束时间');
+            return;
+          }
         }
+        // 若上一时段无课（previews 为空），则不做该项限制，允许自由设置开始时间
       }
     } else {
       // 如果是中间的节次，必须晚于上一节课的结束时间
