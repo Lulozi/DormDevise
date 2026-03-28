@@ -1590,7 +1590,38 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   onSelectedItemChanged: (newIndex) {
                     final newEnd = newIndex + 1;
 
-                    // 验证跨段
+                    final int oldStart = session.startSection;
+                    final int oldEnd =
+                        session.startSection + session.sectionCount - 1;
+
+                    // 情况：选择的结束 < 当前起始 -> 视为反向选择，交换为 [newEnd, oldEnd]
+                    if (newEnd < oldStart) {
+                      int validatedNewStart = newEnd;
+                      final seg = _getSegmentRange(oldStart);
+                      if (seg != null && validatedNewStart < seg.start) {
+                        // 不允许跨段，修正到当前段起始
+                        validatedNewStart = seg.start;
+                        setState(() {
+                          _pickerResetVersion++;
+                        });
+                      }
+
+                      final int newCount = oldEnd - validatedNewStart + 1;
+                      final newSession = CourseSession(
+                        weekday: session.weekday,
+                        startSection: validatedNewStart,
+                        sectionCount: newCount,
+                        location: session.location,
+                        startWeek: session.startWeek,
+                        endWeek: session.endWeek,
+                        weekType: session.weekType,
+                        customWeeks: session.customWeeks,
+                      );
+                      _updateSession(index, newSession);
+                      return;
+                    }
+
+                    // 常规情况：结束 >= 起始，按原有逻辑验证并修正
                     int validatedEnd = newEnd;
                     final range = _getSegmentRange(session.startSection);
 
@@ -1604,9 +1635,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
                       }
                     }
 
-                    // 限制结束节次不能小于开始节次
+                    // 限制结束节次不能小于开始节次（防御性修正）
                     if (validatedEnd < session.startSection) {
-                      // 采用修正策略：如果结束 < 开始，则结束 = 开始
                       validatedEnd = session.startSection;
                       setState(() {
                         _pickerResetVersion++;
