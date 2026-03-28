@@ -669,7 +669,6 @@ class _CourseEditPageState extends State<CourseEditPage> {
         customWeeks: _customWeeks,
       );
       _sessions.add(added);
-      _sessions = _mergeAdjacentSessions(_sessions);
 
       // 将展开状态切换到新添加的会话，确保展开内容与会话同步
       int newIndex = _sessions.indexWhere(
