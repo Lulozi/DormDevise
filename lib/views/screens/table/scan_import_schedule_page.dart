@@ -2,6 +2,8 @@ import 'package:dormdevise/services/course_schedule_transfer_service.dart';
 import 'package:dormdevise/services/course_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/views/screens/table/widgets/schedule_import_preview_dialog.dart';
+import 'dart:convert';
+
 import 'package:dormdevise/utils/qr_transfer_codec.dart';
 import 'package:dormdevise/views/screens/open_door/door_lock_config_page.dart';
 import 'package:file_picker/file_picker.dart';
@@ -67,13 +69,34 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
             },
           );
           if (go == true) {
-            // 将已解码的文本传递给门锁配置页，后者会询问是否导入
+            // 将已解码的文本传递给门锁配置页，后者会询问是否导入。
+            // 使用 pushReplacement 替换当前扫码页面，返回时不回到扫码界面。
             final String decodedText = decoded.text;
-            if (!Navigator.of(context).mounted) return;
-            await Navigator.of(context).push<bool>(
+            if (!mounted) return;
+
+            int initialTabIndex = 0;
+            try {
+              final dynamic payload = jsonDecode(decodedText);
+              if (payload is Map) {
+                final Iterable<String> keys = payload.keys.map(
+                  (k) => k.toString(),
+                );
+                if (keys.any(
+                  (k) => k.startsWith('mqtt_') || k == 'custom_open_msg',
+                )) {
+                  initialTabIndex = 1; // 切到 MQTT 配置页
+                }
+              }
+            } catch (_) {
+              // ignore: not a JSON payload
+            }
+
+            await Navigator.of(context).pushReplacement(
               MaterialPageRoute<bool>(
-                builder: (_) =>
-                    OpenDoorSettingsPage(initialImportPayload: decodedText),
+                builder: (_) => OpenDoorSettingsPage(
+                  initialImportPayload: decodedText,
+                  initialTabIndex: initialTabIndex,
+                ),
               ),
             );
             return;

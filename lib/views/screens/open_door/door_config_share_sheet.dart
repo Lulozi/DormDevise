@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../utils/qr_transfer_codec.dart';
-import '../table/scan_import_schedule_page.dart';
+import '../table/table_page.dart';
 import 'door_config_qr_scan_page.dart';
 
 /// 门锁配置的通用分享/导入菜单。
@@ -190,13 +190,14 @@ class DoorConfigShareSheet {
     required String raw,
     required Future<void> Function(String raw) onImport,
   }) async {
+    final BuildContext safeContext = context;
     try {
       // 先尝试识别是否为其他类型的本应用负载（例如课表导入码），若是则提示是否跳转到对应页面
       final decoded = QrTransferCodec.tryDecode(raw);
       if (decoded != null && decoded.type != 'door_config') {
         if (decoded.type == 'schedule') {
           final bool? go = await showDialog<bool>(
-            context: context,
+            context: safeContext,
             builder: (dialogContext) {
               return AlertDialog(
                 title: const Text('识别到课表导入码'),
@@ -215,12 +216,13 @@ class DoorConfigShareSheet {
             },
           );
           if (go == true) {
-            // 直接导航到扫码导入课表页面，并把原始二维码内容传入以便自动导入或预览
-            if (!Navigator.of(context).mounted) return;
-            await Navigator.of(context).push<bool>(
-              MaterialPageRoute<bool>(
-                builder: (_) => ScanImportSchedulePage(initialRaw: raw),
+            // 直接导航到课表页面，并把原始二维码内容传入以便自动导入或预览
+            if (!safeContext.mounted) return;
+            await Navigator.of(safeContext).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (_) => TablePage(initialImportRaw: raw),
               ),
+              (Route<dynamic> route) => false,
             );
             return;
           }
@@ -229,10 +231,10 @@ class DoorConfigShareSheet {
 
       await onImport(QrTransferCodec.decodeText(raw));
     } catch (error) {
-      if (!Navigator.of(context).mounted) {
+      if (!safeContext.mounted) {
         return;
       }
-      AppToast.show(context, '导入失败：$error', variant: AppToastVariant.error);
+      AppToast.show(safeContext, '导入失败：$error', variant: AppToastVariant.error);
     }
   }
 }

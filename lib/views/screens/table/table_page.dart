@@ -22,11 +22,15 @@ import 'all_schedules_page.dart';
 import 'import_code_schedule_page.dart';
 import 'scan_import_schedule_page.dart';
 import 'schedule_share.dart';
+import 'widgets/schedule_import_preview_dialog.dart';
 import 'web_import_schedule_page.dart';
 
 /// 展示并管理大学课程表的页面。
 class TablePage extends StatefulWidget {
-  const TablePage({super.key});
+  const TablePage({super.key, this.initialImportRaw});
+
+  /// 如果通过外部跳转携带了课表导入码原始文本，页面加载后会自动处理导入流程。
+  final String? initialImportRaw;
 
   /// 创建页面状态以渲染课表内容。
   @override
@@ -274,8 +278,61 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     _pageController = PageController(initialPage: 0);
     _scrollGroup = LinkedScrollControllerGroup();
     _timeColumnController = _scrollGroup.addAndGet();
-    _loadData(jumpToCurrentWeek: true);
+    // 加载数据后，如存在外部传入的导入码则在加载完成后处理导入流程
+    _loadData(jumpToCurrentWeek: true).then((_) {
+      if (widget.initialImportRaw != null &&
+          widget.initialImportRaw!.trim().isNotEmpty) {
+        _handleInitialImport(widget.initialImportRaw!);
+      }
+    });
     _scheduleMidnightRefresh();
+  }
+
+  Future<void> _handleInitialImport(String raw) async {
+    try {
+      final CourseScheduleTransferBundle bundle =
+          CourseScheduleTransferService.decodeBundle(raw);
+      if (!mounted) return;
+
+      final bool confirmed = await ScheduleImportPreviewDialog.show(
+        context,
+        bundle,
+      );
+      if (!mounted) return;
+      if (!confirmed) return;
+
+      await CourseService.instance.createImportedSchedule(
+        desiredName: bundle.tableName,
+        courses: bundle.courses,
+        config: bundle.scheduleConfig,
+        semesterStart: bundle.semesterStart,
+        maxWeek: bundle.maxWeek,
+        showWeekend: bundle.showWeekend,
+        showNonCurrentWeek: bundle.showNonCurrentWeek,
+        isScheduleLocked: bundle.isScheduleLocked,
+      );
+      if (!mounted) return;
+      AppToast.show(context, '课表已导入');
+      // 刷新页面数据以展示新导入的课表
+      await _loadData(jumpToCurrentWeek: true);
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        _resolveImportErrorMessage(raw, error),
+        variant: AppToastVariant.warning,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.show(context, '导入失败：$error', variant: AppToastVariant.error);
+    }
+  }
+
+  String _resolveImportErrorMessage(String raw, FormatException error) {
+    if (CourseScheduleTransferService.isLegacyShareLink(raw)) {
+      return '这是旧版分享链接，不含完整课表数据，请重新生成新版分享二维码';
+    }
+    return error.message;
   }
 
   void _invalidateAdaptiveLayoutCache() {
