@@ -721,19 +721,38 @@ class _CourseEditPageState extends State<CourseEditPage> {
   void _incrementSessions() {
     setState(() {
       final next = _findNextAvailableSlot();
-      _sessions.add(
-        CourseSession(
-          weekday: next.weekday,
-          startSection: next.startSection,
-          sectionCount: next.sectionCount,
-          location: _classroomController.text,
-          startWeek: _startWeek,
-          endWeek: _endWeek,
-          weekType: _weekType,
-          customWeeks: _customWeeks,
-        ),
+      final added = CourseSession(
+        weekday: next.weekday,
+        startSection: next.startSection,
+        sectionCount: next.sectionCount,
+        location: _classroomController.text,
+        startWeek: _startWeek,
+        endWeek: _endWeek,
+        weekType: _weekType,
+        customWeeks: _customWeeks,
       );
+      _sessions.add(added);
       _sessions = _mergeAdjacentSessions(_sessions);
+
+      // 将展开状态切换到新添加的会话，确保展开内容与会话同步
+      int newIndex = _sessions.indexWhere(
+        (s) =>
+            s.weekday == added.weekday && s.startSection == added.startSection,
+      );
+      if (newIndex == -1) {
+        newIndex = _sessions.indexWhere(
+          (s) =>
+              s.weekday == added.weekday &&
+              s.startSection <= added.startSection &&
+              (s.startSection + s.sectionCount - 1) >= added.startSection,
+        );
+      }
+      if (newIndex != -1) {
+        _expandedSessionIndex = newIndex;
+      }
+
+      // 强制刷新 pickers
+      _pickerResetVersion++;
     });
   }
 
@@ -971,6 +990,14 @@ class _CourseEditPageState extends State<CourseEditPage> {
     if (_sessions.isNotEmpty) {
       setState(() {
         _sessions.removeLast();
+        // 如果展开索引超出范围，清除或调整
+        if (_expandedSessionIndex != null) {
+          if (_expandedSessionIndex! >= _sessions.length) {
+            _expandedSessionIndex = null;
+          }
+        }
+        // 强制刷新 pickers
+        _pickerResetVersion++;
       });
     }
   }
