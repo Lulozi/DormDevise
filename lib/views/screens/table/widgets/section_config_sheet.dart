@@ -434,6 +434,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                   previews[i].start,
                   previews[i].end,
                 ),
+                tileKey: ValueKey<String>(
+                  'section_${index}_$i'
+                  '_${previews[i].start.hour}_${previews[i].start.minute}'
+                  '_${previews[i].end.hour}_${previews[i].end.minute}'
+                  '_${segment.classCount}',
+                ),
               ),
             ],
           ],
@@ -451,10 +457,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     required bool isLast,
     required Duration classDuration,
     bool hasConflict = false,
+    Key? tileKey,
   }) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     return Column(
+      key: tileKey,
       children: <Widget>[
         InkWell(
           borderRadius: BorderRadius.circular(18),
