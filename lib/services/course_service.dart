@@ -91,9 +91,58 @@ class CourseService {
     return newId;
   }
 
+  /// 导入一个新的课程表，并自动处理重名。
+  Future<String> createImportedSchedule({
+    required String desiredName,
+    required List<Course> courses,
+    required CourseScheduleConfig config,
+    required DateTime semesterStart,
+    required int maxWeek,
+    required bool showWeekend,
+    required bool showNonCurrentWeek,
+    required bool isScheduleLocked,
+  }) async {
+    final String resolvedName = await _buildImportedScheduleName(desiredName);
+    final String scheduleId = await createSchedule(resolvedName);
+    await saveCourses(courses, scheduleId);
+    await saveConfig(config, scheduleId);
+    await saveSemesterStart(semesterStart, scheduleId);
+    await saveMaxWeek(maxWeek, scheduleId);
+    await saveTableName(resolvedName, scheduleId);
+    await saveShowWeekend(showWeekend, scheduleId);
+    await saveShowNonCurrentWeek(showNonCurrentWeek, scheduleId);
+    await saveScheduleLocked(isScheduleLocked, scheduleId);
+    await switchSchedule(scheduleId);
+    return scheduleId;
+  }
+
   /// 更新课程表顺序
   Future<void> updateScheduleOrder(List<ScheduleMetadata> schedules) async {
     await _saveSchedules(schedules);
+  }
+
+  Future<String> _buildImportedScheduleName(String desiredName) async {
+    final String baseName = desiredName.trim().isEmpty
+        ? '导入课表'
+        : desiredName.trim();
+    final List<ScheduleMetadata> schedules = await loadSchedules();
+    if (!schedules.any((ScheduleMetadata item) => item.name == baseName)) {
+      return baseName;
+    }
+
+    final String importedBase = '$baseName（导入）';
+    if (!schedules.any((ScheduleMetadata item) => item.name == importedBase)) {
+      return importedBase;
+    }
+
+    int suffix = 2;
+    while (true) {
+      final String candidate = '$baseName（导入$suffix）';
+      if (!schedules.any((ScheduleMetadata item) => item.name == candidate)) {
+        return candidate;
+      }
+      suffix++;
+    }
   }
 
   /// 切换当前课程表

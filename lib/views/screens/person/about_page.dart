@@ -18,6 +18,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
+import 'package:dormdevise/views/widgets/bubble_popup.dart';
 
 /// 关于页面，汇总版本信息与更新逻辑。
 class AboutPage extends StatefulWidget {
@@ -36,6 +37,7 @@ class _AboutPageState extends State<AboutPage> {
   late final UpdateDownloadCoordinator _downloadCoordinator;
   late final VoidCallback _downloadListener;
   _VersionActionMode _versionActionMode = _VersionActionMode.checkUpdate;
+  UpdateTrackPreference _updateTrackPreference = UpdateTrackPreference.stable;
 
   /// 初始化监听器并预加载版本与设备信息。
   @override
@@ -50,6 +52,7 @@ class _AboutPageState extends State<AboutPage> {
     _downloadCoordinator.addListener(_downloadListener);
     _downloadService.resultNotifier.addListener(_handleGlobalDownloadResult);
     unawaited(_initPackageInfo());
+    unawaited(_loadUpdateTrackPreference());
     unawaited(_primeLatestVersionStatus());
   }
 
@@ -79,6 +82,33 @@ class _AboutPageState extends State<AboutPage> {
     setState(() => _versionActionMode = mode);
   }
 
+  Future<void> _loadUpdateTrackPreference() async {
+    final UpdateTrackPreference preference = await UpdateCheckService.instance
+        .getUpdateTrackPreference();
+    if (!mounted || _updateTrackPreference == preference) {
+      return;
+    }
+    setState(() => _updateTrackPreference = preference);
+  }
+
+  Future<void> _handleUpdateTrackChanged(
+    UpdateTrackPreference preference,
+  ) async {
+    if (_updateTrackPreference == preference) {
+      return;
+    }
+    await UpdateCheckService.instance.setUpdateTrackPreference(preference);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _updateTrackPreference = preference);
+    await _primeLatestVersionStatus();
+    if (!mounted) {
+      return;
+    }
+    _showToastMessage('更新通道已切换为${preference.label}');
+  }
+
   /// 读取当前应用版本并触发更新状态检查。
   Future<void> _initPackageInfo() async {
     try {
@@ -95,9 +125,12 @@ class _AboutPageState extends State<AboutPage> {
 
   /// 预判远端是否存在更新版本。
   Future<void> _primeLatestVersionStatus() async {
+    if (!mounted) return;
+    // 标记为正在检查以便 UI 显示忙碌转圈
+    setState(() => _checkingUpdate = true);
     try {
       final UpdateCheckResult? latest = await UpdateCheckService.instance
-          .fetchAvailableUpdate();
+          .fetchAvailableUpdate(allowNetwork: false);
       if (!mounted) return;
       final bool hasNewer = latest != null;
       if (_hasNewerVersion != hasNewer) {
@@ -109,6 +142,10 @@ class _AboutPageState extends State<AboutPage> {
         setState(() => _hasNewerVersion = false);
       }
       debugPrint('预检查更新失败：${_mapErrorMessage(error)}');
+    } finally {
+      if (mounted) {
+        setState(() => _checkingUpdate = false);
+      }
     }
   }
 
@@ -184,13 +221,14 @@ class _AboutPageState extends State<AboutPage> {
         asset: asset,
       );
 
-      final bool? shouldUpdate = await UpdateCheckService.instance
+      final UpdateDialogAction action = await UpdateCheckService.instance
           .showUpdateAvailableDialog(context, updateInfo);
       if (!mounted) return;
-      if (shouldUpdate != true) {
+      if (action != UpdateDialogAction.confirm) {
         return;
       }
 
+      await UpdateCheckService.instance.clearHomePageUpdatePromptState();
       final UpdateStartResult startResult = await UpdateCheckService.instance
           .startBackgroundUpdate(asset: asset, releaseVersion: latestVersion);
       if (!mounted) {
@@ -450,8 +488,9 @@ class _AboutPageState extends State<AboutPage> {
     final bool showBusyIndicator = _checkingUpdate;
     final String versionHint =
         _versionActionMode == _VersionActionMode.showDownload
-        ? '点击版本查看下载进度'
-        : '点击版本检查更新';
+        ? '点击版本查看下载进度，长按切换更新通道'
+        : '点击版本检查更新，长按切换更新通道';
+    final String versionTrackHint = '（当前通道：${_updateTrackPreference.label}）';
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
       body: SafeArea(
@@ -465,7 +504,12 @@ class _AboutPageState extends State<AboutPage> {
               versionHint: versionHint,
               tapDisabled: tapDisabled,
               downloadInProgress: downloadInProgress,
+              // 将下载进度的 ValueListenable 传入，供头部徽章显示动画进度
+              progressListenable: _downloadService.progressNotifier,
+              updateTrackPreference: _updateTrackPreference,
               onCheckUpdate: _handleCheckForUpdates,
+              onUpdateTrackChanged: _handleUpdateTrackChanged,
+              versionTrackHint: versionTrackHint,
               onOpenRepository: _openRepository,
               onOpenReleasePage: _openReleasePage,
               onOpenBilibiliPage: _openBilibiliPage,
@@ -536,8 +580,13 @@ class _AboutHeader extends StatelessWidget {
   final bool hasNewerVersion;
   final bool tapDisabled;
   final bool downloadInProgress;
+  final ValueListenable<DownloadProgress?> progressListenable;
   final String versionHint;
+  final String versionTrackHint;
+  final UpdateTrackPreference updateTrackPreference;
   final Future<void> Function() onCheckUpdate;
+  final Future<void> Function(UpdateTrackPreference preference)
+  onUpdateTrackChanged;
   final Future<void> Function() onOpenRepository;
   final Future<void> Function() onOpenReleasePage;
   final Future<void> Function() onOpenBilibiliPage;
@@ -549,8 +598,12 @@ class _AboutHeader extends StatelessWidget {
     required this.hasNewerVersion,
     required this.tapDisabled,
     required this.downloadInProgress,
+    required this.progressListenable,
     required this.versionHint,
+    required this.versionTrackHint,
+    required this.updateTrackPreference,
     required this.onCheckUpdate,
+    required this.onUpdateTrackChanged,
     required this.onOpenRepository,
     required this.onOpenReleasePage,
     required this.onOpenBilibiliPage,
@@ -603,7 +656,10 @@ class _AboutHeader extends StatelessWidget {
               hasNewerVersion: hasNewerVersion,
               disableTap: tapDisabled,
               downloadInProgress: downloadInProgress,
+              progressListenable: progressListenable,
+              updateTrackPreference: updateTrackPreference,
               onCheckUpdate: onCheckUpdate,
+              onUpdateTrackChanged: onUpdateTrackChanged,
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -639,6 +695,14 @@ class _AboutHeader extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 4),
+            Text(
+              versionTrackHint,
+              style: textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -653,7 +717,11 @@ class _VersionStatusChip extends StatefulWidget {
   final bool hasNewerVersion;
   final bool disableTap;
   final bool downloadInProgress;
+  final ValueListenable<DownloadProgress?> progressListenable;
+  final UpdateTrackPreference updateTrackPreference;
   final Future<void> Function() onCheckUpdate;
+  final Future<void> Function(UpdateTrackPreference preference)
+  onUpdateTrackChanged;
 
   const _VersionStatusChip({
     required this.version,
@@ -661,7 +729,10 @@ class _VersionStatusChip extends StatefulWidget {
     required this.hasNewerVersion,
     required this.disableTap,
     required this.downloadInProgress,
+    required this.progressListenable,
+    required this.updateTrackPreference,
     required this.onCheckUpdate,
+    required this.onUpdateTrackChanged,
   });
 
   @override
@@ -671,6 +742,9 @@ class _VersionStatusChip extends StatefulWidget {
 class _VersionStatusChipState extends State<_VersionStatusChip>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  final GlobalKey _chipKey = GlobalKey();
+  BubblePopupController? _bubbleController;
+  bool _isBubbleOpen = false;
 
   /// 初始化动画控制器，根据是否有新版本触发闪烁。
   @override
@@ -700,8 +774,104 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
   /// 销毁动画控制器资源。
   @override
   void dispose() {
+    _bubbleController?.dismiss();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _dismissTrackBubble() async {
+    if (!_isBubbleOpen) {
+      return;
+    }
+    await _bubbleController?.dismiss();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _bubbleController = null;
+      _isBubbleOpen = false;
+    });
+  }
+
+  Future<void> _showTrackBubble() async {
+    await _dismissTrackBubble();
+    if (!mounted) {
+      return;
+    }
+
+    final BubblePopupController controller = BubblePopupController();
+    setState(() {
+      _bubbleController = controller;
+      _isBubbleOpen = true;
+    });
+    final List<Widget> menuItems = <Widget>[];
+    for (int i = 0; i < UpdateTrackPreference.values.length; i++) {
+      final UpdateTrackPreference preference = UpdateTrackPreference.values[i];
+      menuItems.add(_buildTrackMenuItem(preference, controller));
+      if (i != UpdateTrackPreference.values.length - 1) {
+        menuItems.add(const Divider(height: 1, thickness: 0.5));
+      }
+    }
+
+    await showBubblePopup(
+      context: context,
+      anchorKey: _chipKey,
+      controller: controller,
+      content: SizedBox(
+        width: 176,
+        child: Column(mainAxisSize: MainAxisSize.min, children: menuItems),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+    if (identical(_bubbleController, controller)) {
+      setState(() {
+        _bubbleController = null;
+        _isBubbleOpen = false;
+      });
+    }
+  }
+
+  Widget _buildTrackMenuItem(
+    UpdateTrackPreference preference,
+    BubblePopupController controller,
+  ) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool selected = preference == widget.updateTrackPreference;
+    return InkWell(
+      onTap: () async {
+        await controller.dismiss();
+        if (!mounted) {
+          return;
+        }
+        await widget.onUpdateTrackChanged(preference);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                preference.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ),
+            if (selected)
+              Icon(
+                Icons.verified_outlined,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 绘制能够响应点击与动画的版本状态标签。
@@ -715,6 +885,31 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
 
     /// 根据当前状态生成前缀图标部件。
     Widget buildAvatar() {
+      // 优先级：检查/忙碌 -> 下载中 -> 有新版本 -> 默认已验证
+      // 优先级：下载中 -> 检查/忙碌 -> 有新版本 -> 默认已验证
+      // 1) 下载中时显示下载进度：使用传入的 `progressListenable` 来驱动动画/进度
+      if (widget.downloadInProgress) {
+        return ValueListenableBuilder<DownloadProgress?>(
+          valueListenable: widget.progressListenable,
+          builder: (context, progress, _) {
+            final double? fraction = progress?.fraction;
+            return SizedBox(
+              width: 18,
+              height: 18,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: CircularProgressIndicator(
+                  value: fraction,
+                  strokeWidth: 2,
+                  color: colorScheme.primary,
+                ),
+              ),
+            );
+          },
+        );
+      }
+
+      // 2) 正在检查更新或忙碌时显示圆形进度指示器
       if (widget.showBusyIndicator) {
         return const SizedBox(
           width: 18,
@@ -725,25 +920,24 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
           ),
         );
       }
-      if (widget.downloadInProgress) {
-        return const SizedBox(
-          width: 18,
-          height: 18,
-          child: Padding(
-            padding: EdgeInsets.all(2),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        );
+
+      // 3) 若检测到有新版本，可用 new_releases 图标来提示用户
+      if (widget.hasNewerVersion) {
+        return Icon(Icons.new_releases, color: colorScheme.primary, size: 16);
       }
+
+      // 4) 无特殊状态时显示已验证的对勾图标
       return Icon(
         Icons.verified_outlined,
         color: colorScheme.primary,
-        size: 18,
+        size: 16,
       );
     }
 
     return GestureDetector(
+      key: _chipKey,
       onTap: widget.disableTap ? null : () => unawaited(widget.onCheckUpdate()),
+      onLongPress: () => unawaited(_showTrackBubble()),
       behavior: HitTestBehavior.opaque,
       child: AnimatedBuilder(
         animation: _controller,
@@ -1082,44 +1276,22 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
   Future<List<String>?> _fetchReleaseNotes(String appVersionString) async {
     final normalizedVersion = appVersionString.split('+').first;
     final cacheKey = 'release_notes_$normalizedVersion';
-    final lastTimeKey = 'release_notes_last_fetch_time';
-    final lastSourceKey = 'release_notes_last_source';
-
     final prefs = await SharedPreferences.getInstance();
-    final currentSource = prefs.getString('update_source_type') ?? 'auto';
 
-    // 1. 检查缓存中的有效内容
     List<String> cachedNotes = [];
     final cachedValue = prefs.getString(cacheKey);
     if (cachedValue != null) {
       try {
         cachedNotes = List<String>.from(jsonDecode(cachedValue) as List);
-        // 如果缓存中有具体内容，直接使用，不再请求
-        if (cachedNotes.isNotEmpty) {
-          return cachedNotes;
-        }
+        return cachedNotes;
       } catch (_) {
-        // 缓存格式异常时忽略
+        cachedNotes = <String>[];
       }
-    }
-
-    // 2. 检查频率限制 (30s) 和 源切换
-    // 如果缓存是空的（说明上次没获取到或者还没获取过），且源没有变化，且距离上次获取不到 30秒
-    final lastSource = prefs.getString(lastSourceKey);
-    final lastTime = prefs.getInt(lastTimeKey) ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    if (cachedNotes.isEmpty &&
-        currentSource == lastSource &&
-        (now - lastTime) < 30000) {
-      // 返回 null 以显示“获取失败”
-      return null;
     }
 
     final appVersion = _safeParseVersion(appVersionString);
     if (appVersion == null) return const [];
 
-    // 辅助函数：尝试从发布列表中提取对应版本的说明
     List<String>? tryFindNotes(List<_ReleaseInfo> sourceReleases) {
       if (sourceReleases.isEmpty) return null;
 
@@ -1159,57 +1331,15 @@ class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
       return notes.isNotEmpty ? notes : null;
     }
 
-    // 定义单次获取逻辑
-    Future<List<String>?> fetchOnce() async {
-      try {
-        // 3.1 优先尝试根据配置获取
-        final configReleases = await _fetchAllReleasesBasedOnConfig();
-        var notes = tryFindNotes(configReleases);
-        if (notes != null) return notes;
-
-        // 3.2 仅在自动模式下进行跨源兜底
-        if (currentSource == 'auto') {
-          // 尝试 GitHub
-          try {
-            final github = await _loadReleasesFromGitHub();
-            notes = tryFindNotes(github);
-            if (notes != null) return notes;
-          } catch (_) {}
-
-          // 尝试 Gitee
-          try {
-            final gitee = await _loadReleasesFromGitee();
-            notes = tryFindNotes(gitee);
-            if (notes != null) return notes;
-          } catch (_) {}
-        }
-      } catch (_) {
-        return null;
-      }
-      return null;
-    }
-
-    // 3. 执行获取（含重试机制）
-    List<String>? result = await fetchOnce();
-
-    // 如果第一次获取失败或无内容，等待 5 秒后重试
-    if (result == null) {
-      await Future.delayed(const Duration(seconds: 5));
-      result = await fetchOnce();
-    }
-
-    // 4. 保存结果并返回
-    await prefs.setInt(lastTimeKey, DateTime.now().millisecondsSinceEpoch);
-    await prefs.setString(lastSourceKey, currentSource);
-
-    if (result != null) {
+    try {
+      final List<_ReleaseInfo> releases = await _fetchAllReleasesBasedOnConfig(
+        allowNetwork: false,
+      );
+      final List<String> result = tryFindNotes(releases) ?? const <String>[];
       await prefs.setString(cacheKey, jsonEncode(result));
       return result;
-    } else {
-      // 没找到内容，存个空列表
-      await prefs.setString(cacheKey, jsonEncode([]));
-      // 返回 null 以显示“获取失败”
-      return null;
+    } catch (_) {
+      return const <String>[];
     }
   }
 }
@@ -1309,10 +1439,12 @@ List<_ReleaseInfo>? _cachedReleases;
 String? _lastSourceType;
 String? _lastCustomApiUrl;
 Future<List<_ReleaseInfo>>? _pendingFetch;
+const Duration _releaseFeedCacheDuration = Duration(hours: 2);
 
 /// 根据配置获取所有发布信息
 Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
   bool forceRefresh = false,
+  bool allowNetwork = true,
 }) async {
   final prefs = await SharedPreferences.getInstance();
   final sourceType = prefs.getString('update_source_type') ?? 'auto';
@@ -1320,36 +1452,56 @@ Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
   final lastAttemptKey = 'update_last_attempt_time';
   final cacheDataKey = 'update_cached_releases_data';
 
-  // 1. 检查内存缓存 (5秒)
+  List<_ReleaseInfo>? readCachedReleases() {
+    final String? cachedJson = prefs.getString(cacheDataKey);
+    if (cachedJson == null) {
+      return null;
+    }
+    try {
+      final List<dynamic> list = jsonDecode(cachedJson);
+      return list.map((dynamic item) => _ReleaseInfo.fromJson(item)).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 1. 检查内存缓存。
   if (!forceRefresh &&
       _cachedReleases != null &&
       _lastFetchTime != null &&
       _lastSourceType == sourceType &&
       _lastCustomApiUrl == customApiUrl &&
-      DateTime.now().difference(_lastFetchTime!) < const Duration(seconds: 5)) {
+      DateTime.now().difference(_lastFetchTime!) < _releaseFeedCacheDuration) {
     return _cachedReleases!;
   }
 
-  // 2. 检查持久化缓存 (60秒)
+  // 2. 检查持久化缓存。
   final now = DateTime.now().millisecondsSinceEpoch;
   final lastAttempt = prefs.getInt(lastAttemptKey) ?? 0;
 
-  // 如果不是强制刷新，且距离上次尝试不足 60 秒，尝试读取本地缓存
-  if (!forceRefresh && (now - lastAttempt) < 60000) {
-    final cachedJson = prefs.getString(cacheDataKey);
-    if (cachedJson != null) {
-      try {
-        final List<dynamic> list = jsonDecode(cachedJson);
-        final releases = list.map((e) => _ReleaseInfo.fromJson(e)).toList();
-        if (releases.isNotEmpty) {
-          _cachedReleases = releases;
-          _lastFetchTime = DateTime.now();
-          _lastSourceType = sourceType;
-          _lastCustomApiUrl = customApiUrl;
-          return releases;
-        }
-      } catch (_) {}
+  if (!forceRefresh &&
+      (now - lastAttempt) < _releaseFeedCacheDuration.inMilliseconds) {
+    final List<_ReleaseInfo>? releases = readCachedReleases();
+    if (releases != null && releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+      return releases;
     }
+    return const <_ReleaseInfo>[];
+  }
+
+  if (!allowNetwork) {
+    final List<_ReleaseInfo>? releases = readCachedReleases();
+    if (releases != null && releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+      return releases;
+    }
+    return const <_ReleaseInfo>[];
   }
 
   // 3. 检查是否有正在进行的请求
@@ -1428,33 +1580,23 @@ Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
 
     List<_ReleaseInfo> releases = [];
     try {
-      // 第一次尝试
       releases = await fetchOnce();
-    } catch (_) {
-      // 第二次失败，等待 5 秒后重试
-      await Future.delayed(const Duration(seconds: 5));
-      try {
-        releases = await fetchOnce();
-      } catch (e) {
-        debugPrint('获取发布信息最终失败: $e');
-        // 最终失败，更新尝试时间，以便 60s 后再试
-        await prefs.setInt(
-          lastAttemptKey,
-          DateTime.now().millisecondsSinceEpoch,
-        );
-        // 尝试返回旧缓存
-        final cachedJson = prefs.getString(cacheDataKey);
-        if (cachedJson != null) {
-          try {
-            final List<dynamic> list = jsonDecode(cachedJson);
-            return list.map((e) => _ReleaseInfo.fromJson(e)).toList();
-          } catch (_) {}
-        }
-        return [];
-      }
+    } catch (e) {
+      debugPrint('获取发布信息失败: $e');
     }
 
-    // 获取成功，更新缓存
+    if (releases.isEmpty) {
+      await prefs.setInt(lastAttemptKey, DateTime.now().millisecondsSinceEpoch);
+      final cachedJson = prefs.getString(cacheDataKey);
+      if (cachedJson != null) {
+        try {
+          final List<dynamic> list = jsonDecode(cachedJson);
+          return list.map((e) => _ReleaseInfo.fromJson(e)).toList();
+        } catch (_) {}
+      }
+      return [];
+    }
+
     if (releases.isNotEmpty) {
       _cachedReleases = releases;
       _lastFetchTime = DateTime.now();

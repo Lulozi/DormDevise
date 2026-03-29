@@ -51,6 +51,65 @@ enum UpdateStartStatus {
   noCompatibleAsset,
 }
 
+enum UpdateTrackPreference {
+  stable('stable', '稳定版'),
+  preview('preview', '预览版'),
+  latest('latest', '最新版');
+
+  const UpdateTrackPreference(this.storageValue, this.label);
+
+  final String storageValue;
+  final String label;
+
+  static UpdateTrackPreference fromStorage(String? value) {
+    for (final UpdateTrackPreference preference in values) {
+      if (preference.storageValue == value) {
+        return preference;
+      }
+    }
+    return UpdateTrackPreference.stable;
+  }
+}
+
+enum UpdateDialogAction { confirm, secondary, dismissed }
+
+enum HomePageUpdatePromptSecondaryAction { postpone, cancel }
+
+class HomePageUpdatePromptPlan {
+  const HomePageUpdatePromptPlan({
+    required this.result,
+    required this.secondaryAction,
+    required this.completedDeferrals,
+  });
+
+  final UpdateCheckResult result;
+  final HomePageUpdatePromptSecondaryAction secondaryAction;
+  final int completedDeferrals;
+
+  String get secondaryLabel =>
+      secondaryAction == HomePageUpdatePromptSecondaryAction.postpone
+      ? '推迟本次更新'
+      : '取消本次推送';
+
+  int? get nextDelayDays {
+    if (secondaryAction != HomePageUpdatePromptSecondaryAction.postpone) {
+      return null;
+    }
+    if (completedDeferrals >= _homePageUpdatePromptDelayDays.length) {
+      return null;
+    }
+    return _homePageUpdatePromptDelayDays[completedDeferrals];
+  }
+
+  String get feedbackMessage {
+    final int? delayDays = nextDelayDays;
+    if (delayDays != null) {
+      return '已推迟本次更新 $delayDays 天';
+    }
+    return '已取消本次推送，后续仅在主版本或次版本更新后提醒';
+  }
+}
+
 /// 标准化后的版本发布信息。
 class UpdateReleaseInfo {
   const UpdateReleaseInfo({
@@ -187,6 +246,16 @@ class UpdateCheckService {
   UpdateCheckService._();
 
   static final UpdateCheckService instance = UpdateCheckService._();
+  static const Duration _sharedReleaseCacheDuration = Duration(hours: 2);
+  static const String _prefKeyUpdateTrack = 'update_track_preference';
+  static const String _prefKeyHomePromptDeferredVersion =
+      'update_home_prompt_deferred_version';
+  static const String _prefKeyHomePromptDeferStep =
+      'update_home_prompt_defer_step';
+  static const String _prefKeyHomePromptDeferUntil =
+      'update_home_prompt_defer_until';
+  static const String _prefKeyHomePromptCanceledVersion =
+      'update_home_prompt_canceled_version';
 
   DateTime? _lastFetchTime;
   List<UpdateReleaseInfo>? _cachedReleases;
@@ -196,8 +265,30 @@ class UpdateCheckService {
   List<String>? _cachedSupportedAbis;
   Future<List<String>>? _supportedAbisFuture;
 
+  Future<UpdateTrackPreference> getUpdateTrackPreference() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    return UpdateTrackPreference.fromStorage(
+      prefs.getString(_prefKeyUpdateTrack),
+    );
+  }
+
+  Future<void> setUpdateTrackPreference(
+    UpdateTrackPreference preference,
+  ) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final UpdateTrackPreference current = UpdateTrackPreference.fromStorage(
+      prefs.getString(_prefKeyUpdateTrack),
+    );
+    if (current == preference) {
+      return;
+    }
+    await prefs.setString(_prefKeyUpdateTrack, preference.storageValue);
+    await clearHomePageUpdatePromptState(prefs: prefs);
+  }
+
   Future<UpdateCheckResult?> fetchAvailableUpdate({
     bool forceRefresh = false,
+    bool allowNetwork = true,
   }) async {
     final PackageInfo packageInfo = await PackageInfo.fromPlatform();
     final Version? currentVersion = safeParseVersion(packageInfo.version);
@@ -207,6 +298,7 @@ class UpdateCheckService {
 
     final UpdateReleaseInfo? latestRelease = await fetchLatestReleaseInfo(
       forceRefresh: forceRefresh,
+      allowNetwork: allowNetwork,
     );
     if (latestRelease == null || latestRelease.version == null) {
       return null;
@@ -240,33 +332,277 @@ class UpdateCheckService {
     );
   }
 
-  Future<UpdateReleaseInfo?> fetchLatestReleaseInfo({
+  Future<HomePageUpdatePromptPlan?> fetchHomePageUpdatePrompt({
     bool forceRefresh = false,
   }) async {
+    final UpdateCheckResult? result = await fetchAvailableUpdate(
+      forceRefresh: forceRefresh,
+    );
+    if (result == null) {
+      return null;
+    }
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final Version latestVersion = result.latestVersion;
+    final Version? canceledVersion = _readStoredVersion(
+      prefs,
+      _prefKeyHomePromptCanceledVersion,
+    );
+    if (canceledVersion != null) {
+      if (!hasMajorOrMinorUpdate(latestVersion, canceledVersion)) {
+        return null;
+      }
+      await _clearHomePageCancelState(prefs: prefs);
+    }
+
+    final Version? deferredVersion = _readStoredVersion(
+      prefs,
+      _prefKeyHomePromptDeferredVersion,
+    );
+    final int storedStep = _readDeferredStep(prefs);
+    final int deferUntilMillis =
+        prefs.getInt(_prefKeyHomePromptDeferUntil) ?? 0;
+    if (deferredVersion == null) {
+      if (storedStep > 0 || deferUntilMillis > 0) {
+        await _clearHomePageDelayState(prefs: prefs);
+      }
+      return HomePageUpdatePromptPlan(
+        result: result,
+        secondaryAction: HomePageUpdatePromptSecondaryAction.postpone,
+        completedDeferrals: 0,
+      );
+    }
+
+    if (latestVersion != deferredVersion) {
+      await _clearHomePageDelayState(prefs: prefs);
+      return HomePageUpdatePromptPlan(
+        result: result,
+        secondaryAction: HomePageUpdatePromptSecondaryAction.postpone,
+        completedDeferrals: 0,
+      );
+    }
+
+    if (deferUntilMillis > DateTime.now().millisecondsSinceEpoch) {
+      return null;
+    }
+
+    return HomePageUpdatePromptPlan(
+      result: result,
+      secondaryAction: storedStep >= _homePageUpdatePromptDelayDays.length
+          ? HomePageUpdatePromptSecondaryAction.cancel
+          : HomePageUpdatePromptSecondaryAction.postpone,
+      completedDeferrals: storedStep,
+    );
+  }
+
+  Future<void> deferHomePageUpdatePrompt(Version releaseVersion) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final Version? storedVersion = _readStoredVersion(
+      prefs,
+      _prefKeyHomePromptDeferredVersion,
+    );
+    final int previousStep =
+        storedVersion != null && storedVersion == releaseVersion
+        ? _readDeferredStep(prefs)
+        : 0;
+    final int nextStep = previousStep >= _homePageUpdatePromptDelayDays.length
+        ? _homePageUpdatePromptDelayDays.length
+        : previousStep + 1;
+    final int delayDays = _homePageUpdatePromptDelayDays[nextStep - 1];
+
+    await prefs.setString(
+      _prefKeyHomePromptDeferredVersion,
+      releaseVersion.toString(),
+    );
+    await prefs.setInt(_prefKeyHomePromptDeferStep, nextStep);
+    await prefs.setInt(
+      _prefKeyHomePromptDeferUntil,
+      DateTime.now().add(Duration(days: delayDays)).millisecondsSinceEpoch,
+    );
+    await _clearHomePageCancelState(prefs: prefs);
+  }
+
+  Future<void> cancelHomePageUpdatePrompt(Version releaseVersion) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _prefKeyHomePromptCanceledVersion,
+      releaseVersion.toString(),
+    );
+    await _clearHomePageDelayState(prefs: prefs);
+  }
+
+  Future<void> clearHomePageUpdatePromptState({
+    SharedPreferences? prefs,
+  }) async {
+    final SharedPreferences effectivePrefs =
+        prefs ?? await SharedPreferences.getInstance();
+    await _clearHomePageCancelState(prefs: effectivePrefs);
+    await _clearHomePageDelayState(prefs: effectivePrefs);
+  }
+
+  Future<UpdateReleaseInfo?> fetchLatestReleaseInfo({
+    bool forceRefresh = false,
+    UpdateTrackPreference? trackPreference,
+    bool allowNetwork = true,
+  }) async {
+    final UpdateTrackPreference effectiveTrack =
+        trackPreference ?? await getUpdateTrackPreference();
+    if (effectiveTrack == UpdateTrackPreference.stable) {
+      return _loadLatestStableReleaseBasedOnConfig(
+        forceRefresh: forceRefresh,
+        allowNetwork: allowNetwork,
+      );
+    }
+
     final List<UpdateReleaseInfo> releases = await _loadReleasesBasedOnConfig(
       forceRefresh: forceRefresh,
+      allowNetwork: allowNetwork,
     );
     if (releases.isEmpty) {
       return null;
     }
 
+    return selectPreferredRelease(releases, preference: effectiveTrack);
+  }
+
+  UpdateReleaseInfo? selectPreferredRelease(
+    List<UpdateReleaseInfo> releases, {
+    required UpdateTrackPreference preference,
+  }) {
+    final List<UpdateReleaseInfo> published = releases
+        .where((UpdateReleaseInfo release) => !release.isDraft)
+        .toList();
+    if (published.isEmpty) {
+      return null;
+    }
+
+    List<UpdateReleaseInfo> candidates;
+    switch (preference) {
+      case UpdateTrackPreference.stable:
+        candidates = published
+            .where((UpdateReleaseInfo release) => !release.isPrerelease)
+            .toList();
+        break;
+      case UpdateTrackPreference.preview:
+        candidates = published
+            .where((UpdateReleaseInfo release) => release.isPrerelease)
+            .toList();
+        if (candidates.isEmpty) {
+          candidates = published
+              .where((UpdateReleaseInfo release) => !release.isPrerelease)
+              .toList();
+        }
+        break;
+      case UpdateTrackPreference.latest:
+        candidates = List<UpdateReleaseInfo>.from(published);
+        break;
+    }
+
+    if (candidates.isEmpty) {
+      return null;
+    }
+    candidates.sort(_compareReleaseFeedOrder);
+    return candidates.first;
+  }
+
+  Future<UpdateReleaseInfo?> _loadLatestStableReleaseBasedOnConfig({
+    bool forceRefresh = false,
+    bool allowNetwork = true,
+  }) async {
+    if (!allowNetwork) {
+      return _pickLatestStableFromFeed(
+        await _loadReleasesBasedOnConfig(allowNetwork: false),
+      );
+    }
+
+    if (!forceRefresh) {
+      return _pickLatestStableFromFeed(
+        await _loadReleasesBasedOnConfig(
+          forceRefresh: false,
+          allowNetwork: true,
+        ),
+      );
+    }
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String sourceType = prefs.getString('update_source_type') ?? 'auto';
+    final String? customApiUrl = prefs.getString('custom_update_api_url');
+
+    switch (sourceType) {
+      case 'github':
+        return await _safeFetchSingle(_loadLatestReleaseFromGitHub) ??
+            _pickLatestStableFromFeed(
+              await _loadReleasesBasedOnConfig(forceRefresh: forceRefresh),
+            );
+      case 'gitee':
+        return _pickLatestStableFromFeed(
+          await _loadReleasesBasedOnConfig(forceRefresh: true),
+        );
+      case 'custom':
+        if (customApiUrl == null || customApiUrl.isEmpty) {
+          return null;
+        }
+        return _pickLatestStableFromFeed(
+          await _loadReleasesBasedOnConfig(forceRefresh: true),
+        );
+      case 'auto':
+      default:
+        final List<UpdateReleaseInfo> candidates = <UpdateReleaseInfo>[
+          ...[
+            await _safeFetchSingle(_loadLatestReleaseFromGitHub),
+            await _safeFetchSingle(() async {
+              final List<UpdateReleaseInfo> releases =
+                  await _loadReleasesFromGitee();
+              return _pickLatestStableFromFeed(releases);
+            }),
+          ].whereType<UpdateReleaseInfo>(),
+        ];
+        final UpdateReleaseInfo? merged = _mergeReleaseCandidates(candidates);
+        if (merged != null) {
+          return merged;
+        }
+        return _pickLatestStableFromFeed(
+          await _loadReleasesBasedOnConfig(forceRefresh: forceRefresh),
+        );
+    }
+  }
+
+  UpdateReleaseInfo? _pickLatestStableFromFeed(
+    List<UpdateReleaseInfo> releases,
+  ) {
     final List<UpdateReleaseInfo> stable = releases
         .where(
           (UpdateReleaseInfo release) =>
               !release.isDraft && !release.isPrerelease,
         )
         .toList();
-    final List<UpdateReleaseInfo> candidates = stable.isNotEmpty
-        ? stable
-        : releases
-              .where((UpdateReleaseInfo release) => !release.isDraft)
-              .toList();
-    if (candidates.isEmpty) {
-      releases.sort(_compareReleaseOrder);
-      return releases.first;
+    if (stable.isEmpty) {
+      return null;
     }
-    candidates.sort(_compareReleaseOrder);
-    return candidates.first;
+    stable.sort(_compareReleaseFeedOrder);
+    return stable.first;
+  }
+
+  UpdateReleaseInfo? _mergeReleaseCandidates(List<UpdateReleaseInfo> releases) {
+    if (releases.isEmpty) {
+      return null;
+    }
+    UpdateReleaseInfo selected = releases.first;
+    for (final UpdateReleaseInfo candidate in releases.skip(1)) {
+      final int order = _compareReleaseFeedOrder(candidate, selected);
+      if (order < 0) {
+        selected = candidate;
+        continue;
+      }
+      if (order == 0) {
+        final String selectedBody = selected.body?.trim() ?? '';
+        final String candidateBody = candidate.body?.trim() ?? '';
+        if (candidateBody.isNotEmpty && selectedBody.isEmpty) {
+          selected = candidate;
+        }
+      }
+    }
+    return selected;
   }
 
   Future<List<String>> ensureSupportedAbis() async {
@@ -424,22 +760,26 @@ class UpdateCheckService {
     }
   }
 
-  Future<bool?> showUpdateAvailableDialog(
+  Future<UpdateDialogAction> showUpdateAvailableDialog(
     BuildContext context,
     UpdateCheckResult result, {
     String confirmLabel = '立即更新',
-  }) {
+    String secondaryLabel = '稍后',
+    bool barrierDismissible = true,
+    bool allowSystemPop = true,
+  }) async {
     final UpdateReleaseAsset? asset = result.asset;
     final List<String> highlights = result.highlights;
     final String? description = result.body?.trim();
     final String sizeLabel = formatUpdateFileSize(asset?.size ?? 0);
 
-    return showDialog<bool>(
+    final UpdateDialogAction? action = await showDialog<UpdateDialogAction>(
       context: context,
+      barrierDismissible: barrierDismissible,
       builder: (BuildContext dialogContext) {
         final TextTheme textTheme = Theme.of(dialogContext).textTheme;
         final ColorScheme colorScheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
+        final Widget dialog = AlertDialog(
           title: Text('发现新版本 ${result.versionLabel}'),
           content: SingleChildScrollView(
             child: Column(
@@ -484,17 +824,24 @@ class UpdateCheckService {
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('稍后'),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(UpdateDialogAction.secondary),
+              child: Text(secondaryLabel),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(UpdateDialogAction.confirm),
               child: Text(confirmLabel),
             ),
           ],
         );
+        if (!allowSystemPop) {
+          return PopScope(canPop: false, child: dialog);
+        }
+        return dialog;
       },
     );
+    return action ?? UpdateDialogAction.dismissed;
   }
 
   Future<UpdateStartResult> startBackgroundUpdate({
@@ -553,6 +900,7 @@ class UpdateCheckService {
       );
     }
 
+    // 启动后台下载（由 DownloadService 自行负责标记与进度更新）
     unawaited(downloadService.startBackgroundDownload(request: request));
     return const UpdateStartResult(
       status: UpdateStartStatus.startedDownload,
@@ -622,12 +970,31 @@ class UpdateCheckService {
 
   Future<List<UpdateReleaseInfo>> _loadReleasesBasedOnConfig({
     bool forceRefresh = false,
+    bool allowNetwork = true,
   }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String sourceType = prefs.getString('update_source_type') ?? 'auto';
     final String? customApiUrl = prefs.getString('custom_update_api_url');
     final String lastAttemptKey = 'update_last_attempt_time';
     final String cacheDataKey = 'update_cached_releases_data';
+
+    List<UpdateReleaseInfo>? readCachedReleases() {
+      final String? cachedJson = prefs.getString(cacheDataKey);
+      if (cachedJson == null) {
+        return null;
+      }
+      try {
+        final List<dynamic> list = jsonDecode(cachedJson) as List<dynamic>;
+        return list
+            .map(
+              (dynamic item) =>
+                  UpdateReleaseInfo.fromJson(item as Map<String, dynamic>),
+            )
+            .toList(growable: false);
+      } catch (_) {
+        return null;
+      }
+    }
 
     if (!forceRefresh &&
         _cachedReleases != null &&
@@ -641,26 +1008,29 @@ class UpdateCheckService {
 
     final int now = DateTime.now().millisecondsSinceEpoch;
     final int lastAttempt = prefs.getInt(lastAttemptKey) ?? 0;
-    if (!forceRefresh && (now - lastAttempt) < 60000) {
-      final String? cachedJson = prefs.getString(cacheDataKey);
-      if (cachedJson != null) {
-        try {
-          final List<dynamic> list = jsonDecode(cachedJson) as List<dynamic>;
-          final List<UpdateReleaseInfo> releases = list
-              .map(
-                (dynamic item) =>
-                    UpdateReleaseInfo.fromJson(item as Map<String, dynamic>),
-              )
-              .toList(growable: false);
-          if (releases.isNotEmpty) {
-            _cachedReleases = releases;
-            _lastFetchTime = DateTime.now();
-            _lastSourceType = sourceType;
-            _lastCustomApiUrl = customApiUrl;
-            return releases;
-          }
-        } catch (_) {}
+    if (!forceRefresh &&
+        (now - lastAttempt) < _sharedReleaseCacheDuration.inMilliseconds) {
+      final List<UpdateReleaseInfo>? releases = readCachedReleases();
+      if (releases != null && releases.isNotEmpty) {
+        _cachedReleases = releases;
+        _lastFetchTime = DateTime.now();
+        _lastSourceType = sourceType;
+        _lastCustomApiUrl = customApiUrl;
+        return releases;
       }
+      return const <UpdateReleaseInfo>[];
+    }
+
+    if (!allowNetwork) {
+      final List<UpdateReleaseInfo>? releases = readCachedReleases();
+      if (releases != null && releases.isNotEmpty) {
+        _cachedReleases = releases;
+        _lastFetchTime = DateTime.now();
+        _lastSourceType = sourceType;
+        _lastCustomApiUrl = customApiUrl;
+        return releases;
+      }
+      return const <UpdateReleaseInfo>[];
     }
 
     if (_pendingFetch != null) {
@@ -687,10 +1057,6 @@ class UpdateCheckService {
             final List<UpdateReleaseInfo> gitee = await _safeFetch(
               _loadReleasesFromGitee,
             );
-            if (github.isEmpty && gitee.isEmpty) {
-              throw Exception('All sources failed in auto mode');
-            }
-
             final Map<String, UpdateReleaseInfo> merged =
                 <String, UpdateReleaseInfo>{};
             for (final UpdateReleaseInfo release in gitee) {
@@ -716,32 +1082,20 @@ class UpdateCheckService {
       List<UpdateReleaseInfo> releases = <UpdateReleaseInfo>[];
       try {
         releases = await fetchOnce();
-      } catch (_) {
-        await Future<void>.delayed(const Duration(seconds: 5));
-        try {
-          releases = await fetchOnce();
-        } catch (error) {
-          debugPrint('获取发布信息最终失败: $error');
-          await prefs.setInt(
-            lastAttemptKey,
-            DateTime.now().millisecondsSinceEpoch,
-          );
-          final String? cachedJson = prefs.getString(cacheDataKey);
-          if (cachedJson != null) {
-            try {
-              final List<dynamic> list =
-                  jsonDecode(cachedJson) as List<dynamic>;
-              return list
-                  .map(
-                    (dynamic item) => UpdateReleaseInfo.fromJson(
-                      item as Map<String, dynamic>,
-                    ),
-                  )
-                  .toList(growable: false);
-            } catch (_) {}
-          }
-          return const <UpdateReleaseInfo>[];
+      } catch (error) {
+        debugPrint('获取发布信息失败: $error');
+      }
+
+      if (releases.isEmpty) {
+        await prefs.setInt(
+          lastAttemptKey,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        final List<UpdateReleaseInfo>? cached = readCachedReleases();
+        if (cached != null) {
+          return cached;
         }
+        return const <UpdateReleaseInfo>[];
       }
 
       if (releases.isNotEmpty) {
@@ -774,6 +1128,33 @@ class UpdateCheckService {
     }
   }
 
+  int _readDeferredStep(SharedPreferences prefs) {
+    final int stored = prefs.getInt(_prefKeyHomePromptDeferStep) ?? 0;
+    return stored.clamp(0, _homePageUpdatePromptDelayDays.length).toInt();
+  }
+
+  Version? _readStoredVersion(SharedPreferences prefs, String key) {
+    final String? raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    return safeParseVersion(raw);
+  }
+
+  Future<void> _clearHomePageDelayState({
+    required SharedPreferences prefs,
+  }) async {
+    await prefs.remove(_prefKeyHomePromptDeferredVersion);
+    await prefs.remove(_prefKeyHomePromptDeferStep);
+    await prefs.remove(_prefKeyHomePromptDeferUntil);
+  }
+
+  Future<void> _clearHomePageCancelState({
+    required SharedPreferences prefs,
+  }) async {
+    await prefs.remove(_prefKeyHomePromptCanceledVersion);
+  }
+
   Future<List<UpdateReleaseInfo>> _safeFetch(
     Future<List<UpdateReleaseInfo>> Function() loader,
   ) async {
@@ -781,6 +1162,16 @@ class UpdateCheckService {
       return await loader();
     } catch (_) {
       return const <UpdateReleaseInfo>[];
+    }
+  }
+
+  Future<UpdateReleaseInfo?> _safeFetchSingle(
+    Future<UpdateReleaseInfo?> Function() loader,
+  ) async {
+    try {
+      return await loader();
+    } catch (_) {
+      return null;
     }
   }
 
@@ -797,6 +1188,14 @@ class UpdateCheckService {
     );
   }
 
+  Future<UpdateReleaseInfo?> _loadLatestReleaseFromGitHub() async {
+    return _fetchRelease(
+      Uri.parse(
+        'https://api.github.com/repos/Lulozi/DormDevise/releases/latest',
+      ),
+    );
+  }
+
   Future<List<UpdateReleaseInfo>> _loadReleasesFromGitee() async {
     return _fetchReleases(
       Uri.parse('https://gitee.com/api/v5/repos/lulo/DormDevise/releases'),
@@ -805,6 +1204,22 @@ class UpdateCheckService {
 
   Future<List<UpdateReleaseInfo>> _loadReleasesFromCustom(String url) async {
     return _fetchReleases(Uri.parse(url));
+  }
+
+  Future<UpdateReleaseInfo?> _fetchRelease(Uri uri) async {
+    final http.Response response = await http.get(
+      uri,
+      headers: const <String, String>{
+        'Accept': 'application/json',
+        'User-Agent': 'DormDevise-App',
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('API 返回状态码 ${response.statusCode} ($uri)');
+    }
+    final Map<String, dynamic> json =
+        jsonDecode(response.body) as Map<String, dynamic>;
+    return UpdateReleaseInfo.fromJson(json);
   }
 
   Future<List<UpdateReleaseInfo>> _fetchReleases(Uri uri) async {
@@ -837,6 +1252,8 @@ enum _AndroidApkVariant {
   unknown,
 }
 
+const List<int> _homePageUpdatePromptDelayDays = <int>[7, 14, 21];
+
 Version? safeParseVersion(String raw) {
   try {
     final String sanitized = raw.split('+').first;
@@ -846,7 +1263,7 @@ Version? safeParseVersion(String raw) {
   }
 }
 
-int _compareReleaseOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
+int _compareReleaseFeedOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
   final Version? versionA = a.version;
   final Version? versionB = b.version;
   if (versionA != null && versionB != null) {
@@ -873,7 +1290,18 @@ int _compareReleaseOrder(UpdateReleaseInfo a, UpdateReleaseInfo b) {
     return 1;
   }
 
+  if (a.isPrerelease != b.isPrerelease) {
+    return a.isPrerelease ? 1 : -1;
+  }
+
   return 0;
+}
+
+bool hasMajorOrMinorUpdate(Version candidate, Version baseline) {
+  if (candidate.major != baseline.major) {
+    return candidate.major > baseline.major;
+  }
+  return candidate.minor > baseline.minor;
 }
 
 _AndroidApkVariant _inferAndroidApkVariant(UpdateReleaseAsset asset) {

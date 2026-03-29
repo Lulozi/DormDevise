@@ -11,6 +11,7 @@ import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/theme/theme_service.dart';
 import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
+import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -127,6 +128,7 @@ class ManagementScreenState extends State<ManagementScreen>
   bool _widgetDialogVisible = false;
   bool _updatePromptVisible = false;
   bool _updateCheckInProgress = false;
+  bool _shouldCheckUpdatesOnNextResume = false;
   DateTime _lastReminderRefreshAt = DateTime.now();
 
   /// 根据原始页面索引构建对应的业务页面。
@@ -247,6 +249,12 @@ class ManagementScreenState extends State<ManagementScreen>
     super.didChangeAppLifecycleState(state);
     final bool isForeground = state == AppLifecycleState.resumed;
     UpdateDownloadService.instance.setAppInForeground(isForeground);
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _shouldCheckUpdatesOnNextResume = true;
+      return;
+    }
     if (state != AppLifecycleState.resumed) {
       return;
     }
@@ -259,7 +267,10 @@ class ManagementScreenState extends State<ManagementScreen>
       _lastReminderRefreshAt = now;
       unawaited(CourseService.instance.initializeReminders(force: true));
     }
-    unawaited(_checkForUpdatesOnLaunch());
+    if (_shouldCheckUpdatesOnNextResume) {
+      _shouldCheckUpdatesOnNextResume = false;
+      unawaited(_checkForUpdatesOnLaunch());
+    }
   }
 
   /// 绑定桌面微件事件流，支持轻点微件后自动弹出滑动对话框。
@@ -328,9 +339,12 @@ class ManagementScreenState extends State<ManagementScreen>
       return;
     }
     try {
-      final UpdateCheckResult? result = await UpdateCheckService.instance
-          .fetchAvailableUpdate(forceRefresh: true);
+      final HomePageUpdatePromptPlan? promptPlan = await UpdateCheckService
+          .instance
+          .fetchHomePageUpdatePrompt();
+      final UpdateCheckResult? result = promptPlan?.result;
       if (!mounted ||
+          promptPlan == null ||
           result == null ||
           !result.hasCompatibleAsset ||
           _widgetDialogVisible) {
@@ -338,11 +352,37 @@ class ManagementScreenState extends State<ManagementScreen>
       }
 
       _updatePromptVisible = true;
-      final bool? shouldStartUpdate = await UpdateCheckService.instance
-          .showUpdateAvailableDialog(context, result, confirmLabel: '立即更新');
-      if (!mounted || shouldStartUpdate != true) {
+      final UpdateDialogAction action = await UpdateCheckService.instance
+          .showUpdateAvailableDialog(
+            context,
+            result,
+            confirmLabel: '立即更新',
+            secondaryLabel: promptPlan.secondaryLabel,
+          );
+      if (!mounted) {
         return;
       }
+      if (action == UpdateDialogAction.secondary) {
+        if (promptPlan.secondaryAction ==
+            HomePageUpdatePromptSecondaryAction.cancel) {
+          await UpdateCheckService.instance.cancelHomePageUpdatePrompt(
+            result.latestVersion,
+          );
+        } else {
+          await UpdateCheckService.instance.deferHomePageUpdatePrompt(
+            result.latestVersion,
+          );
+        }
+        if (mounted) {
+          AppToast.show(context, promptPlan.feedbackMessage);
+        }
+        return;
+      }
+      if (action != UpdateDialogAction.confirm) {
+        return;
+      }
+
+      await UpdateCheckService.instance.clearHomePageUpdatePromptState();
       await UpdateCheckService.instance.startBackgroundUpdate(
         asset: result.asset,
         releaseVersion: result.latestVersion,

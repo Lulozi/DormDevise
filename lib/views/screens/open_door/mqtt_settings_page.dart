@@ -268,7 +268,10 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
     final String host = _hostController.text.trim();
     final int port = int.tryParse(_portController.text.trim()) ?? 1883;
     final String topic = _topicController.text.trim();
-    final String clientId = _clientIdController.text.trim();
+    // 客户端ID在应用程序启动时是固定的，不应通过UI进行修改。
+    final String clientId = _clientId.isNotEmpty
+        ? _clientId
+        : _clientIdController.text.trim();
     final String username = _usernameController.text.trim();
     final String password = _passwordController.text.trim();
     final String caPath = _caPathController.text.trim();
@@ -317,7 +320,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       'mqtt_host': config.host,
       'mqtt_port': config.port.toString(),
       'mqtt_topic': config.commandTopic,
-      'mqtt_clientId': config.clientId,
+      // 不在导出的有效负载中包含clientId（保持UUID对此设备私有）
       'mqtt_username': config.username ?? '',
       'mqtt_password': config.password ?? '',
       'mqtt_ca': config.caPath,
@@ -360,8 +363,11 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
         'mqtt_with_tls': decoded['mqtt_with_tls'],
         'custom_open_msg': decoded['custom_open_msg'],
         'mqtt_status_enabled': decoded['mqtt_status_enabled'],
-        'mqtt_clientId': decoded['mqtt_clientId'],
       };
+      // 保留现有的设备clientId：不要从导入的有效负载中覆盖它。
+      final MqttConfig currentConfig = await MqttConfigService.instance
+          .loadConfig(forceRefresh: true);
+      storageMap['mqtt_clientId'] = currentConfig.clientId;
       final MqttConfig config = MqttConfig.fromStorage(storageMap);
       await _stopStatusSubscription(silent: true);
       await MqttConfigService.instance.saveConfig(config);
@@ -385,6 +391,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       configLabel: 'MQTT配置',
       payload: _buildExportPayloadText(),
       onImport: _importConfigFromText,
+      allowImport: false,
     );
   }
 
@@ -1017,6 +1024,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                       TextField(
                         key: const ValueKey('clientId'),
                         controller: _clientIdController,
+                        enabled: false,
                         decoration: decoration(
                           'Client ID (默认使用UUID)',
                           prefixIcon: const Icon(Icons.badge_outlined),
@@ -1155,7 +1163,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                         padding: buttonPadding,
                       ),
                       icon: const Icon(Icons.ios_share_outlined),
-                      label: const Text('分享/导入'),
+                      label: const Text('分享配置'),
                     ),
                   ),
                   const SizedBox(width: 16),

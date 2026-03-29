@@ -10,21 +10,27 @@ import '../../../services/theme/theme_service.dart';
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
+import '../../../services/course_schedule_transfer_service.dart';
 import '../../widgets/bubble_popup.dart';
 import 'widgets/course_schedule_table.dart';
 import 'widgets/section_config_sheet.dart';
 import 'widgets/week_select_sheet.dart';
 import 'course_edit_page.dart';
 import 'all_schedules_page.dart';
-import 'camera_import_schedule_page.dart';
-import 'file_import_schedule_page.dart';
+// import 'camera_import_schedule_page.dart';
+// import 'file_import_schedule_page.dart';
+import 'import_code_schedule_page.dart';
 import 'scan_import_schedule_page.dart';
 import 'schedule_share.dart';
+import 'widgets/schedule_import_preview_dialog.dart';
 import 'web_import_schedule_page.dart';
 
 /// 展示并管理大学课程表的页面。
 class TablePage extends StatefulWidget {
-  const TablePage({super.key});
+  const TablePage({super.key, this.initialImportRaw});
+
+  /// 如果通过外部跳转携带了课表导入码原始文本，页面加载后会自动处理导入流程。
+  final String? initialImportRaw;
 
   /// 创建页面状态以渲染课表内容。
   @override
@@ -118,9 +124,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         // 每种导入方式独立成页，后续方便分别扩展。
         final Widget page = switch (value) {
           'web' => const WebImportSchedulePage(),
-          'camera' => const CameraImportSchedulePage(),
+          'code' => const ImportCodeSchedulePage(),
           'scan' => const ScanImportSchedulePage(),
-          'file' => const FileImportSchedulePage(),
+          // 'camera' => const CameraImportSchedulePage(),
+          // 'file' => const FileImportSchedulePage(),
           _ => const WebImportSchedulePage(),
         };
         final bool? result = await Navigator.of(context).push<bool>(
@@ -175,9 +182,16 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       context: context,
       anchorKey: _shareBtnKey,
       controller: controller,
-      tableName: _tableName,
-      semesterRange: _formatSemesterRange(),
-      currentWeek: _currentWeek,
+      bundle: CourseScheduleTransferBundle(
+        tableName: _tableName,
+        semesterStart: _currentSemesterStart,
+        maxWeek: _maxWeek,
+        showWeekend: _showWeekend,
+        showNonCurrentWeek: _showNonCurrentWeek,
+        isScheduleLocked: _isScheduleLocked,
+        scheduleConfig: _scheduleConfig,
+        courses: _courses,
+      ),
     );
 
     if (!mounted) return;
@@ -189,7 +203,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     }
   }
 
-  /// 显示导入方法菜单，去掉手动选项。
+  /// 显示导入方法菜单，当前保留网页、扫码和导入码入口。
   Future<void> _showImportMenu() async {
     await _dismissToolbarBubble();
     if (!mounted) return;
@@ -207,7 +221,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       anchorKey: _importBtnKey,
       controller: controller,
       content: SizedBox(
-        width: 160,
+        width: 184,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -221,18 +235,25 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             ),
             const Divider(height: 1, thickness: 0.5),
             _buildImportMenuItem(
-              'camera',
-              '拍照导入课表',
-              FontAwesomeIcons.camera,
+              'code',
+              '导入码导入课表',
+              Icons.content_paste_rounded,
               controller,
             ),
-            const Divider(height: 1, thickness: 0.5),
-            _buildImportMenuItem(
-              'file',
-              '文件导入课表',
-              FontAwesomeIcons.folderOpen,
-              controller,
-            ),
+            // const Divider(height: 1, thickness: 0.5),
+            // _buildImportMenuItem(
+            //   'camera',
+            //   '拍照导入课表',
+            //   FontAwesomeIcons.camera,
+            //   controller,
+            // ),
+            // const Divider(height: 1, thickness: 0.5),
+            // _buildImportMenuItem(
+            //   'file',
+            //   '文件导入课表',
+            //   FontAwesomeIcons.folderOpen,
+            //   controller,
+            // ),
           ],
         ),
       ),
@@ -257,8 +278,61 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     _pageController = PageController(initialPage: 0);
     _scrollGroup = LinkedScrollControllerGroup();
     _timeColumnController = _scrollGroup.addAndGet();
-    _loadData(jumpToCurrentWeek: true);
+    // 加载数据后，如存在外部传入的导入码则在加载完成后处理导入流程
+    _loadData(jumpToCurrentWeek: true).then((_) {
+      if (widget.initialImportRaw != null &&
+          widget.initialImportRaw!.trim().isNotEmpty) {
+        _handleInitialImport(widget.initialImportRaw!);
+      }
+    });
     _scheduleMidnightRefresh();
+  }
+
+  Future<void> _handleInitialImport(String raw) async {
+    try {
+      final CourseScheduleTransferBundle bundle =
+          CourseScheduleTransferService.decodeBundle(raw);
+      if (!mounted) return;
+
+      final bool confirmed = await ScheduleImportPreviewDialog.show(
+        context,
+        bundle,
+      );
+      if (!mounted) return;
+      if (!confirmed) return;
+
+      await CourseService.instance.createImportedSchedule(
+        desiredName: bundle.tableName,
+        courses: bundle.courses,
+        config: bundle.scheduleConfig,
+        semesterStart: bundle.semesterStart,
+        maxWeek: bundle.maxWeek,
+        showWeekend: bundle.showWeekend,
+        showNonCurrentWeek: bundle.showNonCurrentWeek,
+        isScheduleLocked: bundle.isScheduleLocked,
+      );
+      if (!mounted) return;
+      AppToast.show(context, '课表已导入');
+      // 刷新页面数据以展示新导入的课表
+      await _loadData(jumpToCurrentWeek: true);
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        _resolveImportErrorMessage(raw, error),
+        variant: AppToastVariant.warning,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.show(context, '导入失败：$error', variant: AppToastVariant.error);
+    }
+  }
+
+  String _resolveImportErrorMessage(String raw, FormatException error) {
+    if (CourseScheduleTransferService.isLegacyShareLink(raw)) {
+      return '这是旧版分享链接，不含完整课表数据，请重新生成新版分享二维码';
+    }
+    return error.message;
   }
 
   void _invalidateAdaptiveLayoutCache() {
@@ -1030,8 +1104,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
                         });
                       }
                     },
-                    onAddCourseTap: (weekday, section) =>
-                        _addCourse(weekday: weekday, section: section),
+                    onAddCourseTap: _isScheduleLocked
+                        ? null
+                        : (weekday, section) =>
+                              _addCourse(weekday: weekday, section: section),
                     onCourseChanged: (oldCourse, newCourse) async {
                       setState(() {
                         _invalidateAdaptiveLayoutCache();

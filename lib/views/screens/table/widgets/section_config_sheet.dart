@@ -434,6 +434,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                   previews[i].start,
                   previews[i].end,
                 ),
+                tileKey: ValueKey<String>(
+                  'section_${index}_$i'
+                  '_${previews[i].start.hour}_${previews[i].start.minute}'
+                  '_${previews[i].end.hour}_${previews[i].end.minute}'
+                  '_${segment.classCount}',
+                ),
               ),
             ],
           ],
@@ -451,10 +457,12 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     required bool isLast,
     required Duration classDuration,
     bool hasConflict = false,
+    Key? tileKey,
   }) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
     return Column(
+      key: tileKey,
       children: <Widget>[
         InkWell(
           borderRadius: BorderRadius.circular(18),
@@ -773,17 +781,21 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     if (sectionIndex == 0) {
       // 如果是该时段的第一节课
       if (segmentIndex > 0) {
-        // 必须晚于上一时段的结束时间
+        // 必须晚于上一时段的结束时间（如果上一时段有课程）
         final _MutableSegment prevSegment = _segments[segmentIndex - 1];
-        final TimeOfDay prevSegmentEnd = _buildSectionPreviews(
+        final List<_SectionPreview> prevPreviews = _buildSectionPreviews(
           prevSegment,
           0,
-        ).last.end;
+        );
+        if (prevPreviews.isNotEmpty) {
+          final TimeOfDay prevSegmentEnd = prevPreviews.last.end;
 
-        if (_compareTimeOfDay(newStart, prevSegmentEnd) < 0) {
-          _showToast('开始时间不能早于上一时段结束时间');
-          return;
+          if (_compareTimeOfDay(newStart, prevSegmentEnd) < 0) {
+            _showToast('开始时间不能早于上一时段结束时间');
+            return;
+          }
         }
+        // 若上一时段无课（previews 为空），则不做该项限制，允许自由设置开始时间
       }
     } else {
       // 如果是中间的节次，必须晚于上一节课的结束时间
@@ -1293,14 +1305,19 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       children: staticHours
                           .map(
                             (int hour) => Center(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${hour.toString().padLeft(2, '0')}时',
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSurface,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2.0,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '${hour.toString().padLeft(2, '0')}时',
+                                    style: TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurface,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1326,14 +1343,19 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
                       children: staticMinutes
                           .map(
                             (int minute) => Center(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${minute.toString().padLeft(2, '0')}分',
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSurface,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2.0,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '${minute.toString().padLeft(2, '0')}分',
+                                    style: TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurface,
+                                    ),
                                   ),
                                 ),
                               ),

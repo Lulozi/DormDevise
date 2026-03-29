@@ -15,6 +15,8 @@ Future<void> main() async {
   await runZonedGuarded<Future<void>>(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      // 记录启动时间，确保原生启动页（splash）至少停留一定时长
+      final DateTime startupBegin = DateTime.now();
       await initializeDateFormatting('zh_CN', null);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       SystemChrome.setSystemUIOverlayStyle(
@@ -52,6 +54,13 @@ Future<void> main() async {
         await CourseService.instance.initializeReminders();
       } catch (e, stack) {
         debugPrint('NotificationService initialization failed: $e\n$stack');
+      }
+
+      // 若初始化过快，补足到最少停留时间（1500ms），以提升视觉体验
+      const Duration minSplashDuration = Duration(milliseconds: 1500);
+      final Duration elapsed = DateTime.now().difference(startupBegin);
+      if (elapsed < minSplashDuration) {
+        await Future<void>.delayed(minSplashDuration - elapsed);
       }
 
       runApp(const DormDeviseApp());

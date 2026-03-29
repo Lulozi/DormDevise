@@ -152,7 +152,9 @@ class CourseScheduleConfig {
     required this.defaultBreakDuration,
     required List<ScheduleSegmentConfig> segments,
     this.useSegmentBreakDurations = false,
-  }) : segments = List<ScheduleSegmentConfig>.unmodifiable(segments);
+  }) : segments = List<ScheduleSegmentConfig>.unmodifiable(
+         _normalizeSegments(segments),
+       );
 
   /// 返回手动新建课表时使用的默认节次配置。
   factory CourseScheduleConfig.njuDefaults() {
@@ -174,6 +176,11 @@ class CourseScheduleConfig {
           name: '下午',
           startTime: TimeOfDay(hour: 14, minute: 30),
           classCount: 3,
+        ),
+        const ScheduleSegmentConfig(
+          name: '晚上',
+          startTime: TimeOfDay(hour: 18, minute: 30),
+          classCount: 0,
         ),
       ],
       useSegmentBreakDurations: true,
@@ -244,6 +251,34 @@ class CourseScheduleConfig {
           .toList(),
       useSegmentBreakDurations: json['useSegmentBreakDurations'] as bool,
     );
+  }
+
+  static List<ScheduleSegmentConfig> _normalizeSegments(
+    List<ScheduleSegmentConfig> segments,
+  ) {
+    final List<ScheduleSegmentConfig> normalized =
+        List<ScheduleSegmentConfig>.from(segments);
+    final bool hasMorning = normalized.any(
+      (ScheduleSegmentConfig segment) => segment.name == '上午',
+    );
+    final bool hasAfternoon = normalized.any(
+      (ScheduleSegmentConfig segment) => segment.name == '下午',
+    );
+    final bool hasEvening = normalized.any(
+      (ScheduleSegmentConfig segment) => segment.name == '晚上',
+    );
+
+    if (hasMorning && hasAfternoon && !hasEvening) {
+      normalized.add(
+        const ScheduleSegmentConfig(
+          name: '晚上',
+          startTime: TimeOfDay(hour: 18, minute: 30),
+          classCount: 0,
+        ),
+      );
+    }
+
+    return normalized;
   }
 
   /// 根据当前配置生成一个从 1 开始的连续 `SectionTime` 列表，按分段合并。
