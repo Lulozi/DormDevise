@@ -26,8 +26,25 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
   bool _isHandling = false;
   bool _torchEnabled = false;
 
+  /// 最近一次处理的原始二维码内容与时间，用于防止短时间内重复识别导致重复弹窗。
+  String? _lastHandledRaw;
+  DateTime? _lastHandledAt;
+  static const Duration _duplicateCooldown = Duration(seconds: 2);
+
   Future<void> _handleBarcodeCapture(BarcodeCapture capture) async {
-    await _handleImport(_extractRawValue(capture.barcodes));
+    final String raw = _extractRawValue(capture.barcodes);
+    if (raw.isEmpty) return;
+
+    // 如果与上次处理的内容相同且在冷却期内，则忽略此次识别
+    if (_lastHandledRaw != null && _lastHandledRaw == raw) {
+      final DateTime now = DateTime.now();
+      if (_lastHandledAt != null &&
+          now.difference(_lastHandledAt!) < _duplicateCooldown) {
+        return;
+      }
+    }
+
+    await _handleImport(raw);
   }
 
   String _extractRawValue(Iterable<Barcode> barcodes) {
@@ -118,6 +135,10 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
         _isHandling = true;
       });
     }
+
+    // 记录本次处理的内容与时间，用于防抖
+    _lastHandledRaw = raw;
+    _lastHandledAt = DateTime.now();
     if (shouldPauseScanner) {
       await _controller.stop();
     }
