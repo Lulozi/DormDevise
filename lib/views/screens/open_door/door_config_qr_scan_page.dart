@@ -86,11 +86,12 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
 
         if (go == true) {
           if (!mounted) return;
-          // 跳转到课表导入页面，替换当前扫码页
-          await Navigator.of(context).pushReplacement(
+          // 跳转到课表导入页面，并移除之前的路由，避免返回到门锁页面
+          await Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (_) => TablePage(initialImportRaw: rawValue),
             ),
+            (Route<dynamic> route) => false,
           );
           return;
         }
@@ -225,10 +226,11 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
 
           if (go == true) {
             if (!mounted) return;
-            await Navigator.of(context).pushReplacement(
+            await Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
                 builder: (_) => TablePage(initialImportRaw: rawValue),
               ),
+              (Route<dynamic> route) => false,
             );
             return;
           }
