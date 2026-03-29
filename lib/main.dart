@@ -58,10 +58,10 @@ Future<void> main() async {
         debugPrint('NotificationService initialization failed: $e\n$stack');
       }
 
-      // 若不是 Android 平台，补足到最少停留时间（2000ms），以提升视觉体验。
-      // Android 已由原生 `SplashActivity` 保证最短展示时间（2s），避免重复延时。
+      // 若不是 Android 平台，补足到最少停留时间（1500ms），以提升视觉体验。
+      // Android 已由原生 `SplashActivity` 保证最短展示时间（1.5s），避免重复延时。
       if (defaultTargetPlatform != TargetPlatform.android) {
-        const Duration minSplashDuration = Duration(milliseconds: 2000);
+        const Duration minSplashDuration = Duration(milliseconds: 1500);
         final Duration elapsed = DateTime.now().difference(startupBegin);
         if (elapsed < minSplashDuration) {
           await Future<void>.delayed(minSplashDuration - elapsed);
