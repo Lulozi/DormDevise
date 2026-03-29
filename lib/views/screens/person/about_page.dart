@@ -462,7 +462,7 @@ class _AboutPageState extends State<AboutPage> {
                       child: LicensePage(
                         applicationName: 'DormDevise',
                         applicationVersion: versionLabel,
-                        applicationLegalese: '© 2025 DormDevise',
+                        applicationLegalese: '© 2025-26 DormDevise',
                       ),
                     ),
                   ),
