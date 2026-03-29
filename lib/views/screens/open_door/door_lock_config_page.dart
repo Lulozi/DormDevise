@@ -164,10 +164,13 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     final MqttConfig mqttConfig = await MqttConfigService.instance.loadConfig(
       forceRefresh: true,
     );
+    final Map<String, Object?> mqttMap = Map<String, Object?>.from(
+      mqttConfig.toStorageMap(),
+    )..remove('mqtt_clientId');
     final Map<String, Object?> payload = <String, Object?>{
       'door_lock_bundle_version': 1,
       ...localConfig.toSharePayload(),
-      ...mqttConfig.toStorageMap(),
+      ...mqttMap,
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }

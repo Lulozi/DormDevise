@@ -1,5 +1,6 @@
 import 'package:dormdevise/models/mqtt_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 /// 负责统一读取与写入 MQTT 配置的服务，提供简单缓存以减少 IO。
 class MqttConfigService {
@@ -16,11 +17,16 @@ class MqttConfigService {
       return _cachedConfig!;
     }
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? clientId = prefs.getString('mqtt_clientId');
+    if (clientId == null || clientId.isEmpty) {
+      clientId = const Uuid().v4();
+      await prefs.setString('mqtt_clientId', clientId);
+    }
     final Map<String, Object?> storage = <String, Object?>{
       'mqtt_host': prefs.getString('mqtt_host'),
       'mqtt_port': prefs.getString('mqtt_port'),
       'mqtt_topic': prefs.getString('mqtt_topic'),
-      'mqtt_clientId': prefs.getString('mqtt_clientId'),
+      'mqtt_clientId': clientId,
       'mqtt_username': prefs.getString('mqtt_username'),
       'mqtt_password': prefs.getString('mqtt_password'),
       'mqtt_with_tls': prefs.getBool('mqtt_with_tls'),
