@@ -2,6 +2,7 @@ package com.lulo.dormdevise
 
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -131,6 +132,14 @@ class MainActivity : FlutterActivity() {
 						result.success(null)
 					}
 				}
+				"setShowWhenLocked" -> {
+					val show = call.argument<Boolean>("show") ?: false
+					val turn = call.argument<Boolean>("turn") ?: false
+					runOnUiThread {
+						setShowWhenLockedAndTurnScreenOn(show, turn)
+						result.success(null)
+					}
+				}
 				else -> result.notImplemented()
 			}
 		}
@@ -141,7 +150,48 @@ class MainActivity : FlutterActivity() {
 	override fun onNewIntent(intent: Intent) {
 		super.onNewIntent(intent)
 		setIntent(intent)
+		handleLockscreenFlagsIfNeeded(intent)
 		handlePendingRoute(intent)
+	}
+
+	override fun onCreate(savedInstanceState: Bundle?) {
+		super.onCreate(savedInstanceState)
+		handleLockscreenFlagsIfNeeded(intent)
+	}
+
+	/**
+	 * 根据 Intent 中的额外字段按需在运行时打开或关闭锁屏显示与点亮屏幕。
+	 * 期望的 extras:
+	 *  - "showOnLock": Boolean
+	 *  - "turnScreenOn": Boolean
+	 */
+	private fun handleLockscreenFlagsIfNeeded(intent: Intent?) {
+		val showOnLock = intent?.getBooleanExtra("showOnLock", false) ?: false
+		val turnOn = intent?.getBooleanExtra("turnScreenOn", false) ?: false
+		if (showOnLock || turnOn) {
+			runOnUiThread {
+				setShowWhenLockedAndTurnScreenOn(showOnLock, turnOn)
+			}
+		}
+	}
+
+	private fun setShowWhenLockedAndTurnScreenOn(show: Boolean, turn: Boolean) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+			setShowWhenLocked(show)
+			setTurnScreenOn(turn)
+		} else {
+			if (show || turn) {
+				window.addFlags(
+					WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+					WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+				)
+			} else {
+				window.clearFlags(
+					WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+					WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+				)
+			}
+		}
 	}
 
 	private fun handlePendingRoute(intent: Intent?) {
