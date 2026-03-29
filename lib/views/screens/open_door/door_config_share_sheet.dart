@@ -16,6 +16,11 @@ class DoorConfigShareSheet {
     required String configLabel,
     required String payload,
     required Future<void> Function(String raw) onImport,
+
+    /// 是否允许显示导入相关项（剪贴板导入、扫码导入）。
+    ///
+    /// 当为 false 时，弹窗为“仅分享”模式，不会展示导入项且不分区。
+    bool allowImport = true,
   }) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -24,109 +29,148 @@ class DoorConfigShareSheet {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                _SectionTitle(title: '剪贴板'),
-                _ActionGroup(
-                  children: <Widget>[
-                    ListTile(
-                      leading: const Icon(Icons.share_outlined),
-                      title: const Text('导出到剪贴板'),
-                      onTap: () async {
-                        Navigator.of(sheetContext).pop();
-                        await Clipboard.setData(ClipboardData(text: payload));
-                        if (!context.mounted) {
-                          return;
-                        }
-                        AppToast.show(context, '$configLabel 已复制到剪贴板');
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.download_outlined),
-                      title: const Text('剪贴板导入'),
-                      onTap: () async {
-                        Navigator.of(sheetContext).pop();
-                        final ClipboardData? data = await Clipboard.getData(
-                          'text/plain',
-                        );
-                        final String raw = data?.text?.trim() ?? '';
-                        if (raw.isEmpty) {
-                          if (!context.mounted) {
-                            return;
-                          }
-                          AppToast.show(
-                            context,
-                            '剪贴板内容为空',
-                            variant: AppToastVariant.warning,
-                          );
-                          return;
-                        }
-                        if (!context.mounted) {
-                          return;
-                        }
-                        await _handleImport(
-                          context: context,
-                          raw: raw,
-                          onImport: onImport,
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _SectionTitle(title: '二维码'),
-                _ActionGroup(
-                  children: <Widget>[
-                    ListTile(
-                      leading: const Icon(Icons.qr_code_2_rounded),
-                      title: const Text('导出为二维码'),
-                      onTap: () async {
-                        Navigator.of(sheetContext).pop();
-                        if (!context.mounted) {
-                          return;
-                        }
-                        await _showQrCodeDialog(
-                          context: context,
-                          configLabel: configLabel,
-                          payload: payload,
-                        );
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.qr_code_scanner_rounded),
-                      title: const Text('扫码导入'),
-                      onTap: () async {
-                        Navigator.of(sheetContext).pop();
-                        if (!context.mounted) {
-                          return;
-                        }
-                        final String? raw = await Navigator.of(context)
-                            .push<String>(
-                              MaterialPageRoute<String>(
-                                builder: (_) => DoorConfigQrScanPage(
-                                  title: '扫描$configLabel二维码',
-                                ),
-                              ),
-                            );
-                        if (raw == null || raw.trim().isEmpty) {
-                          return;
-                        }
-                        if (!context.mounted) {
-                          return;
-                        }
-                        await _handleImport(
-                          context: context,
-                          raw: raw,
-                          onImport: onImport,
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
+            child: allowImport
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      _SectionTitle(title: '剪贴板'),
+                      _ActionGroup(
+                        children: <Widget>[
+                          ListTile(
+                            leading: const Icon(Icons.share_outlined),
+                            title: const Text('导出到剪贴板'),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              await Clipboard.setData(
+                                ClipboardData(text: payload),
+                              );
+                              if (!context.mounted) {
+                                return;
+                              }
+                              AppToast.show(context, '$configLabel 已复制到剪贴板');
+                            },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.download_outlined),
+                            title: const Text('剪贴板导入'),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              final ClipboardData? data =
+                                  await Clipboard.getData('text/plain');
+                              final String raw = data?.text?.trim() ?? '';
+                              if (raw.isEmpty) {
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                AppToast.show(
+                                  context,
+                                  '剪贴板内容为空',
+                                  variant: AppToastVariant.warning,
+                                );
+                                return;
+                              }
+                              if (!context.mounted) {
+                                return;
+                              }
+                              await _handleImport(
+                                context: context,
+                                raw: raw,
+                                onImport: onImport,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _SectionTitle(title: '二维码'),
+                      _ActionGroup(
+                        children: <Widget>[
+                          ListTile(
+                            leading: const Icon(Icons.qr_code_2_rounded),
+                            title: const Text('导出为二维码'),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              if (!context.mounted) {
+                                return;
+                              }
+                              await _showQrCodeDialog(
+                                context: context,
+                                configLabel: configLabel,
+                                payload: payload,
+                              );
+                            },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.qr_code_scanner_rounded),
+                            title: const Text('扫码导入'),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              if (!context.mounted) {
+                                return;
+                              }
+                              final String? raw = await Navigator.of(context)
+                                  .push<String>(
+                                    MaterialPageRoute<String>(
+                                      builder: (_) => DoorConfigQrScanPage(
+                                        title: '扫描$configLabel二维码',
+                                      ),
+                                    ),
+                                  );
+                              if (raw == null || raw.trim().isEmpty) {
+                                return;
+                              }
+                              if (!context.mounted) {
+                                return;
+                              }
+                              await _handleImport(
+                                context: context,
+                                raw: raw,
+                                onImport: onImport,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      _ActionGroup(
+                        children: <Widget>[
+                          ListTile(
+                            leading: const Icon(Icons.share_outlined),
+                            title: const Text('导出到剪贴板'),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              await Clipboard.setData(
+                                ClipboardData(text: payload),
+                              );
+                              if (!context.mounted) {
+                                return;
+                              }
+                              AppToast.show(context, '$configLabel 已复制到剪贴板');
+                            },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.qr_code_2_rounded),
+                            title: const Text('导出为二维码'),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              if (!context.mounted) return;
+                              await _showQrCodeDialog(
+                                context: context,
+                                configLabel: configLabel,
+                                payload: payload,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
           ),
         );
       },

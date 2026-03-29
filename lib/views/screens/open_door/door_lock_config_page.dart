@@ -7,6 +7,7 @@ import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/mqtt_config_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'door_config_share_sheet.dart';
 import 'local_door_lock_settings_page.dart';
@@ -115,7 +116,7 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
         actions: <Widget>[
           IconButton(
             tooltip: '分享/导入整套门锁配置',
-            icon: const Icon(Icons.ios_share_outlined),
+            icon: const Icon(FontAwesomeIcons.retweet, size: 20),
             onPressed: _openShareImportMenu,
           ),
         ],

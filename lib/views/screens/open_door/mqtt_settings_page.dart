@@ -385,6 +385,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       configLabel: 'MQTT配置',
       payload: _buildExportPayloadText(),
       onImport: _importConfigFromText,
+      allowImport: false,
     );
   }
 
@@ -1155,7 +1156,7 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
                         padding: buttonPadding,
                       ),
                       icon: const Icon(Icons.ios_share_outlined),
-                      label: const Text('分享/导入'),
+                      label: const Text('分享配置'),
                     ),
                   ),
                   const SizedBox(width: 16),
