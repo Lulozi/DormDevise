@@ -15,5 +15,6 @@ class Icons {
   static const IconData new_releases_outlined = FontAwesomeIcons.star;
   static const IconData support_agent_outlined = FontAwesomeIcons.headset;
   static const IconData verified_outlined = FontAwesomeIcons.circleCheck;
+  static const IconData new_releases = FontAwesomeIcons.arrowsRotate;
   static const IconData verified_user_outlined = FontAwesomeIcons.shieldHalved;
 }

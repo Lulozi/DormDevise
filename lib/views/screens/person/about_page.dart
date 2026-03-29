@@ -125,6 +125,9 @@ class _AboutPageState extends State<AboutPage> {
 
   /// 预判远端是否存在更新版本。
   Future<void> _primeLatestVersionStatus() async {
+    if (!mounted) return;
+    // 标记为正在检查以便 UI 显示忙碌转圈
+    setState(() => _checkingUpdate = true);
     try {
       final UpdateCheckResult? latest = await UpdateCheckService.instance
           .fetchAvailableUpdate(allowNetwork: false);
@@ -139,6 +142,10 @@ class _AboutPageState extends State<AboutPage> {
         setState(() => _hasNewerVersion = false);
       }
       debugPrint('预检查更新失败：${_mapErrorMessage(error)}');
+    } finally {
+      if (mounted) {
+        setState(() => _checkingUpdate = false);
+      }
     }
   }
 
@@ -497,6 +504,8 @@ class _AboutPageState extends State<AboutPage> {
               versionHint: versionHint,
               tapDisabled: tapDisabled,
               downloadInProgress: downloadInProgress,
+              // 将下载进度的 ValueListenable 传入，供头部徽章显示动画进度
+              progressListenable: _downloadService.progressNotifier,
               updateTrackPreference: _updateTrackPreference,
               onCheckUpdate: _handleCheckForUpdates,
               onUpdateTrackChanged: _handleUpdateTrackChanged,
@@ -571,6 +580,7 @@ class _AboutHeader extends StatelessWidget {
   final bool hasNewerVersion;
   final bool tapDisabled;
   final bool downloadInProgress;
+  final ValueListenable<DownloadProgress?> progressListenable;
   final String versionHint;
   final String versionTrackHint;
   final UpdateTrackPreference updateTrackPreference;
@@ -588,6 +598,7 @@ class _AboutHeader extends StatelessWidget {
     required this.hasNewerVersion,
     required this.tapDisabled,
     required this.downloadInProgress,
+    required this.progressListenable,
     required this.versionHint,
     required this.versionTrackHint,
     required this.updateTrackPreference,
@@ -645,6 +656,7 @@ class _AboutHeader extends StatelessWidget {
               hasNewerVersion: hasNewerVersion,
               disableTap: tapDisabled,
               downloadInProgress: downloadInProgress,
+              progressListenable: progressListenable,
               updateTrackPreference: updateTrackPreference,
               onCheckUpdate: onCheckUpdate,
               onUpdateTrackChanged: onUpdateTrackChanged,
@@ -705,6 +717,7 @@ class _VersionStatusChip extends StatefulWidget {
   final bool hasNewerVersion;
   final bool disableTap;
   final bool downloadInProgress;
+  final ValueListenable<DownloadProgress?> progressListenable;
   final UpdateTrackPreference updateTrackPreference;
   final Future<void> Function() onCheckUpdate;
   final Future<void> Function(UpdateTrackPreference preference)
@@ -716,6 +729,7 @@ class _VersionStatusChip extends StatefulWidget {
     required this.hasNewerVersion,
     required this.disableTap,
     required this.downloadInProgress,
+    required this.progressListenable,
     required this.updateTrackPreference,
     required this.onCheckUpdate,
     required this.onUpdateTrackChanged,
@@ -871,6 +885,31 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
 
     /// 根据当前状态生成前缀图标部件。
     Widget buildAvatar() {
+      // 优先级：检查/忙碌 -> 下载中 -> 有新版本 -> 默认已验证
+      // 优先级：下载中 -> 检查/忙碌 -> 有新版本 -> 默认已验证
+      // 1) 下载中时显示下载进度：使用传入的 `progressListenable` 来驱动动画/进度
+      if (widget.downloadInProgress) {
+        return ValueListenableBuilder<DownloadProgress?>(
+          valueListenable: widget.progressListenable,
+          builder: (context, progress, _) {
+            final double? fraction = progress?.fraction;
+            return SizedBox(
+              width: 18,
+              height: 18,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: CircularProgressIndicator(
+                  value: fraction,
+                  strokeWidth: 2,
+                  color: colorScheme.primary,
+                ),
+              ),
+            );
+          },
+        );
+      }
+
+      // 2) 正在检查更新或忙碌时显示圆形进度指示器
       if (widget.showBusyIndicator) {
         return const SizedBox(
           width: 18,
@@ -881,20 +920,17 @@ class _VersionStatusChipState extends State<_VersionStatusChip>
           ),
         );
       }
-      if (widget.downloadInProgress) {
-        return const SizedBox(
-          width: 18,
-          height: 18,
-          child: Padding(
-            padding: EdgeInsets.all(2),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        );
+
+      // 3) 若检测到有新版本，可用 new_releases 图标来提示用户
+      if (widget.hasNewerVersion) {
+        return Icon(Icons.new_releases, color: colorScheme.primary, size: 16);
       }
+
+      // 4) 无特殊状态时显示已验证的对勾图标
       return Icon(
         Icons.verified_outlined,
         color: colorScheme.primary,
-        size: 18,
+        size: 16,
       );
     }
 
