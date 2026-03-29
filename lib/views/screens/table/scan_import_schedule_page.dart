@@ -76,11 +76,11 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
               _isHandling = true;
             });
           }
+          final BuildContext dialogCallerContext = context;
           if (shouldPauseScanner) {
-            await _controller.stop();
+            _controller.stop();
           }
 
-          final BuildContext dialogCallerContext = context;
           final bool? go = await showDialog<bool>(
             context: dialogCallerContext,
             builder: (dialogContext) {

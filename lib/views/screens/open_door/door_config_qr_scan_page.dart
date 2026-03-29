@@ -1,4 +1,6 @@
 import 'package:dormdevise/utils/app_toast.dart';
+import '../../../utils/qr_transfer_codec.dart';
+import '../table/table_page.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -43,14 +45,70 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
       }
     }
 
+    // 先尝试解码，若识别到的是课表导入码，则在本页弹出提示并保持页面为处理状态（黑屏），
+    // 用户选择取消后继续扫码，选择跳转则直接跳转到课表导入页面。
+    try {
+      final decoded = QrTransferCodec.tryDecode(rawValue);
+      if (decoded != null && decoded.type == 'schedule') {
+        // 进入处理状态并停止相机，防止继续扫码
+        setState(() {
+          _isHandling = true;
+        });
+        _lastHandledRaw = rawValue;
+        _lastHandledAt = DateTime.now();
+
+        final BuildContext dialogCallerContext = context;
+        if (!dialogCallerContext.mounted) {
+          await _resumeScanning();
+          return;
+        }
+        _controller.stop();
+
+        final bool? go = await showDialog<bool>(
+          context: dialogCallerContext,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text('识别到课表导入码'),
+              content: const Text('扫描结果为课表导入码，是否跳转到课表导入页面以导入该课表？'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('跳转'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (go == true) {
+          if (!mounted) return;
+          // 跳转到课表导入页面，替换当前扫码页
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => TablePage(initialImportRaw: rawValue),
+            ),
+          );
+          return;
+        }
+
+        // 取消则恢复扫描
+        await _resumeScanning();
+        return;
+      }
+    } catch (_) {
+      // ignore decode errors and continue with normal flow
+    }
+
+    // 正常的门锁配置扫描流：进入处理状态并返回结果
     setState(() {
       _isHandling = true;
     });
-
-    // 记录本次处理的内容与时间，用于防抖
     _lastHandledRaw = rawValue;
     _lastHandledAt = DateTime.now();
-
     await _controller.stop();
     await _finishWithRaw(rawValue);
   }
@@ -125,6 +183,61 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
         );
         await _resumeScanning();
         return;
+      }
+
+      // 如果识别到课表导入码，则在本页弹窗询问并根据选择跳转或继续扫码
+      try {
+        final decoded = QrTransferCodec.tryDecode(rawValue);
+        if (decoded != null && decoded.type == 'schedule') {
+          setState(() {
+            _isHandling = true;
+          });
+          _lastHandledRaw = rawValue;
+          _lastHandledAt = DateTime.now();
+
+          if (!mounted) return;
+          final BuildContext dialogCallerContext = context;
+          if (!dialogCallerContext.mounted) {
+            await _resumeScanning();
+            return;
+          }
+          _controller.stop();
+
+          final bool? go = await showDialog<bool>(
+            context: dialogCallerContext,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('识别到课表导入码'),
+                content: const Text('扫描结果为课表导入码，是否跳转到课表导入页面以导入该课表？'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('跳转'),
+                  ),
+                ],
+              );
+            },
+          );
+
+          if (go == true) {
+            if (!mounted) return;
+            await Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => TablePage(initialImportRaw: rawValue),
+              ),
+            );
+            return;
+          }
+
+          await _resumeScanning();
+          return;
+        }
+      } catch (_) {
+        // ignore
       }
 
       // 如果与上次处理的内容相同且在冷却期内，则忽略此次识别
