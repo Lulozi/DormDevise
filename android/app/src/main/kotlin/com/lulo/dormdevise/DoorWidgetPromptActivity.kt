@@ -3,6 +3,8 @@ package com.lulo.dormdevise
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.os.Build
+import android.view.WindowManager
 import android.os.Bundle
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -56,6 +58,22 @@ class DoorWidgetPromptActivity : FlutterActivity() {
      * 配置透明窗口并完成父类初始化。
      */
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 运行时根据 Intent extras 决定是否允许在锁屏显示或点亮屏幕
+        val showOnLock = intent?.getBooleanExtra("showOnLock", false) ?: false
+        val turnOn = intent?.getBooleanExtra("turnScreenOn", false) ?: false
+        if (showOnLock || turnOn) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(showOnLock)
+                setTurnScreenOn(turnOn)
+            } else {
+                if (showOnLock || turnOn) {
+                    window.addFlags(
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                    )
+                }
+            }
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.statusBarColor = Color.TRANSPARENT

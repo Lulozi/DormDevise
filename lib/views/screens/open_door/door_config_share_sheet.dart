@@ -11,6 +11,8 @@ import 'door_config_qr_scan_page.dart';
 
 /// 门锁配置的通用分享/导入菜单。
 class DoorConfigShareSheet {
+  /// 导入处理中标志，防止并发重复弹窗/导入。
+  static bool _isImportInProgress = false;
   static Future<void> show({
     required BuildContext context,
     required String configLabel,
@@ -237,6 +239,13 @@ class DoorConfigShareSheet {
     required Future<void> Function(String raw) onImport,
   }) async {
     final BuildContext safeContext = context;
+
+    // 防止并发重复处理（在弹窗/导入进行中时忽略后续触发）
+    if (_isImportInProgress) {
+      return;
+    }
+    _isImportInProgress = true;
+
     try {
       // 先尝试识别是否为其他类型的本应用负载（例如课表导入码），若是则提示是否跳转到对应页面
       final decoded = QrTransferCodec.tryDecode(raw);
@@ -306,6 +315,9 @@ class DoorConfigShareSheet {
         return;
       }
       AppToast.show(safeContext, '导入失败：$error', variant: AppToastVariant.error);
+    } finally {
+      // 处理完或发生错误后，允许再次触发导入流程
+      _isImportInProgress = false;
     }
   }
 }

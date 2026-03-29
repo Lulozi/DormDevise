@@ -26,8 +26,29 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
   bool _isHandling = false;
   bool _torchEnabled = false;
 
+  /// 最近一次处理的原始二维码内容与时间，用于防止短时间内重复识别导致重复弹窗。
+  String? _lastHandledRaw;
+  DateTime? _lastHandledAt;
+  static const Duration _duplicateCooldown = Duration(seconds: 2);
+
   Future<void> _handleBarcodeCapture(BarcodeCapture capture) async {
-    await _handleImport(_extractRawValue(capture.barcodes));
+    final String raw = _extractRawValue(capture.barcodes);
+    if (raw.isEmpty) return;
+
+    // 如果与上次处理的内容相同且在冷却期内，则忽略此次识别
+    if (_lastHandledRaw != null && _lastHandledRaw == raw) {
+      final DateTime now = DateTime.now();
+      if (_lastHandledAt != null &&
+          now.difference(_lastHandledAt!) < _duplicateCooldown) {
+        return;
+      }
+    }
+
+    // 立即记录以阻止并发重复触发（若用户取消，会通过 _resumeScanning 清除）
+    _lastHandledRaw = raw;
+    _lastHandledAt = DateTime.now();
+
+    await _handleImport(raw);
   }
 
   String _extractRawValue(Iterable<Barcode> barcodes) {
@@ -49,8 +70,19 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
       if (decoded != null &&
           decoded.type != CourseScheduleTransferService.payloadType) {
         if (decoded.type == 'door_config') {
+          // 在展示跳转确认对话前，先进入处理状态并停止相机，防止继续扫码
+          if (!_isHandling) {
+            setState(() {
+              _isHandling = true;
+            });
+          }
+          final BuildContext dialogCallerContext = context;
+          if (shouldPauseScanner) {
+            _controller.stop();
+          }
+
           final bool? go = await showDialog<bool>(
-            context: context,
+            context: dialogCallerContext,
             builder: (dialogContext) {
               return AlertDialog(
                 title: const Text('识别到门锁配置'),
@@ -100,6 +132,10 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
               ),
             );
             return;
+          } else {
+            // 用户取消：恢复扫描并允许再次识别同一二维码
+            await _resumeScanning();
+            return;
           }
         }
       }
@@ -118,6 +154,7 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
         _isHandling = true;
       });
     }
+
     if (shouldPauseScanner) {
       await _controller.stop();
     }
@@ -182,6 +219,9 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
     setState(() {
       _isHandling = false;
     });
+    // 清除去抖记录，允许用户取消后立即重新扫码同一二维码
+    _lastHandledRaw = null;
+    _lastHandledAt = null;
     await _controller.start();
   }
 

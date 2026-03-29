@@ -45,18 +45,20 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
         manager.cancel(id)
         AlarmNotificationScheduler.removeId(context, id)
 
-        val launchIntent = context.packageManager
-            .getLaunchIntentForPackage(context.packageName)
-            ?.apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-            }
-        if (launchIntent != null) {
-            context.startActivity(launchIntent)
+        val isAlarm = intent.getBooleanExtra(EXTRA_IS_ALARM, false)
+
+        // 使用显式 Intent 跳转到 MainActivity，并根据是否为闹钟场景传递额外字段，
+        // 由 MainActivity 在运行时决定是否 setShowWhenLocked / setTurnScreenOn。
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+            putExtra("showOnLock", isAlarm)
+            putExtra("turnScreenOn", isAlarm)
         }
+        context.startActivity(launchIntent)
     }
 
     companion object {
@@ -86,7 +88,7 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             enableVibration: Boolean,
         ) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val contentPendingIntent = buildOpenPendingIntent(context, id)
+            val contentPendingIntent = buildOpenPendingIntent(context, id, isAlarm)
 
             val channelId = when {
                 isAlarm -> AlarmNotificationScheduler.ALARM_CHANNEL_ID
@@ -149,10 +151,11 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             manager.notify(id, notification)
         }
 
-        private fun buildOpenPendingIntent(context: Context, id: Int): PendingIntent {
+        private fun buildOpenPendingIntent(context: Context, id: Int, isAlarm: Boolean): PendingIntent {
             val openIntent = Intent(context, AlarmNotificationReceiver::class.java).apply {
                 action = ACTION_OPEN
                 putExtra(EXTRA_ID, id)
+                putExtra(EXTRA_IS_ALARM, isAlarm)
             }
             return PendingIntent.getBroadcast(
                 context,
