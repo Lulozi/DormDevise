@@ -17,6 +17,7 @@ Future<void> main() async {
   await runZonedGuarded<Future<void>>(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      // 记录启动时间，确保原生启动页（splash）至少停留一定时长
       final DateTime startupBegin = DateTime.now();
       await initializeDateFormatting('zh_CN', null);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

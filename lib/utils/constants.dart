@@ -1,7 +1,7 @@
 // 应用程序中用于选择器和布局边距的通用视觉常量。
 // 将这些常量保留在此处，以便 UI 保持一致并可从单一位置进行调整。
 
-const double kPickerItemExtent = 44.0;
+const double kPickerItemExtent = 52.0;
 const double kPickerFontScale = 2.0;
 const double kPickerFontSizeDefault = 24.0; // 在无法获取主题基础大小时使用
 const double kTimePickerFontSize = 40.0; // 时间选择器（小时/分钟）

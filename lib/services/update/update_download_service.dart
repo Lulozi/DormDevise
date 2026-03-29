@@ -330,13 +330,13 @@ class UpdateDownloadService {
 
     await initializeNotifications();
     _cancelRequested = false;
-    progressNotifier.value = DownloadProgress(
-      receivedBytes: 0,
-      totalBytes: request.totalBytesHint,
-    );
+    // 不在此处预置具体进度（保持为 null），以便在“准备下载”阶段显示不确定的转圈。
+    progressNotifier.value = null;
     resultNotifier.value = null;
+    // 提前标记为正在准备/下载，这样 UI（关于页）会以下载状态渲染（先显示转圈）
+    coordinator.markStarted();
 
-    // 初始通知
+    // 初始通知（准备下载）
     await _showNotification(title: '准备下载...', indeterminate: true);
 
     final result = await downloadToTempFile(
@@ -353,6 +353,8 @@ class UpdateDownloadService {
     );
 
     resultNotifier.value = result;
+    // 下载结束后清理进度通知，确保 UI 在取消/完成后不会残留进度图标
+    progressNotifier.value = null;
     _activeClient = null;
     _activeClientOwned = false;
 

@@ -550,6 +550,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       configLabel: 'HTTP配置',
       payload: _buildSharePayloadText(),
       onImport: _importConfigFromText,
+      allowImport: false,
     );
   }
 
@@ -970,7 +971,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
           child: OutlinedButton.icon(
             onPressed: _saving ? null : _openShareImportMenu,
             icon: const Icon(Icons.ios_share_outlined),
-            label: const Text('分享/导入'),
+            label: const Text('分享配置'),
           ),
         ),
         const SizedBox(width: 10),

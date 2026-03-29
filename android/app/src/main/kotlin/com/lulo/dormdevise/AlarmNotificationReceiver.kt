@@ -130,6 +130,13 @@ class AlarmNotificationReceiver : BroadcastReceiver() {
             }
 
             builder.setContentIntent(contentPendingIntent)
+            if (isAlarm) {
+                builder.addAction(
+                    0,
+                    "关闭",
+                    AlarmNotificationScheduler.buildDismissPendingIntent(context, id),
+                )
+            }
             if (isAlarm && canUseFullScreenIntent(manager)) {
                 builder.setFullScreenIntent(contentPendingIntent, true)
             }

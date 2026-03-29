@@ -288,8 +288,10 @@ class LocalDoorLockConfig {
           .toList(growable: false),
       'local_saved_wifis': savedWifis
           .map(
-            (SavedWifiInfo wifi) =>
-                <String, String>{'ssid': wifi.ssid, 'bssid': wifi.bssid},
+            (SavedWifiInfo wifi) => <String, String>{
+              'ssid': wifi.ssid,
+              'bssid': wifi.bssid,
+            },
           )
           .toList(growable: false),
       'local_wifi_post_mappings': wifiPostMappings

@@ -10,12 +10,14 @@ class CourseDetailSheet extends StatelessWidget {
   final List<CourseDetailItem> items;
   final List<Course> allCourses;
   final int maxWeek;
+  final bool isReadOnly;
 
   const CourseDetailSheet({
     super.key,
     required this.items,
     required this.allCourses,
     this.maxWeek = 20,
+    this.isReadOnly = false,
   });
 
   @override
@@ -44,7 +46,7 @@ class CourseDetailSheet extends StatelessWidget {
               },
             ),
           ),
-          _buildAddButton(context),
+          if (!isReadOnly) _buildAddButton(context),
         ],
       ),
     );
@@ -161,58 +163,59 @@ class CourseDetailSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              GestureDetector(
-                onTap: () {
-                  final navigator = Navigator.of(context);
-                  navigator
-                      .push(
-                        MaterialPageRoute(
-                          builder: (context) => CourseEditPage(
-                            course: item.course,
-                            existingCourses: allCourses,
-                            maxWeek: maxWeek,
+              if (!isReadOnly)
+                GestureDetector(
+                  onTap: () {
+                    final navigator = Navigator.of(context);
+                    navigator
+                        .push(
+                          MaterialPageRoute(
+                            builder: (context) => CourseEditPage(
+                              course: item.course,
+                              existingCourses: allCourses,
+                              maxWeek: maxWeek,
+                            ),
+                            fullscreenDialog: true,
                           ),
-                          fullscreenDialog: true,
-                        ),
-                      )
-                      .then((result) {
-                        if (result != null) {
-                          // 如果有修改或删除，返回结果给上层以刷新
-                          if (result == 'delete') {
-                            navigator.pop({
-                              'action': 'delete',
-                              'target': item.course,
-                            });
-                          } else if (result is Course) {
-                            navigator.pop({
-                              'action': 'update',
-                              'target': item.course,
-                              'newCourse': result,
-                            });
+                        )
+                        .then((result) {
+                          if (result != null) {
+                            // 如果有修改或删除，返回结果给上层以刷新
+                            if (result == 'delete') {
+                              navigator.pop({
+                                'action': 'delete',
+                                'target': item.course,
+                              });
+                            } else if (result is Course) {
+                              navigator.pop({
+                                'action': 'update',
+                                'target': item.course,
+                                'newCourse': result,
+                              });
+                            }
                           }
-                        }
-                      });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    // 编辑按钮底色采用整体背景色（scaffoldBackgroundColor）
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '编辑',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
+                        });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      // 编辑按钮底色采用整体背景色（scaffoldBackgroundColor）
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '编辑',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
