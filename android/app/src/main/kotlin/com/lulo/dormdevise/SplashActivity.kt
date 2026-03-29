@@ -31,8 +31,8 @@ class SplashActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_splash)
 
-        // 最小展示时长（毫秒），延长为 1500ms
-        val minSplashMs = 1500L
+        // 最小展示时长（毫秒），设置为 1200ms
+        val minSplashMs = 1200L
         val startTime = System.currentTimeMillis()
 
         // 等待首帧布局可见后再计算并调度跳转，避免出现白屏
