@@ -94,6 +94,7 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/door_widget_provider" />
         </receiver>
+        <receiver android:name=".DoorWidgetClickReceiver" android:exported="false"/>
         <receiver
             android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
             android:exported="true">

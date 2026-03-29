@@ -9,6 +9,7 @@ import 'package:dormdevise/services/door_trigger_service.dart';
 import 'package:dormdevise/services/mqtt_config_service.dart';
 import 'package:dormdevise/services/mqtt_service.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -50,6 +51,7 @@ class DoorWidgetService {
   /// 记录下一次允许展示“设备在线”提示的时间点，避免短时间内重复刷新。
   DateTime? _nextOnlineAllowedAt;
   bool _disposed = false;
+  bool _promptChannelRegistered = false;
 
   /// 对外暴露的可监听状态，便于设置页面实时刷新。
   final ValueNotifier<DoorWidgetState> stateNotifier =
@@ -80,7 +82,37 @@ class DoorWidgetService {
     await HomeWidget.registerInteractivityCallback(
       doorWidgetBackgroundCallback,
     );
+    // 注册 native -> Dart 的 MethodChannel，用于原生请求直接开门（无 UI）
+    if (!_promptChannelRegistered) {
+      final MethodChannel promptChannel = const MethodChannel(
+        'door_widget/prompt',
+      );
+      promptChannel.setMethodCallHandler((call) async {
+        if (call.method == 'performAutoOpen') {
+          final DoorTriggerResult result = await DoorTriggerService.instance
+              .triggerDoor();
+          await recordManualTriggerResult(result);
+          // 尝试通知 native 关闭任何可能存在的浮层（若无 Activity 在前台会被忽略）
+          try {
+            await promptChannel.invokeMethod('close');
+          } catch (_) {}
+        }
+        return null;
+      });
+      _promptChannelRegistered = true;
+    }
     _listenWidgetLaunches();
+    // 检查是否存在原生侧写入的 pending 自动开门标志（作为兜底）
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getBool('door_widget_pending_auto_open') ?? false;
+      if (pending) {
+        await prefs.setBool('door_widget_pending_auto_open', false);
+        final DoorTriggerResult result = await DoorTriggerService.instance
+            .triggerDoor();
+        await recordManualTriggerResult(result);
+      }
+    } catch (_) {}
     await _persistSettingsToWidget();
     await _persistStateToWidget();
     await syncWidget();
@@ -290,6 +322,23 @@ class DoorWidgetService {
       HomeWidget.saveWidgetData<bool>(_hwBusyKey, _state.busy),
       HomeWidget.saveWidgetData<String>(_hwMessageKey, _composeWidgetMessage()),
       HomeWidget.saveWidgetData<bool?>(_hwSuccessKey, _state.lastResultSuccess),
+      // 新增状态字段：HTTP 状态 / MQTT 状态 / 开门状态，便于原生布局显示更多信息
+      HomeWidget.saveWidgetData<String>(
+        'door_widget_http_status',
+        _state.busy
+            ? 'PENDING'
+            : (_state.lastResultSuccess == true ? 'OK' : 'IDLE'),
+      ),
+      HomeWidget.saveWidgetData<String>(
+        'door_widget_mqtt_status',
+        _statusMqttService != null && _statusMqttService!.isConnected
+            ? 'CONNECTED'
+            : 'DISCONNECTED',
+      ),
+      HomeWidget.saveWidgetData<String>(
+        'door_widget_door_state',
+        _state.lastResultSuccess == true ? 'OPEN' : 'CLOSED',
+      ),
       HomeWidget.saveWidgetData<String?>(
         _hwUpdatedKey,
         _state.lastUpdatedAt?.toIso8601String(),
@@ -328,7 +377,16 @@ class DoorWidgetService {
         ? _formatTimestamp(_state.lastUpdatedAt!)
         : '';
     final String suffix = timestamp.isEmpty ? '' : ' · $timestamp';
-    return message + suffix;
+    final String main = message + suffix;
+    // 添加入 HTTP/MQTT 简要状态，便于微件单行显示更多信息
+    final String httpState = _state.busy
+        ? 'PENDING'
+        : (_state.lastResultSuccess == true ? 'HTTP: OK' : 'HTTP: IDLE');
+    final String mqttState =
+        _statusMqttService != null && _statusMqttService!.isConnected
+        ? 'MQTT: CONNECTED'
+        : 'MQTT: DISCONNECTED';
+    return '$main · $httpState · $mqttState';
   }
 
   String _formatTimestamp(DateTime value) {

@@ -4,10 +4,14 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.plugin.common.MethodChannel
 import android.os.Bundle
 import android.os.Build
 import android.view.WindowManager
 import org.json.JSONObject
+import android.util.Log
 
 /**
  * 桌面微件点击后的路由分发 Activity，根据配置情况决定后续流程。
@@ -39,13 +43,32 @@ class DoorWidgetRouterActivity : Activity() {
             else -> prefs.getBoolean("door_widget_setting_allow_turn_screen_on", false)
         }
 
-        val promptIntent = Intent(this, DoorWidgetPromptActivity::class.java).apply {
-            data = launchData
-            putExtra("showOnLock", showOnLock)
-            putExtra("turnScreenOn", turnOn)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        val directOpen = intent?.getBooleanExtra("directOpen", false) ?: false
+        Log.d("DoorWidget", "RouterActivity forwarding to PromptActivity directOpen=$directOpen showOnLock=$showOnLock turnOn=$turnOn")
+        if (directOpen) {
+            // 直接在后台引擎上调用 performAutoOpen，避免展示 UI
+            try {
+                DoorWidgetPromptActivity.ensureEngine(applicationContext)
+                val engine: FlutterEngine? = FlutterEngineCache.getInstance().get("door_widget_prompt_engine")
+                if (engine != null) {
+                    val ch = MethodChannel(engine.dartExecutor.binaryMessenger, "door_widget/prompt")
+                    ch.invokeMethod("performAutoOpen", null)
+                }
+            } catch (t: Throwable) {
+                Log.w("DoorWidget", "directOpen invoke failed: ${t.message}")
+            }
+            finish()
+            return
+        } else {
+            val promptIntent = Intent(this, DoorWidgetPromptActivity::class.java).apply {
+                data = launchData
+                putExtra("showOnLock", showOnLock)
+                putExtra("turnScreenOn", turnOn)
+                putExtra("directOpen", directOpen)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(promptIntent)
         }
-        startActivity(promptIntent)
         finish()
     }
 }

@@ -16,6 +16,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
+import android.util.Log
 import kotlin.jvm.Volatile
 
 /**
@@ -103,6 +104,20 @@ class DoorWidgetPromptActivity : FlutterActivity() {
                 "openSettings" -> {
                     launchMqttSettings()
                     finish()
+                    result.success(null)
+                }
+                // Dart 端调用后，告知 native 当前页面已准备好接受 performAutoOpen 请求
+                "promptReady" -> {
+                    val directOpen = intent?.getBooleanExtra("directOpen", false) ?: false
+                    Log.d("DoorWidget", "PromptActivity received promptReady; directOpen=$directOpen")
+                    if (directOpen) {
+                        try {
+                            Log.d("DoorWidget", "Invoking performAutoOpen on Dart side")
+                            methodChannel?.invokeMethod("performAutoOpen", null)
+                        } catch (t: Throwable) {
+                            Log.w("DoorWidget", "Failed to invoke performAutoOpen: ${t.message}")
+                        }
+                    }
                     result.success(null)
                 }
                 else -> result.notImplemented()
