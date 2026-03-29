@@ -1,10 +1,12 @@
 import 'package:dormdevise/utils/app_toast.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../utils/qr_transfer_codec.dart';
 import '../table/table_page.dart';
+import 'door_lock_config_page.dart';
 import 'door_config_qr_scan_page.dart';
 
 /// 门锁配置的通用分享/导入菜单。
@@ -226,6 +228,31 @@ class DoorConfigShareSheet {
             );
             return;
           }
+        }
+      }
+
+      // 若扫描到门锁配置，先判断其中是否包含 MQTT/HTTP 的独立配置，
+      // 并尝试切到对应的标签页（若 caller 在 OpenDoorSettingsPage 下）。
+      if (decoded != null && decoded.type == 'door_config') {
+        try {
+          final dynamic payload = jsonDecode(decoded.text);
+          if (payload is Map && safeContext.mounted) {
+            final bool hasLocalConfig = payload.keys.any(
+              (dynamic k) => k.toString().startsWith('local_'),
+            );
+            final bool hasMqttConfig = payload.keys.any((dynamic k) {
+              final String normalized = k.toString();
+              return normalized.startsWith('mqtt_') ||
+                  normalized == 'custom_open_msg';
+            });
+            if (hasMqttConfig && !hasLocalConfig) {
+              OpenDoorSettingsPage.switchToTabIfExists(safeContext, 1);
+            } else if (hasLocalConfig && !hasMqttConfig) {
+              OpenDoorSettingsPage.switchToTabIfExists(safeContext, 0);
+            }
+          }
+        } catch (_) {
+          // ignore JSON parse errors
         }
       }
 

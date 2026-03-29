@@ -26,6 +26,21 @@ class OpenDoorSettingsPage extends StatefulWidget {
   /// 如果通过外部跳转携带了门锁配置文本（JSON），页面加载后会询问是否导入该配置。
   final String? initialImportPayload;
 
+  /// 尝试在给定的上下文中切换到门锁配置页的指定标签（若该页面存在）。
+  ///
+  /// 该方法对外提供一个安全的入口，允许从子页面或弹窗中请求父页面切换到 HTTP/MQTT 标签。
+  static void switchToTabIfExists(BuildContext context, int index) {
+    try {
+      final _OpenDoorSettingsPageState? state = context
+          .findAncestorStateOfType<_OpenDoorSettingsPageState>();
+      if (state != null) {
+        state._switchToTab(index);
+      }
+    } catch (_) {
+      // ignore: intentionally swallow errors when ancestor not found
+    }
+  }
+
   @override
   State<OpenDoorSettingsPage> createState() => _OpenDoorSettingsPageState();
 }
@@ -81,6 +96,14 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _switchToTab(int index) {
+    if (!mounted) return;
+    final int newIndex = index.clamp(0, _tabs.length - 1);
+    if (_tabController.index != newIndex) {
+      _tabController.animateTo(newIndex);
+    }
   }
 
   @override
@@ -200,6 +223,13 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       if (!mounted) {
         return;
       }
+      // 若导入内容仅包含某一类配置，则自动切到对应标签以便用户查看
+      if (hasLocalConfig && !hasMqttConfig) {
+        _switchToTab(0);
+      } else if (hasMqttConfig && !hasLocalConfig) {
+        _switchToTab(1);
+      }
+
       setState(() {
         _pageRevision++;
       });
