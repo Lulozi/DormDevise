@@ -44,6 +44,10 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
       }
     }
 
+    // 立即记录以阻止并发重复触发（若用户取消，会通过 _resumeScanning 清除）
+    _lastHandledRaw = raw;
+    _lastHandledAt = DateTime.now();
+
     await _handleImport(raw);
   }
 
@@ -66,8 +70,19 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
       if (decoded != null &&
           decoded.type != CourseScheduleTransferService.payloadType) {
         if (decoded.type == 'door_config') {
+          // 在展示跳转确认对话前，先进入处理状态并停止相机，防止继续扫码
+          if (!_isHandling) {
+            setState(() {
+              _isHandling = true;
+            });
+          }
+          if (shouldPauseScanner) {
+            await _controller.stop();
+          }
+
+          final BuildContext dialogCallerContext = context;
           final bool? go = await showDialog<bool>(
-            context: context,
+            context: dialogCallerContext,
             builder: (dialogContext) {
               return AlertDialog(
                 title: const Text('识别到门锁配置'),
@@ -117,6 +132,10 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
               ),
             );
             return;
+          } else {
+            // 用户取消：恢复扫描并允许再次识别同一二维码
+            await _resumeScanning();
+            return;
           }
         }
       }
@@ -136,9 +155,6 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
       });
     }
 
-    // 记录本次处理的内容与时间，用于防抖
-    _lastHandledRaw = raw;
-    _lastHandledAt = DateTime.now();
     if (shouldPauseScanner) {
       await _controller.stop();
     }
@@ -203,6 +219,9 @@ class _ScanImportSchedulePageState extends State<ScanImportSchedulePage> {
     setState(() {
       _isHandling = false;
     });
+    // 清除去抖记录，允许用户取消后立即重新扫码同一二维码
+    _lastHandledRaw = null;
+    _lastHandledAt = null;
     await _controller.start();
   }
 

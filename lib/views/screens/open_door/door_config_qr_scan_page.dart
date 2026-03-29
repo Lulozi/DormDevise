@@ -81,6 +81,9 @@ class _DoorConfigQrScanPageState extends State<DoorConfigQrScanPage> {
     setState(() {
       _isHandling = false;
     });
+    // 清除去抖记录，允许用户在取消/恢复后重新识别同一二维码
+    _lastHandledRaw = null;
+    _lastHandledAt = null;
     await _controller.start();
   }
 
