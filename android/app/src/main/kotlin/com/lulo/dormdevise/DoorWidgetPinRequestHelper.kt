@@ -11,7 +11,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
+import android.os.SystemClock
 import android.widget.RemoteViews
 import java.util.Locale
 
@@ -25,12 +27,14 @@ object DoorWidgetPinRequestHelper {
     private const val fallbackTypePermission = "permission"
     private const val fallbackTypeHomeScreen = "home_screen"
     private const val fallbackTypeAppDetails = "app_details"
+    private const val extraPinRequestToken = "pinRequestToken"
 
     private data class PinRequestResult(
         val requestAccepted: Boolean,
         val pinSupported: Boolean,
         val fallbackOpened: Boolean,
         val fallbackType: String,
+        val usedCallback: Boolean,
         val manufacturer: String,
         val brand: String,
         val launcherPackage: String?,
@@ -40,6 +44,7 @@ object DoorWidgetPinRequestHelper {
             "pinSupported" to pinSupported,
             "fallbackOpened" to fallbackOpened,
             "fallbackType" to fallbackType,
+            "usedCallback" to usedCallback,
             "manufacturer" to manufacturer,
             "brand" to brand,
             "launcherPackage" to launcherPackage,
@@ -67,6 +72,7 @@ object DoorWidgetPinRequestHelper {
                 pinSupported = false,
                 fallbackOpened = false,
                 fallbackType = fallbackTypeNone,
+                usedCallback = false,
                 manufacturer = manufacturer,
                 brand = brand,
                 launcherPackage = launcherPackage,
@@ -79,6 +85,7 @@ object DoorWidgetPinRequestHelper {
                 pinSupported = false,
                 fallbackOpened = false,
                 fallbackType = fallbackTypeNone,
+                usedCallback = false,
                 manufacturer = manufacturer,
                 brand = brand,
                 launcherPackage = launcherPackage,
@@ -92,18 +99,46 @@ object DoorWidgetPinRequestHelper {
             )
 
             val provider = ComponentName(activity, providerClass)
+            val requestToken = buildRequestToken(providerClass)
+            val requestExtras = buildRequestExtras(requestToken)
             val successCallback = buildSuccessCallback(
                 context = activity,
                 providerClass = providerClass,
-                requestCode = requestCode,
+                requestCode = resolveRequestCode(requestCode),
+                requestToken = requestToken,
             )
-            val requestAccepted = appWidgetManager.requestPinAppWidget(provider, null, successCallback)
+            val requestAccepted = requestPinCompat(
+                appWidgetManager = appWidgetManager,
+                provider = provider,
+                requestExtras = requestExtras,
+                successCallback = successCallback,
+            )
             if (requestAccepted) {
                 return PinRequestResult(
                     requestAccepted = true,
                     pinSupported = true,
                     fallbackOpened = false,
                     fallbackType = fallbackTypeNone,
+                    usedCallback = true,
+                    manufacturer = manufacturer,
+                    brand = brand,
+                    launcherPackage = launcherPackage,
+                ).toMap()
+            }
+
+            val requestAcceptedWithoutCallback = requestPinCompat(
+                appWidgetManager = appWidgetManager,
+                provider = provider,
+                requestExtras = requestExtras,
+                successCallback = null,
+            )
+            if (requestAcceptedWithoutCallback) {
+                return PinRequestResult(
+                    requestAccepted = true,
+                    pinSupported = true,
+                    fallbackOpened = false,
+                    fallbackType = fallbackTypeNone,
+                    usedCallback = false,
                     manufacturer = manufacturer,
                     brand = brand,
                     launcherPackage = launcherPackage,
@@ -120,10 +155,39 @@ object DoorWidgetPinRequestHelper {
             pinSupported = pinSupported,
             fallbackOpened = fallback.opened,
             fallbackType = fallback.type,
+            usedCallback = false,
             manufacturer = manufacturer,
             brand = brand,
             launcherPackage = launcherPackage,
         ).toMap()
+    }
+
+    private fun requestPinCompat(
+        appWidgetManager: AppWidgetManager,
+        provider: ComponentName,
+        requestExtras: Bundle,
+        successCallback: PendingIntent?,
+    ): Boolean {
+        return try {
+            appWidgetManager.requestPinAppWidget(provider, requestExtras, successCallback)
+        } catch (_: IllegalStateException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
+    private fun buildRequestExtras(requestToken: String): Bundle = Bundle().apply {
+        putString(extraPinRequestToken, requestToken)
+    }
+
+    private fun buildRequestToken(providerClass: Class<out AppWidgetProvider>): String {
+        return "${providerClass.name}:${SystemClock.elapsedRealtimeNanos()}"
+    }
+
+    private fun resolveRequestCode(baseRequestCode: Int): Int {
+        val suffix = (SystemClock.elapsedRealtimeNanos() and 0xFFFF).toInt()
+        return (baseRequestCode shl 16) or suffix
     }
 
     private fun openPinFallback(
@@ -260,16 +324,22 @@ object DoorWidgetPinRequestHelper {
         context: Context,
         providerClass: Class<out AppWidgetProvider>,
         requestCode: Int,
+        requestToken: String,
     ): PendingIntent {
         val intent = Intent(context, DoorWidgetPinReceiver::class.java).apply {
             action = actionPinSuccess
             putExtra(extraProviderClassName, providerClass.name)
+            putExtra(extraPinRequestToken, requestToken)
+        }
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> PendingIntent.FLAG_MUTABLE
+            else -> 0
         }
         return PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            flags,
         )
     }
 

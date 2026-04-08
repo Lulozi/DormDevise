@@ -12,12 +12,14 @@ class _NativePinRequestResult {
     required this.pinSupported,
     required this.fallbackOpened,
     required this.fallbackType,
+    required this.usedCallback,
   });
 
   final bool requestAccepted;
   final bool pinSupported;
   final bool fallbackOpened;
   final String fallbackType;
+  final bool usedCallback;
 
   factory _NativePinRequestResult.fromNative(dynamic value) {
     if (value is bool) {
@@ -26,6 +28,7 @@ class _NativePinRequestResult {
         pinSupported: value,
         fallbackOpened: false,
         fallbackType: 'none',
+        usedCallback: true,
       );
     }
 
@@ -35,6 +38,7 @@ class _NativePinRequestResult {
         pinSupported: value['pinSupported'] == true,
         fallbackOpened: value['fallbackOpened'] == true,
         fallbackType: (value['fallbackType'] as String?) ?? 'none',
+        usedCallback: value['usedCallback'] != false,
       );
     }
 
@@ -43,6 +47,7 @@ class _NativePinRequestResult {
       pinSupported: false,
       fallbackOpened: false,
       fallbackType: 'none',
+      usedCallback: false,
     );
   }
 }
@@ -118,6 +123,7 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
 
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  bool _isRequestingPin = false;
 
   @override
   void dispose() {
@@ -132,6 +138,13 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
     if (!Platform.isAndroid) {
       return;
     }
+    if (_isRequestingPin) {
+      return;
+    }
+
+    setState(() {
+      _isRequestingPin = true;
+    });
 
     try {
       final String methodName = simple
@@ -148,7 +161,9 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
       if (pinResult.requestAccepted) {
         AppToast.show(
           context,
-          '系统添加请求已发起，请在系统弹窗中确认添加。',
+          pinResult.usedCallback
+              ? '系统添加请求已发起，请在系统弹窗中确认添加。'
+              : '系统已接收添加请求，请按桌面提示完成添加。',
           variant: AppToastVariant.success,
         );
         return;
@@ -179,6 +194,12 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
         return;
       }
       AppToast.show(context, '组件添加请求失败，请稍后重试。', variant: AppToastVariant.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRequestingPin = false;
+        });
+      }
     }
   }
 
@@ -361,10 +382,15 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
         // 添加到桌面按钮
         if (Platform.isAndroid)
           FilledButton.icon(
-            onPressed: () =>
-                _requestPinWidget(context, simple: _currentPage == 1),
+            onPressed: _isRequestingPin
+                ? null
+                : () => _requestPinWidget(context, simple: _currentPage == 1),
             icon: const Icon(Icons.add_to_home_screen_rounded),
-            label: Text(_currentPage == 0 ? '添加完整版到桌面' : '添加简洁版到桌面'),
+            label: Text(
+              _isRequestingPin
+                  ? '正在请求系统添加'
+                  : (_currentPage == 0 ? '添加完整版到桌面' : '添加简洁版到桌面'),
+            ),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
             ),
