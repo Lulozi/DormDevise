@@ -1,5 +1,6 @@
 import 'package:dormdevise/services/course_schedule_transfer_service.dart';
 import 'package:dormdevise/services/course_service.dart';
+import 'package:dormdevise/utils/android_soft_input_mode.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/views/screens/table/widgets/schedule_import_preview_dialog.dart';
 import 'package:flutter/material.dart';
@@ -13,9 +14,28 @@ class ImportCodeSchedulePage extends StatefulWidget {
   State<ImportCodeSchedulePage> createState() => _ImportCodeSchedulePageState();
 }
 
-class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage> {
+class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage>
+    with WidgetsBindingObserver {
   final TextEditingController _codeController = TextEditingController();
   bool _isImporting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AndroidSoftInputModeController.setModeSilently(
+      AndroidSoftInputMode.adjustPan,
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      AndroidSoftInputModeController.setModeSilently(
+        AndroidSoftInputMode.adjustPan,
+      );
+    }
+  }
 
   Future<void> _pasteImportCode() async {
     final ClipboardData? data = await Clipboard.getData('text/plain');
@@ -111,6 +131,10 @@ class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AndroidSoftInputModeController.setModeSilently(
+      AndroidSoftInputMode.adjustResize,
+    );
     _codeController.dispose();
     super.dispose();
   }
@@ -120,6 +144,7 @@ class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage> {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(title: const Text('导入码导入课表')),
       body: SafeArea(
         child: Padding(

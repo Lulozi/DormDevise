@@ -10,6 +10,7 @@ import '../../../services/web_login/fit/fit_china_ocr_service.dart';
 import '../../../services/web_login/fit/fit_login_web_automation.dart';
 import '../../../services/web_login/fit/fit_schedule_scraper.dart';
 import '../../../services/web_school_service.dart';
+import '../../../utils/android_soft_input_mode.dart';
 import '../../../utils/app_toast.dart';
 import '../../../utils/course_utils.dart';
 import 'create_schedule_settings_page.dart';
@@ -43,7 +44,8 @@ class WebImportAutoLoginWebViewPage extends StatefulWidget {
 }
 
 class _WebImportAutoLoginWebViewPageState
-    extends State<WebImportAutoLoginWebViewPage> {
+    extends State<WebImportAutoLoginWebViewPage>
+    with WidgetsBindingObserver {
   static const String _fitSchoolName = '福州理工学院';
 
   final FitChinaOcrService _fitChinaOcrService = FitChinaOcrService();
@@ -65,13 +67,30 @@ class _WebImportAutoLoginWebViewPageState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AndroidSoftInputModeController.setModeSilently(
+      AndroidSoftInputMode.adjustPan,
+    );
     _prepareWebLoginEnvironment();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AndroidSoftInputModeController.setModeSilently(
+      AndroidSoftInputMode.adjustResize,
+    );
     unawaited(_persistAccountWebData());
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      AndroidSoftInputModeController.setModeSilently(
+        AndroidSoftInputMode.adjustPan,
+      );
+    }
   }
 
   /// 进入登录页前准备账号级网页数据：
@@ -521,6 +540,7 @@ class _WebImportAutoLoginWebViewPageState
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
