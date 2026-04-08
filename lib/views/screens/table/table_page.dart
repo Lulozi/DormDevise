@@ -353,6 +353,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         showNonCurrentWeek: bundle.showNonCurrentWeek,
         isScheduleLocked: bundle.isScheduleLocked,
       );
+      await CourseWidgetService.instance.syncWidget(
+        resetDisplayDateToToday: true,
+      );
       if (!mounted) return;
       AppToast.show(context, '课表已导入');
       // 刷新页面数据以展示新导入的课表

@@ -1,5 +1,6 @@
 import 'package:dormdevise/services/course_schedule_transfer_service.dart';
 import 'package:dormdevise/services/course_service.dart';
+import 'package:dormdevise/services/course_widget_service.dart';
 import 'package:dormdevise/utils/android_soft_input_mode.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/views/screens/table/widgets/schedule_import_preview_dialog.dart';
@@ -92,6 +93,9 @@ class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage>
         showWeekend: bundle.showWeekend,
         showNonCurrentWeek: bundle.showNonCurrentWeek,
         isScheduleLocked: bundle.isScheduleLocked,
+      );
+      await CourseWidgetService.instance.syncWidget(
+        resetDisplayDateToToday: true,
       );
       if (!mounted) {
         return;
