@@ -31,15 +31,9 @@ class SplashActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_splash)
 
-        // 最小展示时长（毫秒），延长为 2000ms
-        val minSplashMs = 2000L
-        val startTime = System.currentTimeMillis()
-
-        // 等待首帧布局可见后再计算并调度跳转，避免出现白屏
+        // 等待首帧布局可见后立即切换，避免额外开屏延迟。
         window.decorView.post {
-            val elapsed = System.currentTimeMillis() - startTime
-            val delay = if (elapsed >= minSplashMs) 0L else minSplashMs - elapsed
-            handler.postDelayed(switchRunnable, delay)
+            handler.post(switchRunnable)
         }
     }
 

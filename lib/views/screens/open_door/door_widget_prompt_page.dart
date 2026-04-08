@@ -1,6 +1,10 @@
 import 'package:dormdevise/widgets/door_widget_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+// home_widget 在此页面不再直接使用，widget 状态由 DoorWidgetService 管理
+import 'package:dormdevise/services/door_trigger_service.dart';
+import 'package:dormdevise/services/door_widget_service.dart';
 
 /// 桌面微件专用入口页，从底部浮层形式展示滑动开门面板。
 class DoorWidgetPromptPage extends StatefulWidget {
@@ -27,7 +31,34 @@ class _DoorWidgetPromptPageState extends State<DoorWidgetPromptPage>
       duration: const Duration(milliseconds: 200),
     );
     _applyImmersiveMode();
+    // 通知 native 我们已准备好接收 performAutoOpen 调用（路由 Activity 会在接收到该信号后触发）
+    _channel.invokeMethod<void>('promptReady').catchError((_) {});
+    _checkPendingAutoOpen();
     _playEntranceAnimation();
+  }
+
+  /// 检查 SharedPreferences 中是否存在 pending 自动开门标志，若存在则执行开门并关闭浮层。
+  Future<void> _checkPendingAutoOpen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getBool('door_widget_pending_auto_open') ?? false;
+      if (pending) {
+        // 清除标志并立即执行开门逻辑（不展示滑动弹窗）
+        await prefs.setBool('door_widget_pending_auto_open', false);
+        final DoorTriggerResult result = await DoorTriggerService.instance
+            .triggerDoor();
+        // 使用 DoorWidgetService 统一记录并更新微件状态
+        await DoorWidgetService.instance.recordManualTriggerResult(result);
+        // 关闭当前 Activity
+        try {
+          await _channel.invokeMethod<void>('close');
+        } catch (_) {
+          SystemNavigator.pop();
+        }
+      }
+    } catch (e) {
+      // 忽略错误，继续呈现浮层
+    }
   }
 
   @override

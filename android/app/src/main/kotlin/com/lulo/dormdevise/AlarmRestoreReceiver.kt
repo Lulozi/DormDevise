@@ -10,5 +10,6 @@ import android.content.Intent
 class AlarmRestoreReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         AlarmNotificationScheduler.restoreAll(context.applicationContext)
+        CourseScheduleWidgetProvider.refreshAllWidgets(context.applicationContext)
     }
 }

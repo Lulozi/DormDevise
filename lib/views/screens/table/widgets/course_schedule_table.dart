@@ -7,6 +7,18 @@ import '../../../../models/course_schedule_config.dart';
 import '../../../../utils/color_extensions.dart';
 import 'course_detail_sheet.dart';
 
+class CourseTableHighlightTarget {
+  const CourseTableHighlightTarget({
+    required this.weekday,
+    required this.startSection,
+    this.courseName,
+  });
+
+  final int weekday;
+  final int startSection;
+  final String? courseName;
+}
+
 /// 渲染课程表网格的组件，支持按照指定工作日展示课程区块。
 class CourseScheduleTable extends StatefulWidget {
   /// 展示的课程列表 (courses)。
@@ -100,6 +112,9 @@ class CourseScheduleTable extends StatefulWidget {
   /// 需要高亮显示的日期 (highlightDate)
   final DateTime? highlightDate;
 
+  /// 需要高亮显示的具体课程卡片。
+  final CourseTableHighlightTarget? highlightedCourseTarget;
+
   const CourseScheduleTable({
     super.key,
     required this.courses,
@@ -131,6 +146,7 @@ class CourseScheduleTable extends StatefulWidget {
     this.onEditModeChanged,
     this.editModeResetToken,
     this.highlightDate,
+    this.highlightedCourseTarget,
   }) : assert(
          weekdays.length == weekdayIndexes.length,
          'weekdays 与 weekdayIndexes 长度必须一致',
@@ -2048,6 +2064,14 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         _selectedBlock!.session == block.session &&
         _selectedBlock!.renderStartSection == block.renderStartSection &&
         _selectedBlock!.renderSectionCount == block.renderSectionCount;
+    final CourseTableHighlightTarget? highlightedCourseTarget =
+        widget.highlightedCourseTarget;
+    final bool isWidgetHighlighted =
+        highlightedCourseTarget != null &&
+        block.session.weekday == highlightedCourseTarget.weekday &&
+        block.session.startSection == highlightedCourseTarget.startSection &&
+        (highlightedCourseTarget.courseName == null ||
+            block.course.name == highlightedCourseTarget.courseName);
     final bool canAdjustCourseBlock = !widget.isScheduleLocked;
 
     // 构建调整手柄圆点
@@ -2113,7 +2137,20 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
+          if (isWidgetHighlighted)
+            BoxShadow(
+              color: cs.primary.withValues(alpha: 0.26),
+              blurRadius: 12,
+              spreadRadius: 1,
+              offset: const Offset(0, 2),
+            ),
         ],
+        border: isWidgetHighlighted
+            ? Border.all(
+                color: cs.primary.withValues(alpha: 0.92),
+                width: 2,
+              )
+            : null,
       ),
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints cardConstraints) {

@@ -56,6 +56,7 @@ class MqttService {
   final String? password;
   final SecurityContext? securityContext;
   final void Function()? onConnected;
+  final void Function()? onDisconnectedCallback;
 
   final Set<String> _subscriptions = {};
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
@@ -69,6 +70,10 @@ class MqttService {
   late final MqttServerClient _client;
   final Random _rnd = Random();
   bool _updatesBound = false;
+  bool _disposed = false;
+  bool _handlingAsyncError = false;
+  StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>?
+  _updatesSubscription;
 
   bool get isConnected =>
       _client.connectionStatus?.state == MqttConnectionState.connected;
@@ -86,10 +91,12 @@ class MqttService {
     this.onError,
     this.securityContext,
     this.onConnected,
+    this.onDisconnectedCallback,
   }) {
     _client = MqttServerClient(host, clientId)
       ..port = port
       ..keepAlivePeriod = keepAliveSeconds
+      // 使用业务层重连策略，避免 SDK 内部自动重连把 SocketException 抛到主线程。
       ..autoReconnect = false
       ..resubscribeOnAutoReconnect = false
       ..secure = securityContext != null
@@ -115,21 +122,24 @@ class MqttService {
   /// 建立与 MQTT 服务器的连接并监听消息。
   Future<void> connect() async {
     if (isConnected) return;
+    _disposed = false;
     try {
-      _info('🔌 [MQTT] connecting to $host:$port (clientId=$clientId)');
-      await _client.connect();
-      if (!_updatesBound && _client.updates != null) {
-        _client.updates!.listen(
-          _onMessage,
-          onError: (e, st) {
-            _error('❌ [MQTT] stream error: $e', e, st);
-          },
-          onDone: () {
-            _warn('⚠️ [MQTT] update stream done');
-          },
-        );
-        _updatesBound = true;
-      }
+      await _runInMqttZone(() async {
+        _info('🔌 [MQTT] connecting to $host:$port (clientId=$clientId)');
+        await _client.connect();
+        if (!_updatesBound && _client.updates != null) {
+          _updatesSubscription = _client.updates!.listen(
+            _onMessage,
+            onError: (e, st) {
+              _error('❌ [MQTT] stream error: $e', e, st);
+            },
+            onDone: () {
+              _warn('⚠️ [MQTT] update stream done');
+            },
+          );
+          _updatesBound = true;
+        }
+      });
     } catch (e, st) {
       _error('🚫 [MQTT] connect failed: $e', e, st);
       rethrow;
@@ -253,15 +263,23 @@ class MqttService {
   /// 连接断开时仅记录状态，等待业务触发重连。
   void onDisconnected() {
     _warn('⚠️ [MQTT] disconnected');
+    try {
+      onDisconnectedCallback?.call();
+    } catch (e, st) {
+      _error('⚠️ [MQTT] onDisconnected callback error: $e', e, st);
+    }
   }
 
   /// 关闭客户端并清理待完成的请求。
   Future<void> dispose() async {
     _info('🧹 [MQTT] dispose');
+    _disposed = true;
     for (final c in _pending.values) {
       if (!c.isCompleted) c.completeError(StateError('MQTT disposed'));
     }
     _pending.clear();
+    await _updatesSubscription?.cancel();
+    _updatesSubscription = null;
     if (isConnected) {
       _client.disconnect();
     }
@@ -287,5 +305,57 @@ class MqttService {
   void _error(String msg, Object e, [StackTrace? st]) {
     log?.call(msg);
     onError?.call(e, st);
+  }
+
+  Future<T> _runInMqttZone<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+
+    runZonedGuarded(
+      () async {
+        try {
+          final T result = await action();
+          if (!completer.isCompleted) {
+            completer.complete(result);
+          }
+        } catch (e, st) {
+          if (!completer.isCompleted) {
+            completer.completeError(e, st);
+            return;
+          }
+          _handleGuardedAsyncError(e, st);
+        }
+      },
+      (Object error, StackTrace stackTrace) {
+        _handleGuardedAsyncError(error, stackTrace);
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      },
+    );
+
+    return completer.future;
+  }
+
+  void _handleGuardedAsyncError(Object error, StackTrace stackTrace) {
+    if (_disposed || _handlingAsyncError) {
+      return;
+    }
+
+    _handlingAsyncError = true;
+    try {
+      _error('⚠️ [MQTT] async socket error: $error', error, stackTrace);
+
+      final MqttConnectionState? state = _client.connectionStatus?.state;
+      if (state == MqttConnectionState.connected ||
+          state == MqttConnectionState.connecting) {
+        try {
+          _client.disconnect();
+        } catch (_) {
+          // 忽略恢复阶段的二次断开异常，避免再次冒泡到主线程。
+        }
+      }
+    } finally {
+      _handlingAsyncError = false;
+    }
   }
 }

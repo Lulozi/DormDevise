@@ -13,6 +13,7 @@ import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -60,9 +61,13 @@ class DormDeviseApp extends StatelessWidget {
           supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
           initialRoute: initialRoute,
           onGenerateRoute: (RouteSettings settings) {
-            switch (settings.name) {
+            final String rawRoute = settings.name ?? '/';
+            final Uri parsedRoute = Uri.parse(rawRoute);
+            final String routeName = parsedRoute.path.isEmpty
+                ? rawRoute
+                : parsedRoute.path;
+            switch (routeName) {
               case '/':
-              case null:
                 return MaterialPageRoute<void>(
                   builder: (_) => const ManagementScreen(),
                 );
@@ -78,6 +83,27 @@ class DormDeviseApp extends StatelessWidget {
                   builder: (_) =>
                       const OpenDoorSettingsPage(initialTabIndex: 1),
                 );
+              case '/table':
+                final int? focusWeek = int.tryParse(
+                  parsedRoute.queryParameters['week'] ?? '',
+                );
+                final int? focusWeekday = int.tryParse(
+                  parsedRoute.queryParameters['weekday'] ?? '',
+                );
+                final int? focusSection = int.tryParse(
+                  parsedRoute.queryParameters['section'] ?? '',
+                );
+                final String? focusCourseName =
+                    parsedRoute.queryParameters['course'];
+                return MaterialPageRoute<void>(
+                  builder: (_) => ManagementScreen(
+                    initialOriginalIndex: 0,
+                    initialTableFocusWeek: focusWeek,
+                    initialTableFocusWeekday: focusWeekday,
+                    initialTableFocusSection: focusSection,
+                    initialTableFocusCourseName: focusCourseName,
+                  ),
+                );
               default:
                 return MaterialPageRoute<void>(
                   builder: (_) => const ManagementScreen(),
@@ -92,7 +118,20 @@ class DormDeviseApp extends StatelessWidget {
 
 /// 主控制台页面，提供底部导航与多页切换。
 class ManagementScreen extends StatefulWidget {
-  const ManagementScreen({super.key});
+  const ManagementScreen({
+    super.key,
+    this.initialOriginalIndex,
+    this.initialTableFocusWeek,
+    this.initialTableFocusWeekday,
+    this.initialTableFocusSection,
+    this.initialTableFocusCourseName,
+  });
+
+  final int? initialOriginalIndex;
+  final int? initialTableFocusWeek;
+  final int? initialTableFocusWeekday;
+  final int? initialTableFocusSection;
+  final String? initialTableFocusCourseName;
 
   /// 创建与主页面关联的状态对象。
   @override
@@ -157,7 +196,12 @@ class ManagementScreenState extends State<ManagementScreen>
     if (originalIndex == 1) {
       return const OpenDoorPage();
     }
-    return const TablePage();
+        return TablePage(
+          initialFocusWeek: widget.initialTableFocusWeek,
+          initialFocusWeekday: widget.initialTableFocusWeekday,
+          initialFocusSection: widget.initialTableFocusSection,
+          initialFocusCourseName: widget.initialTableFocusCourseName,
+        );
   }
 
   /// 为分页添加淡入与平移动画。
@@ -211,8 +255,9 @@ class ManagementScreenState extends State<ManagementScreen>
     WidgetsBinding.instance.addObserver(this);
     // 根据用户设置的默认主页，在导航顺序中查找其实际显示位置
     final navOrder = ThemeService.instance.navOrder;
-    final homePage = ThemeService.instance.defaultHomePage;
-    selectedIndex = navOrder.indexOf(homePage).clamp(0, 2);
+    final int targetOriginalIndex =
+        widget.initialOriginalIndex ?? ThemeService.instance.defaultHomePage;
+    selectedIndex = navOrder.indexOf(targetOriginalIndex).clamp(0, 2);
     _page = selectedIndex.toDouble();
     _pageController = PageController(initialPage: selectedIndex);
     _bindWidgetLaunchEvents();
@@ -420,50 +465,68 @@ class ManagementScreenState extends State<ManagementScreen>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      extendBody: true,
-      resizeToAvoidBottomInset: false,
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: IgnorePointer(
-          ignoring: _navLocked,
-          child: NavigationBar(
-            height: 72,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            indicatorColor: colorScheme.secondaryContainer,
-            selectedIndex: selectedIndex,
-            onDestinationSelected: (value) {
-              if (_navLocked || selectedIndex == value) {
-                return;
-              }
-              _pageController.animateToPage(
-                value,
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.ease,
-              );
-            },
-            destinations: [
-              // 根据导航顺序动态构建底部导航项
-              for (final oi in ThemeService.instance.navOrder)
-                _allDestinations[oi],
-            ],
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-            elevation: 0,
-            shadowColor: Colors.transparent,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) return;
+        // 按返回键时移至后台，而非退出应用
+        _moveTaskToBack();
+      },
+      child: Scaffold(
+        extendBody: true,
+        resizeToAvoidBottomInset: false,
+        bottomNavigationBar: Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: IgnorePointer(
+            ignoring: _navLocked,
+            child: NavigationBar(
+              height: 72,
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              indicatorColor: colorScheme.secondaryContainer,
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (value) {
+                if (_navLocked || selectedIndex == value) {
+                  return;
+                }
+                _pageController.animateToPage(
+                  value,
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.ease,
+                );
+              },
+              destinations: [
+                // 根据导航顺序动态构建底部导航项
+                for (final oi in ThemeService.instance.navOrder)
+                  _allDestinations[oi],
+              ],
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+              elevation: 0,
+              shadowColor: Colors.transparent,
+            ),
           ),
         ),
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: 3,
-        itemBuilder: (context, index) => _buildAnimatedPage(context, index),
-        onPageChanged: (index) {
-          setState(() {
-            selectedIndex = index;
-          });
-        },
+        body: PageView.builder(
+          controller: _pageController,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: 3,
+          itemBuilder: (context, index) => _buildAnimatedPage(context, index),
+          onPageChanged: (index) {
+            setState(() {
+              selectedIndex = index;
+            });
+          },
+        ),
       ),
     );
+  }
+
+  /// 将应用移至后台（相当于按 Home 键）。
+  Future<void> _moveTaskToBack() async {
+    try {
+      const MethodChannel channel = MethodChannel('dormdevise/home_widget');
+      await channel.invokeMethod<void>('returnToHomeScreen');
+    } catch (_) {
+      // 静默忽略失败
+    }
   }
 }

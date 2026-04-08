@@ -76,9 +76,7 @@ class _OpenDoorPageState extends State<OpenDoorPage> {
     setState(() {
       _opening = true;
     });
-    if (DoorWidgetService.instance.settings.enableHaptics) {
-      await HapticFeedback.mediumImpact();
-    }
+    await HapticFeedback.mediumImpact();
     await DoorWidgetService.instance.markManualTriggerStart();
     final DoorTriggerResult result = await DoorTriggerService.instance
         .triggerDoor();

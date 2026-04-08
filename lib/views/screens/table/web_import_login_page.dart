@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/web_school.dart';
 import '../../../services/web_school_service.dart';
+import '../../../utils/android_soft_input_mode.dart';
 import '../../../utils/app_toast.dart';
 import 'web_import_auto_login_webview_page.dart';
 
@@ -22,7 +23,8 @@ class WebImportLoginPage extends StatefulWidget {
   State<WebImportLoginPage> createState() => _WebImportLoginPageState();
 }
 
-class _WebImportLoginPageState extends State<WebImportLoginPage> {
+class _WebImportLoginPageState extends State<WebImportLoginPage>
+    with WidgetsBindingObserver {
   static const String _fitBadgeAsset = 'assets/images/schoolBadge/FIT.jpg';
 
   final TextEditingController _usernameController = TextEditingController();
@@ -42,6 +44,10 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AndroidSoftInputModeController.setModeSilently(
+      AndroidSoftInputMode.adjustPan,
+    );
     _refreshSchoolBadge();
     _loadSavedCredentials();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -63,12 +69,25 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AndroidSoftInputModeController.setModeSilently(
+      AndroidSoftInputMode.adjustResize,
+    );
     _usernameController.dispose();
     _passwordController.dispose();
     _usernameFocusNode.dispose();
     _passwordFocusNode.dispose();
     _idleFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      AndroidSoftInputModeController.setModeSilently(
+        AndroidSoftInputMode.adjustPan,
+      );
+    }
   }
 
   /// 将账号/密码输入框重置到未选中状态，避免页面返回后输入法意外弹出。
@@ -410,6 +429,7 @@ class _WebImportLoginPageState extends State<WebImportLoginPage> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,

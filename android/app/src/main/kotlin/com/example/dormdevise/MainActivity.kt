@@ -1,7 +1,11 @@
 package com.lulo.dormdevise
 
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -12,6 +16,12 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 	private var receiver: PackageInstallReceiver? = null
 	private var eventSink: EventChannel.EventSink? = null
+
+	private companion object {
+		const val PIN_DOOR_WIDGET_REQUEST_CODE = 3001
+		const val PIN_DOOR_SIMPLE_WIDGET_REQUEST_CODE = 3002
+		const val PIN_COURSE_WIDGET_REQUEST_CODE = 3003
+	}
 
 	/**
 	 * 解析启动参数中的路由信息，支持直接进入配置页面。
@@ -131,6 +141,89 @@ class MainActivity : FlutterActivity() {
 						result.success(null)
 					}
 				}
+				"setShowWhenLocked" -> {
+					val show = call.argument<Boolean>("show") ?: false
+					val turn = call.argument<Boolean>("turn") ?: false
+					runOnUiThread {
+						setShowWhenLockedAndTurnScreenOn(show, turn)
+						result.success(null)
+					}
+				}
+				else -> result.notImplemented()
+			}
+		}
+
+		MethodChannel(
+			flutterEngine.dartExecutor.binaryMessenger,
+			"dormdevise/home_widget"
+		).setMethodCallHandler { call, result ->
+			when (call.method) {
+				"requestPinDoorWidget" -> {
+					runOnUiThread {
+						try {
+							val pinResult = DoorWidgetPinRequestHelper.requestPin(
+								activity = this,
+								providerClass = DoorWidgetProvider::class.java,
+								previewLayoutResId = R.layout.widget_door_preview,
+								requestCode = PIN_DOOR_WIDGET_REQUEST_CODE,
+							)
+							result.success(pinResult)
+						} catch (e: Exception) {
+							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
+						}
+					}
+				}
+				"returnToHomeScreen" -> {
+					runOnUiThread {
+						try {
+							moveTaskToBack(true)
+							DoorWidgetPinRequestHelper.returnToHomeScreen(this)
+							result.success(null)
+						} catch (e: Exception) {
+							result.error("HOME_SCREEN_LAUNCH_FAILED", e.message, null)
+						}
+					}
+				}
+				"requestPinDoorSimpleWidget" -> {
+					runOnUiThread {
+						try {
+							val pinResult = DoorWidgetPinRequestHelper.requestPin(
+								activity = this,
+								providerClass = DoorSimpleWidgetProvider::class.java,
+								previewLayoutResId = R.layout.widget_door_simple_preview,
+								requestCode = PIN_DOOR_SIMPLE_WIDGET_REQUEST_CODE,
+							)
+							result.success(pinResult)
+						} catch (e: Exception) {
+							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
+						}
+					}
+				}
+				"requestPinCourseScheduleWidget" -> {
+					runOnUiThread {
+						try {
+							val pinResult = DoorWidgetPinRequestHelper.requestPin(
+								activity = this,
+								providerClass = CourseScheduleWidgetProvider::class.java,
+								previewLayoutResId = R.layout.widget_course_schedule_preview,
+								requestCode = PIN_COURSE_WIDGET_REQUEST_CODE,
+							)
+							result.success(pinResult)
+						} catch (e: Exception) {
+							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
+						}
+					}
+				}
+				"syncCourseWidgetToToday" -> {
+					runOnUiThread {
+						try {
+							CourseScheduleWidgetProvider.syncAllWidgetsToToday(applicationContext)
+							result.success(null)
+						} catch (e: Exception) {
+							result.error("SYNC_COURSE_WIDGET_TO_TODAY_FAILED", e.message, null)
+						}
+					}
+				}
 				else -> result.notImplemented()
 			}
 		}
@@ -141,7 +234,48 @@ class MainActivity : FlutterActivity() {
 	override fun onNewIntent(intent: Intent) {
 		super.onNewIntent(intent)
 		setIntent(intent)
+		handleLockscreenFlagsIfNeeded(intent)
 		handlePendingRoute(intent)
+	}
+
+	override fun onCreate(savedInstanceState: Bundle?) {
+		super.onCreate(savedInstanceState)
+		handleLockscreenFlagsIfNeeded(intent)
+	}
+
+	/**
+	 * 根据 Intent 中的额外字段按需在运行时打开或关闭锁屏显示与点亮屏幕。
+	 * 期望的 extras:
+	 *  - "showOnLock": Boolean
+	 *  - "turnScreenOn": Boolean
+	 */
+	private fun handleLockscreenFlagsIfNeeded(intent: Intent?) {
+		val showOnLock = intent?.getBooleanExtra("showOnLock", false) ?: false
+		val turnOn = intent?.getBooleanExtra("turnScreenOn", false) ?: false
+		if (showOnLock || turnOn) {
+			runOnUiThread {
+				setShowWhenLockedAndTurnScreenOn(showOnLock, turnOn)
+			}
+		}
+	}
+
+	private fun setShowWhenLockedAndTurnScreenOn(show: Boolean, turn: Boolean) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+			setShowWhenLocked(show)
+			setTurnScreenOn(turn)
+		} else {
+			if (show || turn) {
+				window.addFlags(
+					WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+					WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+				)
+			} else {
+				window.clearFlags(
+					WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+					WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+				)
+			}
+		}
 	}
 
 	private fun handlePendingRoute(intent: Intent?) {

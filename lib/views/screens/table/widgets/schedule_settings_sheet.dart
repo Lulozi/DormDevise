@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'package:dormdevise/utils/index.dart';
@@ -9,6 +11,59 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../models/course_schedule_config.dart';
 import '../../../../services/course_service.dart';
 import 'expandable_item.dart';
+
+const MethodChannel _homeWidgetChannel = MethodChannel('dormdevise/home_widget');
+
+class _NativePinRequestResult {
+  const _NativePinRequestResult({
+    required this.requestAccepted,
+    required this.pinSupported,
+    required this.fallbackOpened,
+    required this.fallbackType,
+    required this.usedCallback,
+    required this.launchedHomeAfterRequest,
+  });
+
+  final bool requestAccepted;
+  final bool pinSupported;
+  final bool fallbackOpened;
+  final String fallbackType;
+  final bool usedCallback;
+  final bool launchedHomeAfterRequest;
+
+  factory _NativePinRequestResult.fromNative(dynamic value) {
+    if (value is bool) {
+      return _NativePinRequestResult(
+        requestAccepted: value,
+        pinSupported: value,
+        fallbackOpened: false,
+        fallbackType: 'none',
+        usedCallback: true,
+        launchedHomeAfterRequest: false,
+      );
+    }
+
+    if (value is Map) {
+      return _NativePinRequestResult(
+        requestAccepted: value['requestAccepted'] == true,
+        pinSupported: value['pinSupported'] == true,
+        fallbackOpened: value['fallbackOpened'] == true,
+        fallbackType: (value['fallbackType'] as String?) ?? 'none',
+        usedCallback: value['usedCallback'] != false,
+        launchedHomeAfterRequest: value['launchedHomeAfterRequest'] == true,
+      );
+    }
+
+    return const _NativePinRequestResult(
+      requestAccepted: false,
+      pinSupported: false,
+      fallbackOpened: false,
+      fallbackType: 'none',
+      usedCallback: false,
+      launchedHomeAfterRequest: false,
+    );
+  }
+}
 
 /// 课程表设置页面，用于配置学期开始时间、周数、周末显示等全局设置。
 class ScheduleSettingsPage extends StatefulWidget {
@@ -80,9 +135,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   late bool _showNonCurrentWeek;
   late bool _isScheduleLocked;
   final bool _showInCalendar = false;
-  final bool _enableDesktopWidget = false;
   late String _tableName;
   String? _colorAllocationAction;
+  bool _isRequestingDesktopWidget = false;
 
   // 标记提醒设置是否有未保存的变更
   bool _hasReminderChanged = false;
@@ -171,6 +226,78 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           });
         }
       });
+    }
+  }
+
+  Future<void> _requestCourseWidgetPin() async {
+    if (!Platform.isAndroid || _isRequestingDesktopWidget) {
+      return;
+    }
+
+    setState(() {
+      _isRequestingDesktopWidget = true;
+    });
+
+    try {
+      final dynamic nativeResponse = await _homeWidgetChannel.invokeMethod<dynamic>(
+        'requestPinCourseScheduleWidget',
+      );
+      final pinResult = _NativePinRequestResult.fromNative(nativeResponse);
+      if (!mounted) {
+        return;
+      }
+
+      if (pinResult.requestAccepted) {
+        if (!pinResult.launchedHomeAfterRequest) {
+          AppToast.show(
+            context,
+            pinResult.usedCallback
+                ? '系统添加请求已发起，请在系统弹窗中确认添加课表组件。'
+                : '系统已接收添加请求，请按桌面提示完成课表组件添加。',
+            variant: AppToastVariant.success,
+          );
+        }
+        return;
+      }
+
+      final (message, variant) = switch (pinResult.fallbackType) {
+        'permission' => (
+          '已打开系统权限页，请允许桌面快捷方式或桌面组件相关权限后重试。',
+          AppToastVariant.warning,
+        ),
+        'app_details' => (
+          '已打开应用信息页，请检查桌面组件相关权限或系统限制后重试。',
+          AppToastVariant.warning,
+        ),
+        'home_screen' => (
+          '当前桌面未弹出系统添加窗口，已返回桌面，请长按空白处手动添加课表组件。',
+          AppToastVariant.info,
+        ),
+        _ when !pinResult.pinSupported || !pinResult.fallbackOpened => (
+          '当前桌面暂不支持应用内自动添加，请长按桌面空白处手动添加课表组件。',
+          AppToastVariant.warning,
+        ),
+        _ => (
+          '当前桌面未响应系统添加请求，请长按桌面空白处手动添加课表组件。',
+          AppToastVariant.warning,
+        ),
+      };
+      AppToast.show(context, message, variant: variant);
+    } on PlatformException {
+      if (!mounted) {
+        return;
+      }
+      AppToast.show(
+        context,
+        '课表组件添加请求失败，请稍后重试。',
+        variant: AppToastVariant.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRequestingDesktopWidget = false;
+        });
+      }
     }
   }
 
@@ -480,12 +607,12 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               onChanged: null,
             ),
             _buildDivider(),
-            _buildSwitchTile(
-              title: '启用桌面组件',
-              subtitle: '暂未接入功能，等待后续版本更新',
-              value: _enableDesktopWidget,
-              // 禁用交互，展示为灰色
-              onChanged: null,
+            _buildTile(
+              title: '添加桌面组件',
+              subtitle: Platform.isAndroid
+                  ? '点击后拉起系统添加课表组件弹窗'
+                  : '仅支持 Android 桌面组件',
+              onTap: Platform.isAndroid ? _requestCourseWidgetPin : null,
             ),
           ],
         ),
@@ -989,43 +1116,52 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     String? subtitle,
     required bool value,
     ValueChanged<bool>? onChanged,
+    VoidCallback? onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bool disabled = onChanged == null;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: disabled
-                        ? colorScheme.onSurfaceVariant
-                        : colorScheme.onSurface,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 4),
+    final bool disabled = onChanged == null && onTap == null;
+    final ValueChanged<bool>? switchHandler =
+        onChanged ?? (onTap != null ? (_) => onTap() : null);
+    final VoidCallback? tileHandler =
+        onTap ?? (onChanged != null ? () => onChanged(!value) : null);
+    return GestureDetector(
+      onTap: tileHandler,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle,
+                    title,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 16,
                       color: disabled
                           ? colorScheme.onSurfaceVariant
-                          : colorScheme.onSurfaceVariant,
+                          : colorScheme.onSurface,
                     ),
                   ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: disabled
+                            ? colorScheme.onSurfaceVariant
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          Switch(value: value, onChanged: onChanged),
-        ],
+            Switch(value: value, onChanged: switchHandler),
+          ],
+        ),
       ),
     );
   }

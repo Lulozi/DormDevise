@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:linked_scroll_controller/linked_scroll_controller.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:dormdevise/utils/app_toast.dart';
@@ -11,6 +12,7 @@ import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
 import '../../../services/course_schedule_transfer_service.dart';
+import '../../../services/course_widget_service.dart';
 import '../../widgets/bubble_popup.dart';
 import 'widgets/course_schedule_table.dart';
 import 'widgets/section_config_sheet.dart';
@@ -27,14 +29,65 @@ import 'web_import_schedule_page.dart';
 
 /// 展示并管理大学课程表的页面。
 class TablePage extends StatefulWidget {
-  const TablePage({super.key, this.initialImportRaw});
+  const TablePage({
+    super.key,
+    this.initialImportRaw,
+    this.initialFocusWeek,
+    this.initialFocusWeekday,
+    this.initialFocusSection,
+    this.initialFocusCourseName,
+    this.launchedFromWidget = false,
+  });
 
   /// 如果通过外部跳转携带了课表导入码原始文本，页面加载后会自动处理导入流程。
   final String? initialImportRaw;
 
+  /// 通过桌面组件打开时需要优先展示的周次。
+  final int? initialFocusWeek;
+
+  /// 通过桌面组件打开时需要高亮的星期，周一=1。
+  final int? initialFocusWeekday;
+
+  /// 通过桌面组件点击具体课程时需要滚动到的起始节次。
+  final int? initialFocusSection;
+
+  /// 通过桌面组件点击具体课程时需要高亮的课程名。
+  final String? initialFocusCourseName;
+
+  /// 是否由桌面组件启动。由组件启动时返回键直接回桌面，不回到应用此前页面。
+  final bool launchedFromWidget;
+
   /// 创建页面状态以渲染课表内容。
   @override
   State<TablePage> createState() => _TablePageState();
+}
+
+class _WidgetTableFocusRequest {
+  const _WidgetTableFocusRequest({
+    required this.week,
+    this.weekday,
+    this.startSection,
+    this.courseName,
+  });
+
+  final int week;
+  final int? weekday;
+  final int? startSection;
+  final String? courseName;
+}
+
+class _WidgetCourseHighlightTarget {
+  const _WidgetCourseHighlightTarget({
+    required this.week,
+    required this.weekday,
+    required this.startSection,
+    this.courseName,
+  });
+
+  final int week;
+  final int weekday;
+  final int startSection;
+  final String? courseName;
 }
 
 class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
@@ -81,6 +134,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   CourseTableAdaptiveLayout? _adaptiveLayoutCache;
   AdaptiveLayoutCacheKey? _adaptiveLayoutCacheKey;
   int _adaptiveLayoutGeneration = 0;
+  double _lastResolvedSectionHeight = 76;
+  _WidgetTableFocusRequest? _pendingWidgetFocus;
+  _WidgetCourseHighlightTarget? _highlightedCourseTarget;
+  Timer? _widgetCourseHighlightTimer;
 
   final GlobalKey _importBtnKey = GlobalKey();
   final GlobalKey _shareBtnKey = GlobalKey();
@@ -275,11 +332,19 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _scheduleConfig = CourseScheduleConfig.njuDefaults();
     _sections = _scheduleConfig.generateSections();
+    if (widget.initialFocusWeek != null) {
+      _pendingWidgetFocus = _WidgetTableFocusRequest(
+        week: widget.initialFocusWeek!,
+        weekday: widget.initialFocusWeekday,
+        startSection: widget.initialFocusSection,
+        courseName: widget.initialFocusCourseName,
+      );
+    }
     _pageController = PageController(initialPage: 0);
     _scrollGroup = LinkedScrollControllerGroup();
     _timeColumnController = _scrollGroup.addAndGet();
     // 加载数据后，如存在外部传入的导入码则在加载完成后处理导入流程
-    _loadData(jumpToCurrentWeek: true).then((_) {
+    _loadData(jumpToCurrentWeek: _pendingWidgetFocus == null).then((_) {
       if (widget.initialImportRaw != null &&
           widget.initialImportRaw!.trim().isNotEmpty) {
         _handleInitialImport(widget.initialImportRaw!);
@@ -310,6 +375,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         showWeekend: bundle.showWeekend,
         showNonCurrentWeek: bundle.showNonCurrentWeek,
         isScheduleLocked: bundle.isScheduleLocked,
+      );
+      await CourseWidgetService.instance.syncWidget(
+        resetDisplayDateToToday: true,
       );
       if (!mounted) return;
       AppToast.show(context, '课表已导入');
@@ -406,6 +474,130 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     return resolvedWeek;
   }
 
+  DateTime? _resolveDateForWeekday(int week, int? weekday) {
+    if (weekday == null || weekday < 1 || weekday > 7) {
+      return null;
+    }
+    final List<DateTime> dates = _resolveWeekDates(week);
+    return dates[weekday - 1];
+  }
+
+  void _applyPendingWidgetFocusIfNeeded({bool animate = false}) {
+    final _WidgetTableFocusRequest? request = _pendingWidgetFocus;
+    if (request == null) {
+      return;
+    }
+    _pendingWidgetFocus = null;
+    _focusWidgetTarget(request, animate: animate);
+  }
+
+  void _focusWidgetTarget(
+    _WidgetTableFocusRequest request, {
+    bool animate = false,
+  }) {
+    final int targetWeek = _clampDisplayedWeek(request.week);
+    final DateTime? targetDate = _resolveDateForWeekday(
+      targetWeek,
+      request.weekday,
+    );
+    final bool shouldSyncPage = targetWeek != _currentWeek;
+    setState(() {
+      _currentWeek = targetWeek;
+      _highlightDate = targetDate;
+      _lastObservedDate = _dateOnly(DateTime.now());
+      _highlightedCourseTarget =
+          request.weekday != null && request.startSection != null
+          ? _WidgetCourseHighlightTarget(
+              week: targetWeek,
+              weekday: request.weekday!,
+              startSection: request.startSection!,
+              courseName: request.courseName,
+            )
+          : null;
+    });
+    if (_highlightedCourseTarget != null) {
+      _widgetCourseHighlightTimer?.cancel();
+      _widgetCourseHighlightTimer = Timer(const Duration(seconds: 3), () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _highlightedCourseTarget = null;
+        });
+      });
+    }
+    if (shouldSyncPage) {
+      _syncPageToCurrentWeek(animate: animate);
+    }
+    if (request.startSection != null) {
+      _scheduleScrollToSection(
+        week: targetWeek,
+        startSection: request.startSection!,
+      );
+    }
+  }
+
+  void _scheduleScrollToSection({
+    required int week,
+    required int startSection,
+    int attempt = 0,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final ScrollController controller = _scrollControllerForWeek(week - 1);
+      if (!controller.hasClients) {
+        if (attempt >= 6) {
+          return;
+        }
+        Future<void>.delayed(const Duration(milliseconds: 48), () {
+          if (!mounted) {
+            return;
+          }
+          _scheduleScrollToSection(
+            week: week,
+            startSection: startSection,
+            attempt: attempt + 1,
+          );
+        });
+        return;
+      }
+
+      final double targetOffset =
+          (_resolveSectionScrollOffset(startSection) - 20)
+              .clamp(0.0, controller.position.maxScrollExtent)
+              .toDouble();
+      if ((controller.offset - targetOffset).abs() < 1) {
+        return;
+      }
+      controller.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  double _resolveSectionScrollOffset(int startSection) {
+    final double effectiveSectionHeight = _lastResolvedSectionHeight >= 48
+        ? _lastResolvedSectionHeight
+        : 48.0;
+    double offset = 0;
+    for (int index = 0; index < _sections.length; index++) {
+      final SectionTime section = _sections[index];
+      if (section.index == startSection) {
+        return offset;
+      }
+      offset += effectiveSectionHeight;
+      final bool hasNext = index < _sections.length - 1;
+      if (hasNext && _sections[index + 1].segmentName != section.segmentName) {
+        offset += 24;
+      }
+    }
+    return offset;
+  }
+
   void _syncPageToCurrentWeek({bool animate = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageController.hasClients) {
@@ -483,10 +675,12 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
 
       _isLoading = false;
     });
+    unawaited(CourseWidgetService.instance.syncWidget());
 
     if (shouldSyncPage) {
       _syncPageToCurrentWeek();
     }
+    _applyPendingWidgetFocusIfNeeded();
     _scheduleMidnightRefresh();
   }
 
@@ -494,6 +688,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _midnightRefreshTimer?.cancel();
+    _widgetCourseHighlightTimer?.cancel();
     _toolbarBubbleController?.dismiss();
     _timeColumnController.dispose();
     for (final ScrollController controller in _weekScrollControllers.values) {
@@ -508,10 +703,16 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return PopScope(
-        canPop: !_isToolbarBubbleOpen,
+        canPop: !widget.launchedFromWidget && !_isToolbarBubbleOpen,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
-          _dismissToolbarBubble();
+          if (_isToolbarBubbleOpen) {
+            _dismissToolbarBubble();
+            return;
+          }
+          if (widget.launchedFromWidget) {
+            _moveTaskToBack();
+          }
         },
         child: Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -520,10 +721,16 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       );
     }
     return PopScope(
-      canPop: !_isToolbarBubbleOpen,
+      canPop: !widget.launchedFromWidget && !_isToolbarBubbleOpen,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        _dismissToolbarBubble();
+        if (_isToolbarBubbleOpen) {
+          _dismissToolbarBubble();
+          return;
+        }
+        if (widget.launchedFromWidget) {
+          _moveTaskToBack();
+        }
       },
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -770,6 +977,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         );
     if (result != null) {
       await CourseService.instance.saveConfig(result);
+      await CourseWidgetService.instance.syncWidget(
+        resetDisplayDateToToday: true,
+      );
       setState(() {
         _scheduleConfig = result;
         _sections = _scheduleConfig.generateSections();
@@ -863,6 +1073,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       }
     });
     await CourseService.instance.saveCourses(_courses);
+    await CourseWidgetService.instance.syncWidget(
+      resetDisplayDateToToday: true,
+    );
   }
 
   /// 添加新课程。
@@ -898,6 +1111,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             isScheduleLocked: _isScheduleLocked,
             onConfigChanged: (CourseScheduleConfig config) async {
               await CourseService.instance.saveConfig(config);
+              await CourseWidgetService.instance.syncWidget(
+                resetDisplayDateToToday: true,
+              );
               setState(() {
                 _scheduleConfig = config;
                 _sections = _scheduleConfig.generateSections();
@@ -906,6 +1122,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             },
             onSemesterStartChanged: (DateTime date) async {
               await CourseService.instance.saveSemesterStart(date);
+              await CourseWidgetService.instance.syncWidget(
+                resetDisplayDateToToday: true,
+              );
               final int nextWeek = _clampDisplayedWeek(_currentWeek);
               final bool shouldSyncPage = nextWeek != _currentWeek;
               setState(() {
@@ -923,6 +1142,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             },
             onMaxWeekChanged: (int max) async {
               await CourseService.instance.saveMaxWeek(max);
+              await CourseWidgetService.instance.syncWidget(
+                resetDisplayDateToToday: true,
+              );
               final int nextWeek = _clampDisplayedWeek(
                 _currentWeek,
                 maxWeek: max,
@@ -939,12 +1161,18 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             },
             onTableNameChanged: (String name) async {
               await CourseService.instance.saveTableName(name);
+              await CourseWidgetService.instance.syncWidget(
+                resetDisplayDateToToday: true,
+              );
               setState(() {
                 _tableName = name;
               });
             },
             onShowWeekendChanged: (bool show) async {
               await CourseService.instance.saveShowWeekend(show);
+              await CourseWidgetService.instance.syncWidget(
+                resetDisplayDateToToday: true,
+              );
               setState(() {
                 _showWeekend = show;
                 _invalidateAdaptiveLayoutCache();
@@ -952,6 +1180,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             },
             onShowNonCurrentWeekChanged: (bool show) async {
               await CourseService.instance.saveShowNonCurrentWeek(show);
+              await CourseWidgetService.instance.syncWidget(
+                resetDisplayDateToToday: true,
+              );
               setState(() {
                 _showNonCurrentWeek = show;
                 _invalidateAdaptiveLayoutCache();
@@ -959,6 +1190,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
             },
             onScheduleLockedChanged: (bool locked) async {
               await CourseService.instance.saveScheduleLocked(locked);
+              await CourseWidgetService.instance.syncWidget(
+                resetDisplayDateToToday: true,
+              );
               setState(() {
                 _isScheduleLocked = locked;
               });
@@ -1016,6 +1250,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
 
         final CourseTableAdaptiveLayout adaptiveLayout = _adaptiveLayoutCache!;
         final double effectiveSectionHeight = adaptiveLayout.sectionHeight;
+        _lastResolvedSectionHeight = effectiveSectionHeight;
 
         return Row(
           children: <Widget>[
@@ -1089,6 +1324,16 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
                       _pickDate(context);
                     },
                     highlightDate: _highlightDate,
+                    highlightedCourseTarget:
+                        _highlightedCourseTarget != null &&
+                            _highlightedCourseTarget!.week == targetWeek
+                        ? CourseTableHighlightTarget(
+                            weekday: _highlightedCourseTarget!.weekday,
+                            startSection:
+                                _highlightedCourseTarget!.startSection,
+                            courseName: _highlightedCourseTarget!.courseName,
+                          )
+                        : null,
                     includeTimeColumn: false,
                     timeColumnWidth: timeColumnWidth,
                     leadingInset: 0,
@@ -1117,6 +1362,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
                         }
                       });
                       await CourseService.instance.saveCourses(_courses);
+                      await CourseWidgetService.instance.syncWidget(
+                        resetDisplayDateToToday: true,
+                      );
                     },
                     onCourseDeleted: (course) async {
                       setState(() {
@@ -1124,6 +1372,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
                         _courses.remove(course);
                       });
                       await CourseService.instance.saveCourses(_courses);
+                      await CourseWidgetService.instance.syncWidget(
+                        resetDisplayDateToToday: true,
+                      );
                     },
                     onCourseAdded: _handleCourseAdded,
                   );
@@ -1142,6 +1393,15 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       index,
       () => _scrollGroup.addAndGet(),
     );
+  }
+
+  Future<void> _moveTaskToBack() async {
+    try {
+      const MethodChannel channel = MethodChannel('dormdevise/home_widget');
+      await channel.invokeMethod<void>('returnToHomeScreen');
+    } catch (_) {
+      // 静默忽略失败，避免影响页面返回体验。
+    }
   }
 }
 

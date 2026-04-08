@@ -24,6 +24,7 @@ class DoorTriggerService {
   static final DoorTriggerService instance = DoorTriggerService._();
 
   MqttService? _mqttService;
+  Future<DoorTriggerResult>? _inFlightTrigger;
   String? _lastFingerprint;
   WifiSnapshot _cachedWifiSnapshot = const WifiSnapshot();
   bool _cachedWifiMatched = false;
@@ -73,11 +74,27 @@ class DoorTriggerService {
   }
 
   /// 触发开门动作，返回结果信息用于展示反馈。
-  Future<DoorTriggerResult> triggerDoor() async {
+  Future<DoorTriggerResult> triggerDoor() {
+    final Future<DoorTriggerResult>? inFlight = _inFlightTrigger;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final Future<DoorTriggerResult> request = _triggerDoorInternal();
+    _inFlightTrigger = request;
+    request.whenComplete(() {
+      if (identical(_inFlightTrigger, request)) {
+        _inFlightTrigger = null;
+      }
+    });
+    return request;
+  }
+
+  Future<DoorTriggerResult> _triggerDoorInternal() async {
     try {
       final LocalDoorLockConfig localConfig = await LocalDoorLockConfigService
           .instance
-          .loadConfig();
+          .loadConfig(forceRefresh: true);
       final wifiMatch = await _resolveWifiMatch(localConfig);
       final WifiSnapshot wifi = wifiMatch.wifi;
       final bool wifiMatched = wifiMatch.matched;
@@ -163,10 +180,9 @@ class DoorTriggerService {
 
   /// 使用 MQTT 触发开门，返回执行结果。
   Future<DoorTriggerResult> _triggerViaMqtt() async {
-    MqttConfig config = await MqttConfigService.instance.loadConfig();
-    if (!config.isCommandReady) {
-      config = await MqttConfigService.instance.loadConfig(forceRefresh: true);
-    }
+    final MqttConfig config = await MqttConfigService.instance.loadConfig(
+      forceRefresh: true,
+    );
     if (!config.isCommandReady) {
       return const DoorTriggerResult(
         success: false,
@@ -212,18 +228,22 @@ class DoorTriggerService {
       _lastFingerprint = fingerprint;
     }
 
-    _mqttService ??= MqttService(
-      host: host,
-      port: port,
-      clientId: clientId,
-      username: (username != null && username.isNotEmpty) ? username : null,
-      password: (password != null && password.isNotEmpty) ? password : null,
-      securityContext: sc,
-    );
-    await _mqttService!.connect();
-    await _mqttService!.subscribe(topic);
-    await _mqttService!.publishText(topic, msg);
-    return const DoorTriggerResult(success: true, message: '开门指令已发送');
+    try {
+      _mqttService ??= MqttService(
+        host: host,
+        port: port,
+        clientId: clientId,
+        username: (username != null && username.isNotEmpty) ? username : null,
+        password: (password != null && password.isNotEmpty) ? password : null,
+        securityContext: sc,
+      );
+      await _mqttService!.connect();
+      await _mqttService!.subscribe(topic);
+      await _mqttService!.publishText(topic, msg);
+      return const DoorTriggerResult(success: true, message: '开门指令已发送');
+    } catch (e) {
+      return DoorTriggerResult(success: false, message: 'MQTT连接/发送失败: $e');
+    }
   }
 
   /// 主动释放 MQTT 连接，供应用退出时清理资源。

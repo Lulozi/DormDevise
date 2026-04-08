@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:dormdevise/models/local_door_lock_config.dart';
+import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/wifi_info_service.dart';
 import 'package:flutter/material.dart';
@@ -531,6 +532,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
           LocalDoorLockConfig.fromSharePayload(decoded);
 
       await LocalDoorLockConfigService.instance.saveConfig(importedConfig);
+      await DoorWidgetService.instance.onDoorLockConfigChanged();
       if (!mounted) {
         return;
       }
@@ -709,6 +711,7 @@ class _LocalDoorLockSettingsPageState extends State<LocalDoorLockSettingsPage> {
       wifiPostMappings: workingMappings,
     );
     await LocalDoorLockConfigService.instance.saveConfig(config);
+    await DoorWidgetService.instance.onDoorLockConfigChanged();
 
     if (!mounted) return;
     setState(() {

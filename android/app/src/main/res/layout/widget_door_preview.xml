@@ -1,54 +1,137 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 2x2完整版组件预览布局：紧凑设计以保持正方形 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_container_bg"
-    android:padding="8dp">
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="6dp">
+
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center">
+
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/widget_icon_bg">
+
+            <ImageView
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:adjustViewBounds="true"
+                android:layout_gravity="center"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_lock_outline"
+                android:contentDescription="@string/door_widget_name" />
+        </FrameLayout>
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical">
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:layout_marginTop="5dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/door_widget_action_label"
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="9sp"
-            android:singleLine="true" />
-
-        <FrameLayout
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/widget_icon_bg"
-            android:foregroundGravity="center">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_gravity="center"
-                android:src="@android:drawable/ic_lock_idle_lock"
-                android:contentDescription="@string/door_widget_name" />
-        </FrameLayout>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:paddingLeft="6dp"
-            android:paddingRight="6dp"
+            android:layout_gravity="center_horizontal"
+            android:autoSizeMaxTextSize="12sp"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="120dp"
+            android:minWidth="65dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
-            android:background="@drawable/widget_status_bg"
-            android:text="@string/door_widget_default_message"
-            android:textColor="@color/widget_text"
-            android:textSize="10sp"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:background="@drawable/widget_chip_gray"
+            android:text="待开门"
+            android:textColor="@color/widget_gray"
+            android:textSize="11sp"
+            android:includeFontPadding="false"
             android:singleLine="true"
-            android:ellipsize="end"
+            android:gravity="center" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="3dp"
+            android:autoSizeMaxTextSize="12sp"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="120dp"
+            android:minWidth="65dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:background="@drawable/widget_chip_green"
+            android:text="设备在线"
+            android:textColor="@color/widget_success"
+            android:textSize="11sp"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:gravity="center" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="3dp"
+            android:autoSizeMaxTextSize="12sp"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="120dp"
+            android:minWidth="65dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:background="@drawable/widget_chip_yellow"
+            android:text="WiFi：非配置"
+            android:textColor="@color/widget_warning"
+            android:textSize="11sp"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:gravity="center" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="3dp"
+            android:autoSizeMaxTextSize="12sp"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="120dp"
+            android:minWidth="65dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:background="@drawable/widget_chip_gray"
+            android:text="MQTT：未连接"
+            android:textColor="@color/widget_gray"
+            android:textSize="11sp"
+            android:includeFontPadding="false"
+            android:singleLine="true"
             android:gravity="center" />
     </LinearLayout>
 
-</RelativeLayout>
+</LinearLayout>
