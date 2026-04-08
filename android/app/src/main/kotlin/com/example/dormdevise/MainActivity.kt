@@ -163,7 +163,7 @@ class MainActivity : FlutterActivity() {
 							val pinResult = DoorWidgetPinRequestHelper.requestPin(
 								activity = this,
 								providerClass = DoorWidgetProvider::class.java,
-								previewLayoutResId = R.layout.widget_door,
+								previewLayoutResId = R.layout.widget_door_preview,
 								requestCode = PIN_DOOR_WIDGET_REQUEST_CODE,
 							)
 							result.success(pinResult)
@@ -189,7 +189,7 @@ class MainActivity : FlutterActivity() {
 							val pinResult = DoorWidgetPinRequestHelper.requestPin(
 								activity = this,
 								providerClass = DoorSimpleWidgetProvider::class.java,
-								previewLayoutResId = R.layout.widget_door_simple,
+								previewLayoutResId = R.layout.widget_door_simple_preview,
 								requestCode = PIN_DOOR_SIMPLE_WIDGET_REQUEST_CODE,
 							)
 							result.success(pinResult)

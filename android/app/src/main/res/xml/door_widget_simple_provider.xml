@@ -7,7 +7,7 @@
     android:resizeMode="none"
     android:widgetCategory="home_screen"
     android:previewImage="@drawable/widget_door_simple_preview_image"
-    android:previewLayout="@layout/widget_door_simple"
+    android:previewLayout="@layout/widget_door_simple_preview"
     android:targetCellWidth="1"
     android:targetCellHeight="1"
     android:description="@string/door_widget_simple_description"

@@ -26,7 +26,7 @@ class DoorWidgetProvider : HomeWidgetProvider() {
   companion object {
     private const val PREFS_NAME = "door_widget_pin_state"
     private const val KEY_PENDING_PIN = "pending_pin_request"
-    private const val COMPACT_LAYOUT_MAX_SIZE_DP = 136f
+    private const val COMPACT_LAYOUT_MAX_SIZE_DP = 108f
     
     // 闪烁控制
     private var blinkHandler: Handler? = null
@@ -249,32 +249,22 @@ class DoorWidgetProvider : HomeWidgetProvider() {
     widgetId: Int,
   ): Boolean {
     val options = appWidgetManager.getAppWidgetOptions(widgetId)
-    val candidateSizes = mutableListOf(
-      SizeF(
-        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).toFloat(),
-        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).toFloat(),
-      )
-    )
-    val maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH)
-    val maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
-    if (maxWidth > 0 && maxHeight > 0) {
-      candidateSizes += SizeF(maxWidth.toFloat(), maxHeight.toFloat())
+    val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).toFloat()
+    val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).toFloat()
+    val resolvedSize = if (minWidth > 0f && minHeight > 0f) {
+      SizeF(minWidth, minHeight)
+    } else {
+      getWidgetSizes(options)
+        .filter { size -> size.width > 0f && size.height > 0f }
+        .minByOrNull { size -> size.width * size.height }
+        ?: return false
     }
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      candidateSizes += getWidgetSizes(options)
-    }
-
-    val smallestSize = candidateSizes
-      .filter { size -> size.width > 0f && size.height > 0f }
-      .minByOrNull { size -> size.width * size.height }
-      ?: return false
-
-    val compactLayout = smallestSize.width <= COMPACT_LAYOUT_MAX_SIZE_DP &&
-      smallestSize.height <= COMPACT_LAYOUT_MAX_SIZE_DP
+    val compactLayout = resolvedSize.width <= COMPACT_LAYOUT_MAX_SIZE_DP &&
+      resolvedSize.height <= COMPACT_LAYOUT_MAX_SIZE_DP
     android.util.Log.d(
       "DoorWidgetProvider",
-      "Widget $widgetId size=${smallestSize.width}x${smallestSize.height} compact=$compactLayout",
+      "Widget $widgetId size=${resolvedSize.width}x${resolvedSize.height} compact=$compactLayout",
     )
     return compactLayout
   }

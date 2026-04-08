@@ -407,16 +407,16 @@ class _SimpleDoorWidgetPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 74,
-        height: 74,
+        width: 76,
+        height: 76,
         decoration: BoxDecoration(
           color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(24),
         ),
         child: Center(
           child: Container(
-            width: 42,
-            height: 42,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: colorScheme.surface,
@@ -427,7 +427,7 @@ class _SimpleDoorWidgetPreview extends StatelessWidget {
             ),
             child: Icon(
               Icons.lock_outline_rounded,
-              size: 20,
+              size: 19,
               color: colorScheme.onSurface,
             ),
           ),

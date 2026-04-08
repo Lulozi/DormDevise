@@ -8,21 +8,21 @@
     </item>
 
     <item
-        android:bottom="24dp"
-        android:drawable="@drawable/widget_container_bg"
-        android:left="24dp"
-        android:right="24dp"
-        android:top="24dp" />
+        android:bottom="22dp"
+        android:drawable="@drawable/widget_container_bg_compact"
+        android:left="22dp"
+        android:right="22dp"
+        android:top="22dp" />
 
     <item
         android:gravity="center"
-        android:height="52dp"
-        android:width="52dp"
+        android:height="48dp"
+        android:width="48dp"
         android:drawable="@drawable/widget_icon_bg_small" />
 
     <item
         android:gravity="center"
-        android:height="24dp"
-        android:width="24dp"
+        android:height="22dp"
+        android:width="22dp"
         android:drawable="@drawable/ic_lock_outline" />
 </layer-list>

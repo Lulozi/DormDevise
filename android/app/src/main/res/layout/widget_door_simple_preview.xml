@@ -5,13 +5,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="center"
-    android:padding="4dp">
+    android:padding="2dp">
 
     <FrameLayout
-        android:layout_width="72dp"
-        android:layout_height="72dp"
+        android:layout_width="76dp"
+        android:layout_height="76dp"
         android:layout_gravity="center"
-        android:background="@drawable/widget_container_bg">
+        android:background="@drawable/widget_container_bg_compact">
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -22,11 +22,11 @@
             android:orientation="vertical">
 
             <ImageView
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:adjustViewBounds="true"
                 android:layout_gravity="center"
-                android:padding="9dp"
+                android:padding="8dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_lock_outline"
                 android:contentDescription="@string/door_widget_name" />

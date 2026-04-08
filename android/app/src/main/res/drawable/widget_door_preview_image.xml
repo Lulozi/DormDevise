@@ -8,51 +8,51 @@
     </item>
 
     <item
-        android:bottom="6dp"
+        android:bottom="8dp"
         android:drawable="@drawable/widget_container_bg"
-        android:left="6dp"
-        android:right="6dp"
-        android:top="6dp" />
+        android:left="8dp"
+        android:right="8dp"
+        android:top="8dp" />
 
     <item
         android:gravity="top|center_horizontal"
-        android:height="84dp"
-        android:top="24dp"
-        android:width="84dp"
+        android:height="74dp"
+        android:top="22dp"
+        android:width="74dp"
         android:drawable="@drawable/widget_icon_bg" />
 
     <item
         android:gravity="top|center_horizontal"
-        android:height="34dp"
-        android:top="49dp"
-        android:width="34dp"
+        android:height="30dp"
+        android:top="44dp"
+        android:width="30dp"
         android:drawable="@drawable/ic_lock_outline" />
 
     <item
         android:gravity="top|center_horizontal"
-        android:height="14dp"
-        android:top="126dp"
-        android:width="84dp"
+        android:height="12dp"
+        android:top="114dp"
+        android:width="82dp"
         android:drawable="@drawable/widget_chip_gray" />
 
     <item
         android:gravity="top|center_horizontal"
-        android:height="14dp"
-        android:top="148dp"
-        android:width="84dp"
+        android:height="12dp"
+        android:top="131dp"
+        android:width="82dp"
         android:drawable="@drawable/widget_chip_green" />
 
     <item
         android:gravity="top|center_horizontal"
-        android:height="14dp"
-        android:top="170dp"
-        android:width="84dp"
+        android:height="12dp"
+        android:top="148dp"
+        android:width="82dp"
         android:drawable="@drawable/widget_chip_yellow" />
 
     <item
         android:gravity="top|center_horizontal"
-        android:height="14dp"
-        android:top="192dp"
-        android:width="84dp"
+        android:height="12dp"
+        android:top="165dp"
+        android:width="82dp"
         android:drawable="@drawable/widget_chip_red" />
 </layer-list>
