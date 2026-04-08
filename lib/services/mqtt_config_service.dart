@@ -17,6 +17,9 @@ class MqttConfigService {
       return _cachedConfig!;
     }
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (forceRefresh) {
+      await prefs.reload();
+    }
     String? clientId = prefs.getString('mqtt_clientId');
     if (clientId == null || clientId.isEmpty) {
       clientId = const Uuid().v4();

@@ -18,6 +18,9 @@ class LocalDoorLockConfigService {
     }
 
     final prefs = await SharedPreferences.getInstance();
+    if (forceRefresh) {
+      await prefs.reload();
+    }
     final storage = <String, Object?>{
       'local_post_enabled': prefs.getBool('local_post_enabled'),
       'local_post_url': prefs.getString('local_post_url'),
