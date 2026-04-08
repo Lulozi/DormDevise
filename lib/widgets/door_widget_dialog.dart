@@ -125,13 +125,28 @@ class _DoorWidgetPanelState extends State<DoorWidgetPanel> {
           const SizedBox(height: 8),
 
           // 门锁组件
-          ValueListenableBuilder<DoorWidgetState>(
-            valueListenable: _service.stateNotifier,
-            builder: (context, state, _) {
-              return DoorLockWidget(
-                state: state,
-                busy: _opening,
-                onDoubleTap: _handleDoubleTapTrigger,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final double panelWidth =
+                  constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                  ? constraints.maxWidth
+                  : 320;
+              final double widgetHeight = (panelWidth * 0.88).clamp(
+                220.0,
+                320.0,
+              );
+              return ValueListenableBuilder<DoorWidgetState>(
+                valueListenable: _service.stateNotifier,
+                builder: (context, state, _) {
+                  return SizedBox(
+                    height: widgetHeight,
+                    child: DoorLockWidget(
+                      state: state,
+                      busy: _opening,
+                      onDoubleTap: _handleDoubleTapTrigger,
+                    ),
+                  );
+                },
               );
             },
           ),
