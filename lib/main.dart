@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dormdevise/app.dart';
 import 'package:dormdevise/services/alarm_service.dart';
 import 'package:dormdevise/services/course_service.dart';
+import 'package:dormdevise/services/course_widget_service.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/notification_service.dart';
 import 'package:dormdevise/services/theme/theme_service.dart';
@@ -38,6 +39,12 @@ Future<void> main() async {
         await DoorWidgetService.instance.initialize();
       } catch (e, stack) {
         debugPrint('DoorWidgetService initialization failed: $e\n$stack');
+      }
+
+      try {
+        await CourseWidgetService.instance.initialize();
+      } catch (e, stack) {
+        debugPrint('CourseWidgetService initialization failed: $e\n$stack');
       }
 
       try {

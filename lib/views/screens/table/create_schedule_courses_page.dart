@@ -4,6 +4,7 @@ import 'package:dormdevise/utils/app_toast.dart';
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
+import '../../../services/course_widget_service.dart';
 import 'widgets/course_schedule_table.dart';
 import 'course_edit_page.dart';
 
@@ -131,6 +132,9 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
         id,
       );
       await CourseService.instance.saveCourses(_courses, id);
+      await CourseWidgetService.instance.syncWidget(
+        resetDisplayDateToToday: true,
+      );
 
       if (!mounted) return;
 

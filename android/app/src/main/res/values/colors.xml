@@ -10,6 +10,11 @@
     <color name="widget_error">#F44336</color>
     <color name="widget_warning">#FFC107</color>
     <color name="widget_gray">#9E9E9E</color>
+    <color name="widget_course_active_bg">#1A4A90E2</color>
+    <color name="widget_course_active_border">#335B8DEF</color>
+    <color name="widget_course_active_text">#3569C8</color>
+    <color name="widget_course_finished_bg">#149E9E9E</color>
+    <color name="widget_course_finished_text">#9E9E9E</color>
     <!-- Status chip backgrounds with alpha -->
     <color name="widget_chip_green_bg">#264CAF50</color>
     <color name="widget_chip_gray_bg">#269E9E9E</color>

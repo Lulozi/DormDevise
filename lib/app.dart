@@ -61,9 +61,13 @@ class DormDeviseApp extends StatelessWidget {
           supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
           initialRoute: initialRoute,
           onGenerateRoute: (RouteSettings settings) {
-            switch (settings.name) {
+            final String rawRoute = settings.name ?? '/';
+            final Uri parsedRoute = Uri.parse(rawRoute);
+            final String routeName = parsedRoute.path.isEmpty
+                ? rawRoute
+                : parsedRoute.path;
+            switch (routeName) {
               case '/':
-              case null:
                 return MaterialPageRoute<void>(
                   builder: (_) => const ManagementScreen(),
                 );
@@ -79,6 +83,24 @@ class DormDeviseApp extends StatelessWidget {
                   builder: (_) =>
                       const OpenDoorSettingsPage(initialTabIndex: 1),
                 );
+              case '/table':
+                final int? focusWeek = int.tryParse(
+                  parsedRoute.queryParameters['week'] ?? '',
+                );
+                final int? focusWeekday = int.tryParse(
+                  parsedRoute.queryParameters['weekday'] ?? '',
+                );
+                final int? focusSection = int.tryParse(
+                  parsedRoute.queryParameters['section'] ?? '',
+                );
+                return MaterialPageRoute<void>(
+                  builder: (_) => ManagementScreen(
+                    initialOriginalIndex: 0,
+                    initialTableFocusWeek: focusWeek,
+                    initialTableFocusWeekday: focusWeekday,
+                    initialTableFocusSection: focusSection,
+                  ),
+                );
               default:
                 return MaterialPageRoute<void>(
                   builder: (_) => const ManagementScreen(),
@@ -93,7 +115,18 @@ class DormDeviseApp extends StatelessWidget {
 
 /// 主控制台页面，提供底部导航与多页切换。
 class ManagementScreen extends StatefulWidget {
-  const ManagementScreen({super.key});
+  const ManagementScreen({
+    super.key,
+    this.initialOriginalIndex,
+    this.initialTableFocusWeek,
+    this.initialTableFocusWeekday,
+    this.initialTableFocusSection,
+  });
+
+  final int? initialOriginalIndex;
+  final int? initialTableFocusWeek;
+  final int? initialTableFocusWeekday;
+  final int? initialTableFocusSection;
 
   /// 创建与主页面关联的状态对象。
   @override
@@ -158,7 +191,11 @@ class ManagementScreenState extends State<ManagementScreen>
     if (originalIndex == 1) {
       return const OpenDoorPage();
     }
-    return const TablePage();
+    return TablePage(
+      initialFocusWeek: widget.initialTableFocusWeek,
+      initialFocusWeekday: widget.initialTableFocusWeekday,
+      initialFocusSection: widget.initialTableFocusSection,
+    );
   }
 
   /// 为分页添加淡入与平移动画。
@@ -212,8 +249,9 @@ class ManagementScreenState extends State<ManagementScreen>
     WidgetsBinding.instance.addObserver(this);
     // 根据用户设置的默认主页，在导航顺序中查找其实际显示位置
     final navOrder = ThemeService.instance.navOrder;
-    final homePage = ThemeService.instance.defaultHomePage;
-    selectedIndex = navOrder.indexOf(homePage).clamp(0, 2);
+    final int targetOriginalIndex =
+        widget.initialOriginalIndex ?? ThemeService.instance.defaultHomePage;
+    selectedIndex = navOrder.indexOf(targetOriginalIndex).clamp(0, 2);
     _page = selectedIndex.toDouble();
     _pageController = PageController(initialPage: selectedIndex);
     _bindWidgetLaunchEvents();

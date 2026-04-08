@@ -20,6 +20,7 @@ class MainActivity : FlutterActivity() {
 	private companion object {
 		const val PIN_DOOR_WIDGET_REQUEST_CODE = 3001
 		const val PIN_DOOR_SIMPLE_WIDGET_REQUEST_CODE = 3002
+		const val PIN_COURSE_WIDGET_REQUEST_CODE = 3003
 	}
 
 	/**
@@ -195,6 +196,31 @@ class MainActivity : FlutterActivity() {
 							result.success(pinResult)
 						} catch (e: Exception) {
 							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
+						}
+					}
+				}
+				"requestPinCourseScheduleWidget" -> {
+					runOnUiThread {
+						try {
+							val pinResult = DoorWidgetPinRequestHelper.requestPin(
+								activity = this,
+								providerClass = CourseScheduleWidgetProvider::class.java,
+								previewLayoutResId = R.layout.widget_course_schedule_preview,
+								requestCode = PIN_COURSE_WIDGET_REQUEST_CODE,
+							)
+							result.success(pinResult)
+						} catch (e: Exception) {
+							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
+						}
+					}
+				}
+				"syncCourseWidgetToToday" -> {
+					runOnUiThread {
+						try {
+							CourseScheduleWidgetProvider.syncAllWidgetsToToday(applicationContext)
+							result.success(null)
+						} catch (e: Exception) {
+							result.error("SYNC_COURSE_WIDGET_TO_TODAY_FAILED", e.message, null)
 						}
 					}
 				}
