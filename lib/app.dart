@@ -13,6 +13,7 @@ import 'package:dormdevise/services/update/update_check_service.dart';
 import 'package:dormdevise/services/update/update_download_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -420,50 +421,68 @@ class ManagementScreenState extends State<ManagementScreen>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      extendBody: true,
-      resizeToAvoidBottomInset: false,
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: IgnorePointer(
-          ignoring: _navLocked,
-          child: NavigationBar(
-            height: 72,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            indicatorColor: colorScheme.secondaryContainer,
-            selectedIndex: selectedIndex,
-            onDestinationSelected: (value) {
-              if (_navLocked || selectedIndex == value) {
-                return;
-              }
-              _pageController.animateToPage(
-                value,
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.ease,
-              );
-            },
-            destinations: [
-              // 根据导航顺序动态构建底部导航项
-              for (final oi in ThemeService.instance.navOrder)
-                _allDestinations[oi],
-            ],
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-            elevation: 0,
-            shadowColor: Colors.transparent,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) return;
+        // 按返回键时移至后台，而非退出应用
+        _moveTaskToBack();
+      },
+      child: Scaffold(
+        extendBody: true,
+        resizeToAvoidBottomInset: false,
+        bottomNavigationBar: Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: IgnorePointer(
+            ignoring: _navLocked,
+            child: NavigationBar(
+              height: 72,
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              indicatorColor: colorScheme.secondaryContainer,
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (value) {
+                if (_navLocked || selectedIndex == value) {
+                  return;
+                }
+                _pageController.animateToPage(
+                  value,
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.ease,
+                );
+              },
+              destinations: [
+                // 根据导航顺序动态构建底部导航项
+                for (final oi in ThemeService.instance.navOrder)
+                  _allDestinations[oi],
+              ],
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+              elevation: 0,
+              shadowColor: Colors.transparent,
+            ),
           ),
         ),
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: 3,
-        itemBuilder: (context, index) => _buildAnimatedPage(context, index),
-        onPageChanged: (index) {
-          setState(() {
-            selectedIndex = index;
-          });
-        },
+        body: PageView.builder(
+          controller: _pageController,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: 3,
+          itemBuilder: (context, index) => _buildAnimatedPage(context, index),
+          onPageChanged: (index) {
+            setState(() {
+              selectedIndex = index;
+            });
+          },
+        ),
       ),
     );
+  }
+
+  /// 将应用移至后台（相当于按 Home 键）。
+  Future<void> _moveTaskToBack() async {
+    try {
+      const MethodChannel channel = MethodChannel('dormdevise/home_widget');
+      await channel.invokeMethod<void>('returnToHomeScreen');
+    } catch (_) {
+      // 静默忽略失败
+    }
   }
 }
