@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dormdevise/models/door_widget_state.dart';
+import 'package:dormdevise/utils/app_toast.dart';
 import 'package:dormdevise/widgets/door_desktop_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -144,30 +145,40 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
         return;
       }
 
-      final messenger = ScaffoldMessenger.of(context);
       if (pinResult.requestAccepted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('系统添加请求已发起，请在系统弹窗中确认添加。')),
+        AppToast.show(
+          context,
+          '系统添加请求已发起，请在系统弹窗中确认添加。',
+          variant: AppToastVariant.success,
         );
         return;
       }
 
-      final String message = switch (pinResult.fallbackType) {
-        'permission' => '已打开系统权限页，请允许桌面快捷方式或桌面组件相关权限后重试。',
-        'app_details' => '已打开应用信息页，请检查桌面组件相关权限或系统限制后重试。',
-        'home_screen' => '当前桌面未弹出系统添加窗口，已返回桌面，请长按空白处手动添加组件。',
-        _ when !pinResult.pinSupported || !pinResult.fallbackOpened =>
+      final (message, variant) = switch (pinResult.fallbackType) {
+        'permission' => (
+          '已打开系统权限页，请允许桌面快捷方式或桌面组件相关权限后重试。',
+          AppToastVariant.warning,
+        ),
+        'app_details' => (
+          '已打开应用信息页，请检查桌面组件相关权限或系统限制后重试。',
+          AppToastVariant.warning,
+        ),
+        'home_screen' => (
+          '当前桌面未弹出系统添加窗口，已返回桌面，请长按空白处手动添加组件。',
+          AppToastVariant.info,
+        ),
+        _ when !pinResult.pinSupported || !pinResult.fallbackOpened => (
           '当前桌面暂不支持应用内自动添加，请长按桌面空白处手动添加组件。',
-        _ => '当前桌面未响应系统添加请求，请长按桌面空白处手动添加组件。',
+          AppToastVariant.warning,
+        ),
+        _ => ('当前桌面未响应系统添加请求，请长按桌面空白处手动添加组件。', AppToastVariant.warning),
       };
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      AppToast.show(context, message, variant: variant);
     } on PlatformException {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('组件添加请求失败，请稍后重试。')));
+      AppToast.show(context, '组件添加请求失败，请稍后重试。', variant: AppToastVariant.error);
     }
   }
 
