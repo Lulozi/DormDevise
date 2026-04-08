@@ -9,10 +9,12 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
+import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
 
 /**
@@ -89,7 +91,11 @@ class DoorWidgetProvider : HomeWidgetProvider() {
 
     appWidgetIds.forEach { widgetId ->
       try {
-        val views = RemoteViews(context.packageName, R.layout.widget_door)
+        val compactLayout = shouldUseCompactLayout(appWidgetManager, widgetId)
+        val views = RemoteViews(
+          context.packageName,
+          if (compactLayout) R.layout.widget_door_compact else R.layout.widget_door,
+        )
 
         val busy = widgetData.getBoolean("door_widget_busy", false)
 
@@ -99,17 +105,6 @@ class DoorWidgetProvider : HomeWidgetProvider() {
         val wifiStatus = widgetData.getInt("door_widget_wifi_status", 1) // 0=connected, 1=disconnected, 2=unconfigured
         val mqttConnStatus = widgetData.getInt("door_widget_mqtt_connection_status", 1) // 0=connected, 1=disconnected, 2=failed
         val mqttSubStatus = widgetData.getInt("door_widget_mqtt_subscription_status", 1) // 0=subscribed, 1=unsubscribed
-
-        // 更新门锁状态
-        val (doorText, doorBg, doorColor) = when {
-          busy -> Triple("正在开门...", R.drawable.widget_chip_gray, R.color.widget_gray)
-          doorStatus == 1 -> Triple("开门成功", R.drawable.widget_chip_green, R.color.widget_success)
-          doorStatus == 2 -> Triple("开门失败", R.drawable.widget_chip_red, R.color.widget_error)
-          else -> Triple("待开门", R.drawable.widget_chip_gray, R.color.widget_gray)
-        }
-        views.setTextViewText(R.id.door_widget_door_status, doorText)
-        views.setInt(R.id.door_widget_door_status, "setBackgroundResource", doorBg)
-        views.setTextColor(R.id.door_widget_door_status, ContextCompat.getColor(context, doorColor))
 
         // 更新设备状态
         val (deviceText, deviceBg, deviceColor) = when (deviceStatus) {
@@ -121,29 +116,42 @@ class DoorWidgetProvider : HomeWidgetProvider() {
         views.setInt(R.id.door_widget_device_status, "setBackgroundResource", deviceBg)
         views.setTextColor(R.id.door_widget_device_status, ContextCompat.getColor(context, deviceColor))
 
-        // 更新WiFi状态
-        val (wifiText, wifiBg, wifiColor) = when (wifiStatus) {
-          0 -> Triple("WiFi：已连接", R.drawable.widget_chip_green, R.color.widget_success)
-          2 -> Triple("WiFi：非配置", R.drawable.widget_chip_yellow, R.color.widget_warning)
-          else -> Triple("WiFi：未连接", R.drawable.widget_chip_gray, R.color.widget_gray)
-        }
-        views.setTextViewText(R.id.door_widget_wifi_status, wifiText)
-        views.setInt(R.id.door_widget_wifi_status, "setBackgroundResource", wifiBg)
-        views.setTextColor(R.id.door_widget_wifi_status, ContextCompat.getColor(context, wifiColor))
+        if (!compactLayout) {
+          // 更新门锁状态
+          val (doorText, doorBg, doorColor) = when {
+            busy -> Triple("正在开门...", R.drawable.widget_chip_gray, R.color.widget_gray)
+            doorStatus == 1 -> Triple("开门成功", R.drawable.widget_chip_green, R.color.widget_success)
+            doorStatus == 2 -> Triple("开门失败", R.drawable.widget_chip_red, R.color.widget_error)
+            else -> Triple("待开门", R.drawable.widget_chip_gray, R.color.widget_gray)
+          }
+          views.setTextViewText(R.id.door_widget_door_status, doorText)
+          views.setInt(R.id.door_widget_door_status, "setBackgroundResource", doorBg)
+          views.setTextColor(R.id.door_widget_door_status, ContextCompat.getColor(context, doorColor))
 
-        // 更新 MQTT 状态显示优先级：连接失败 > 未订阅 > 已连接 > 未连接
-        val isMqttConnected = mqttConnStatus == 0
-        val isMqttFailed = mqttConnStatus == 2
-        val isMqttSubscribed = mqttSubStatus == 0
-        val (mqttText, mqttBg, mqttColor) = when {
-          isMqttFailed -> Triple("MQTT：连接失败", R.drawable.widget_chip_red, R.color.widget_error)
-          !isMqttSubscribed -> Triple("MQTT：未订阅", R.drawable.widget_chip_yellow, R.color.widget_warning)
-          isMqttConnected -> Triple("MQTT：已连接", R.drawable.widget_chip_green, R.color.widget_success)
-          else -> Triple("MQTT：未连接", R.drawable.widget_chip_gray, R.color.widget_gray)
+          // 更新WiFi状态
+          val (wifiText, wifiBg, wifiColor) = when (wifiStatus) {
+            0 -> Triple("WiFi：已连接", R.drawable.widget_chip_green, R.color.widget_success)
+            2 -> Triple("WiFi：非配置", R.drawable.widget_chip_yellow, R.color.widget_warning)
+            else -> Triple("WiFi：未连接", R.drawable.widget_chip_gray, R.color.widget_gray)
+          }
+          views.setTextViewText(R.id.door_widget_wifi_status, wifiText)
+          views.setInt(R.id.door_widget_wifi_status, "setBackgroundResource", wifiBg)
+          views.setTextColor(R.id.door_widget_wifi_status, ContextCompat.getColor(context, wifiColor))
+
+          // 更新 MQTT 状态显示优先级：连接失败 > 未订阅 > 已连接 > 未连接
+          val isMqttConnected = mqttConnStatus == 0
+          val isMqttFailed = mqttConnStatus == 2
+          val isMqttSubscribed = mqttSubStatus == 0
+          val (mqttText, mqttBg, mqttColor) = when {
+            isMqttFailed -> Triple("MQTT：连接失败", R.drawable.widget_chip_red, R.color.widget_error)
+            !isMqttSubscribed -> Triple("MQTT：未订阅", R.drawable.widget_chip_yellow, R.color.widget_warning)
+            isMqttConnected -> Triple("MQTT：已连接", R.drawable.widget_chip_green, R.color.widget_success)
+            else -> Triple("MQTT：未连接", R.drawable.widget_chip_gray, R.color.widget_gray)
+          }
+          views.setTextViewText(R.id.door_widget_mqtt_status, mqttText)
+          views.setInt(R.id.door_widget_mqtt_status, "setBackgroundResource", mqttBg)
+          views.setTextColor(R.id.door_widget_mqtt_status, ContextCompat.getColor(context, mqttColor))
         }
-        views.setTextViewText(R.id.door_widget_mqtt_status, mqttText)
-        views.setInt(R.id.door_widget_mqtt_status, "setBackgroundResource", mqttBg)
-        views.setTextColor(R.id.door_widget_mqtt_status, ContextCompat.getColor(context, mqttColor))
 
         // 更新门锁图标
         val iconRes = if (doorStatus == 1) {
@@ -185,6 +193,21 @@ class DoorWidgetProvider : HomeWidgetProvider() {
       }
     }
   }
+
+  override fun onAppWidgetOptionsChanged(
+    context: Context,
+    appWidgetManager: AppWidgetManager,
+    appWidgetId: Int,
+    newOptions: Bundle,
+  ) {
+    super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+    onUpdate(
+      context = context,
+      appWidgetManager = appWidgetManager,
+      appWidgetIds = intArrayOf(appWidgetId),
+      widgetData = HomeWidgetPlugin.getData(context),
+    )
+  }
   
   /**
    * 启动闪烁效果
@@ -217,6 +240,16 @@ class DoorWidgetProvider : HomeWidgetProvider() {
     blinkHandler = null
     blinkRunnable = null
     isBlinkVisible = true
+  }
+
+  private fun shouldUseCompactLayout(
+    appWidgetManager: AppWidgetManager,
+    widgetId: Int,
+  ): Boolean {
+    val options = appWidgetManager.getAppWidgetOptions(widgetId)
+    val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+    val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+    return minWidth in 1..84 && minHeight in 1..84
   }
   
   /**

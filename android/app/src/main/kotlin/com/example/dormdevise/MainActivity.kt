@@ -17,6 +17,11 @@ class MainActivity : FlutterActivity() {
 	private var receiver: PackageInstallReceiver? = null
 	private var eventSink: EventChannel.EventSink? = null
 
+	private companion object {
+		const val PIN_DOOR_WIDGET_REQUEST_CODE = 3001
+		const val PIN_DOOR_SIMPLE_WIDGET_REQUEST_CODE = 3002
+	}
+
 	/**
 	 * 解析启动参数中的路由信息，支持直接进入配置页面。
 	 */
@@ -155,19 +160,12 @@ class MainActivity : FlutterActivity() {
 				"requestPinDoorWidget" -> {
 					runOnUiThread {
 						try {
-							if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-								result.success(false)
-								return@runOnUiThread
-							}
-
-							val appWidgetManager = getSystemService(AppWidgetManager::class.java)
-							if (appWidgetManager == null || !appWidgetManager.isRequestPinAppWidgetSupported) {
-								result.success(false)
-								return@runOnUiThread
-							}
-
-							val provider = ComponentName(this, DoorWidgetProvider::class.java)
-							val requested = appWidgetManager.requestPinAppWidget(provider, null, null)
+							val requested = DoorWidgetPinRequestHelper.requestPin(
+								activity = this,
+								providerClass = DoorWidgetProvider::class.java,
+								previewLayoutResId = R.layout.widget_door,
+								requestCode = PIN_DOOR_WIDGET_REQUEST_CODE,
+							)
 							result.success(requested)
 						} catch (e: Exception) {
 							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
@@ -178,14 +176,7 @@ class MainActivity : FlutterActivity() {
 					runOnUiThread {
 						try {
 							moveTaskToBack(true)
-							val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-								addCategory(Intent.CATEGORY_HOME)
-								addFlags(
-									Intent.FLAG_ACTIVITY_NEW_TASK or
-									Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-								)
-							}
-							startActivity(homeIntent)
+							DoorWidgetPinRequestHelper.returnToHomeScreen(this)
 							result.success(null)
 						} catch (e: Exception) {
 							result.error("HOME_SCREEN_LAUNCH_FAILED", e.message, null)
@@ -195,19 +186,12 @@ class MainActivity : FlutterActivity() {
 				"requestPinDoorSimpleWidget" -> {
 					runOnUiThread {
 						try {
-							if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-								result.success(false)
-								return@runOnUiThread
-							}
-
-							val appWidgetManager = getSystemService(AppWidgetManager::class.java)
-							if (appWidgetManager == null || !appWidgetManager.isRequestPinAppWidgetSupported) {
-								result.success(false)
-								return@runOnUiThread
-							}
-
-							val provider = ComponentName(this, DoorSimpleWidgetProvider::class.java)
-							val requested = appWidgetManager.requestPinAppWidget(provider, null, null)
+							val requested = DoorWidgetPinRequestHelper.requestPin(
+								activity = this,
+								providerClass = DoorSimpleWidgetProvider::class.java,
+								previewLayoutResId = R.layout.widget_door_simple,
+								requestCode = PIN_DOOR_SIMPLE_WIDGET_REQUEST_CODE,
+							)
 							result.success(requested)
 						} catch (e: Exception) {
 							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)

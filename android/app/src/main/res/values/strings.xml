@@ -7,5 +7,5 @@
     <string name="door_widget_action_label">轻点开门</string>
     <string name="door_widget_full_description">完整版门锁组件，显示完整设备状态</string>
     <string name="door_widget_simple_name">舍设开门(简洁)</string>
-    <string name="door_widget_simple_description">简洁版门锁组件，仅显示设备状态</string>
+    <string name="door_widget_simple_description">简洁版门锁组件，仅显示门锁图标与状态条</string>
 </resources>

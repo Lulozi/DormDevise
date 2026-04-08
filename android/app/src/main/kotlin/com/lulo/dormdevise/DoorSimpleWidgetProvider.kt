@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Bundle
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
+import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
 
 /**
@@ -79,8 +81,6 @@ class DoorSimpleWidgetProvider : HomeWidgetProvider() {
 
                 // 读取状态数据
                 val doorStatus = widgetData.getInt("door_widget_door_lock_status", 0) // 0=pending, 1=success, 2=failed
-                val deviceStatus = widgetData.getInt("door_widget_device_status", 1) // 0=online, 1=offline, 2=abnormal
-
                 // 更新门锁图标（解锁/锁定状态）
                 val iconRes = if (doorStatus == 1) {
                     R.drawable.ic_lock_open
@@ -96,16 +96,6 @@ class DoorSimpleWidgetProvider : HomeWidgetProvider() {
                     else -> ContextCompat.getColor(context, R.color.widget_text)
                 }
                 views.setInt(R.id.door_widget_simple_icon, "setColorFilter", iconTint)
-
-                // 更新设备状态
-                val (deviceText, deviceBg, deviceColor) = when (deviceStatus) {
-                    0 -> Triple("设备在线", R.drawable.widget_chip_green, R.color.widget_success)
-                    2 -> Triple("设备异常", R.drawable.widget_chip_yellow, R.color.widget_warning)
-                    else -> Triple("设备离线", R.drawable.widget_chip_gray, R.color.widget_gray)
-                }
-                views.setTextViewText(R.id.door_widget_simple_device_status, deviceText)
-                views.setInt(R.id.door_widget_simple_device_status, "setBackgroundResource", deviceBg)
-                views.setTextColor(R.id.door_widget_simple_device_status, ContextCompat.getColor(context, deviceColor))
 
                 // 点击事件
                 val clickIntent = Intent(context, DoorWidgetClickReceiver::class.java).apply {
@@ -125,5 +115,20 @@ class DoorSimpleWidgetProvider : HomeWidgetProvider() {
                 android.util.Log.e("DoorSimpleWidgetProvider", "Widget update failed: ${e.message}", e)
             }
         }
+    }
+
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        onUpdate(
+            context = context,
+            appWidgetManager = appWidgetManager,
+            appWidgetIds = intArrayOf(appWidgetId),
+            widgetData = HomeWidgetPlugin.getData(context),
+        )
     }
 }

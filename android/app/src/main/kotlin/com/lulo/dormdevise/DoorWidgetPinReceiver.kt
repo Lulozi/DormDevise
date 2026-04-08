@@ -1,6 +1,7 @@
 package com.lulo.dormdevise
 
 import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -12,25 +13,36 @@ import android.content.Intent
  */
 class DoorWidgetPinReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
+        val providerClass = DoorWidgetPinRequestHelper.resolveProviderClass(
+            intent?.getStringExtra(DoorWidgetPinRequestHelper.extraProviderClassName),
+        ) ?: DoorWidgetProvider::class.java
+
         val appWidgetManager = AppWidgetManager.getInstance(context)
-        val widgetIds = appWidgetManager.getAppWidgetIds(
-            ComponentName(context, DoorWidgetProvider::class.java)
-        )
+        val widgetIds = resolveWidgetIds(context, intent, appWidgetManager, providerClass)
         if (widgetIds.isNotEmpty()) {
-            val updateIntent = Intent(context, DoorWidgetProvider::class.java).apply {
+            val updateIntent = Intent(context, providerClass).apply {
                 action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, widgetIds)
             }
             context.sendBroadcast(updateIntent)
         }
 
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-            )
+        DoorWidgetPinRequestHelper.returnToHomeScreen(context)
+    }
+
+    private fun resolveWidgetIds(
+        context: Context,
+        intent: Intent?,
+        appWidgetManager: AppWidgetManager,
+        providerClass: Class<out AppWidgetProvider>,
+    ): IntArray {
+        val widgetId = intent?.getIntExtra(
+            AppWidgetManager.EXTRA_APPWIDGET_ID,
+            AppWidgetManager.INVALID_APPWIDGET_ID,
+        ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
+        if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            return intArrayOf(widgetId)
         }
-        context.startActivity(homeIntent)
+        return appWidgetManager.getAppWidgetIds(ComponentName(context, providerClass))
     }
 }

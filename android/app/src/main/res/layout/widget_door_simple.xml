@@ -1,64 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 1x1简洁门锁组件布局：只显示门锁图标和设备状态 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 1x1简洁门锁组件布局：只显示门锁图标 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/door_widget_simple_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_container_bg"
     android:gravity="center"
-    android:orientation="vertical"
     android:padding="4dp">
 
-    <!-- 门锁图标 - 占50%高度 -->
-    <FrameLayout
-        android:id="@+id/door_widget_simple_icon_container"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_gravity="center">
-
-        <FrameLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_gravity="center"
-            android:background="@drawable/widget_icon_bg_small">
-
-            <ImageView
-                android:id="@+id/door_widget_simple_icon"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:adjustViewBounds="true"
-                android:layout_gravity="center"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_lock_outline"
-                android:contentDescription="@string/door_widget_name" />
-        </FrameLayout>
-    </FrameLayout>
-
-    <!-- 设备状态 - 占50%高度 -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:id="@+id/door_widget_simple_icon_container"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_icon_bg_small"
         android:gravity="center"
         android:orientation="vertical">
 
-        <!-- 设备状态标签 -->
-        <TextView
-            android:id="@+id/door_widget_simple_device_status"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
-            android:background="@drawable/widget_chip_green"
-            android:text="设备在线"
-            android:textColor="@color/widget_success"
-            android:textSize="10sp"
-            android:singleLine="true"
-            android:gravity="center" />
+        <ImageView
+            android:id="@+id/door_widget_simple_icon"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:adjustViewBounds="true"
+            android:layout_gravity="center"
+            android:padding="9dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_lock_outline"
+            android:contentDescription="@string/door_widget_name" />
     </LinearLayout>
 
-</LinearLayout>
+</FrameLayout>

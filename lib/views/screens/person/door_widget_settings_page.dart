@@ -4,7 +4,6 @@ import 'package:dormdevise/models/door_widget_state.dart';
 import 'package:dormdevise/widgets/door_desktop_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:home_widget/home_widget.dart';
 
 /// 桌面微件配置页，包含开门组件和课表组件两个Tab。
 class DoorWidgetSettingsPage extends StatefulWidget {
@@ -99,36 +98,21 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
       final bool? requestedByNative = await _homeChannel.invokeMethod<bool>(
         methodName,
       );
-      if (requestedByNative == true) {
-        // 原生侧 requestPin 成功后会在用户确认“添加到主屏幕”时通过成功回调返回桌面。
+      if (!context.mounted) {
         return;
       }
-
-      final String providerName = simple
-          ? 'DoorSimpleWidgetProvider'
-          : 'DoorWidgetProvider';
-      final String qualifiedName = simple
-          ? 'com.lulo.dormdevise.DoorSimpleWidgetProvider'
-          : 'com.lulo.dormdevise.DoorWidgetProvider';
-      await HomeWidget.requestPinWidget(
-        name: providerName,
-        qualifiedAndroidName: qualifiedName,
-      );
-    } catch (e) {
-      try {
-        final String providerName = simple
-            ? 'DoorSimpleWidgetProvider'
-            : 'DoorWidgetProvider';
-        final String qualifiedName = simple
-            ? 'com.lulo.dormdevise.DoorSimpleWidgetProvider'
-            : 'com.lulo.dormdevise.DoorWidgetProvider';
-        await HomeWidget.requestPinWidget(
-          name: providerName,
-          qualifiedAndroidName: qualifiedName,
+      if (requestedByNative != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前桌面暂不支持应用内自动添加，请长按桌面空白处手动添加组件。')),
         );
-      } catch (_) {
-        // 静默失败
       }
+    } on PlatformException {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('组件添加请求失败，请稍后重试。')));
     }
   }
 
@@ -277,10 +261,8 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
                                         width: 1,
                                       ),
                                     ),
-                                    child: SimpleDoorLockWidget(
-                                      state: _previewState,
-                                      busy: false,
-                                      onDoubleTap: null,
+                                    child: _SimpleDoorWidgetPreview(
+                                      colorScheme: colorScheme,
                                     ),
                                   ),
                                 ),
@@ -339,10 +321,42 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
                 Text('1. 点击上方按钮或长按桌面空白处添加组件。'),
                 Text('2. 双击门锁图标即可静默发送开门指令。'),
                 Text('3. 组件每秒自动检测状态变化并更新。'),
-                Text('4. 完整版显示WiFi、MQTT和设备状态。'),
-                Text('5. 简洁版只显示门锁图标和设备状态。'),
+                Text('4. 完整版显示 WiFi、MQTT 和设备状态，缩到 1x1 会自动切换紧凑样式。'),
+                Text('5. 简洁版只显示门锁图标。'),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SimpleDoorWidgetPreview extends StatelessWidget {
+  const _SimpleDoorWidgetPreview({required this.colorScheme});
+
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: colorScheme.surface,
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.4),
+              width: 1.2,
+            ),
+          ),
+          child: Icon(
+            Icons.lock_outline_rounded,
+            size: 20,
+            color: colorScheme.onSurface,
           ),
         ),
       ],

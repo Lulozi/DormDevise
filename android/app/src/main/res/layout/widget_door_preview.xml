@@ -5,102 +5,132 @@
     android:background="@drawable/widget_container_bg"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="4dp">
+    android:padding="6dp">
 
-    <!-- 门锁图标 - 占50%高度 -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_weight="0.82"
         android:layout_gravity="center">
 
         <FrameLayout
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:background="@drawable/widget_icon_bg">
 
             <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
                 android:adjustViewBounds="true"
                 android:layout_gravity="center"
-                android:padding="10dp"
+                android:padding="11dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_lock_outline"
                 android:contentDescription="@string/door_widget_name" />
         </FrameLayout>
     </FrameLayout>
 
-    <!-- 状态区域 - 占50%高度 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center"
+        android:layout_weight="1.18"
+        android:gravity="center_horizontal"
         android:orientation="vertical"
         android:layout_marginTop="2dp">
 
-        <!-- 门锁状态标签 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:layout_gravity="center_horizontal"
+            android:autoSizeMaxTextSize="10sp"
+            android:autoSizeMinTextSize="6sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="94dp"
+            android:minWidth="60dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
             android:background="@drawable/widget_chip_gray"
             android:text="待开门"
             android:textColor="@color/widget_gray"
-            android:textSize="11sp"
+            android:textSize="10sp"
+            android:includeFontPadding="false"
             android:singleLine="true"
             android:gravity="center" />
 
-        <!-- 设备状态 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:layout_marginTop="2dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:autoSizeMaxTextSize="10sp"
+            android:autoSizeMinTextSize="6sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="94dp"
+            android:minWidth="60dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
             android:background="@drawable/widget_chip_green"
             android:text="设备在线"
             android:textColor="@color/widget_success"
-            android:textSize="11sp"
+            android:textSize="10sp"
+            android:includeFontPadding="false"
             android:singleLine="true"
             android:gravity="center" />
 
-        <!-- WiFi状态 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:layout_marginTop="2dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:autoSizeMaxTextSize="10sp"
+            android:autoSizeMinTextSize="6sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="94dp"
+            android:minWidth="60dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
             android:background="@drawable/widget_chip_yellow"
             android:text="WiFi：非配置"
             android:textColor="@color/widget_warning"
-            android:textSize="11sp"
+            android:textSize="10sp"
+            android:includeFontPadding="false"
             android:singleLine="true"
             android:gravity="center" />
 
-        <!-- MQTT状态 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:layout_marginTop="2dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:autoSizeMaxTextSize="10sp"
+            android:autoSizeMinTextSize="6sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:maxWidth="94dp"
+            android:minWidth="60dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
             android:background="@drawable/widget_chip_red"
             android:text="MQTT：连接失败"
             android:textColor="@color/widget_error"
-            android:textSize="11sp"
+            android:textSize="10sp"
+            android:includeFontPadding="false"
             android:singleLine="true"
             android:gravity="center" />
     </LinearLayout>
