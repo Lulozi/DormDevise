@@ -401,10 +401,6 @@ class CourseScheduleWidgetProvider : HomeWidgetProvider() {
             snapshot: CourseScheduleWidgetSnapshot,
             startSection: Int? = null,
         ): String {
-            val resolvedStartSection = startSection
-                ?: snapshot.courses
-                    .getOrNull(CourseScheduleWidgetData.resolveFocusIndex(snapshot))
-                    ?.startSection
             val queryParts = buildList {
                 add("fromWidget=1")
                 if (snapshot.currentWeek > 0) {
@@ -413,8 +409,8 @@ class CourseScheduleWidgetProvider : HomeWidgetProvider() {
                 if (snapshot.weekday in 1..7) {
                     add("weekday=${snapshot.weekday}")
                 }
-                if (resolvedStartSection != null && resolvedStartSection > 0) {
-                    add("section=$resolvedStartSection")
+                if (startSection != null && startSection > 0) {
+                    add("section=$startSection")
                 }
             }
             return if (queryParts.isEmpty()) {
