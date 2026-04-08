@@ -27,7 +27,6 @@ object DoorWidgetPinRequestHelper {
     private const val fallbackTypePermission = "permission"
     private const val fallbackTypeHomeScreen = "home_screen"
     private const val fallbackTypeAppDetails = "app_details"
-    private const val extraPinRequestToken = "pinRequestToken"
 
     private data class PinRequestResult(
         val requestAccepted: Boolean,
@@ -35,6 +34,7 @@ object DoorWidgetPinRequestHelper {
         val fallbackOpened: Boolean,
         val fallbackType: String,
         val usedCallback: Boolean,
+        val launchedHomeAfterRequest: Boolean,
         val manufacturer: String,
         val brand: String,
         val launcherPackage: String?,
@@ -45,6 +45,7 @@ object DoorWidgetPinRequestHelper {
             "fallbackOpened" to fallbackOpened,
             "fallbackType" to fallbackType,
             "usedCallback" to usedCallback,
+            "launchedHomeAfterRequest" to launchedHomeAfterRequest,
             "manufacturer" to manufacturer,
             "brand" to brand,
             "launcherPackage" to launcherPackage,
@@ -73,6 +74,7 @@ object DoorWidgetPinRequestHelper {
                 fallbackOpened = false,
                 fallbackType = fallbackTypeNone,
                 usedCallback = false,
+                launchedHomeAfterRequest = false,
                 manufacturer = manufacturer,
                 brand = brand,
                 launcherPackage = launcherPackage,
@@ -86,6 +88,7 @@ object DoorWidgetPinRequestHelper {
                 fallbackOpened = false,
                 fallbackType = fallbackTypeNone,
                 usedCallback = false,
+                launchedHomeAfterRequest = false,
                 manufacturer = manufacturer,
                 brand = brand,
                 launcherPackage = launcherPackage,
@@ -99,50 +102,43 @@ object DoorWidgetPinRequestHelper {
             )
 
             val provider = ComponentName(activity, providerClass)
-            val requestToken = buildRequestToken(providerClass)
-            val requestExtras = buildRequestExtras(requestToken)
-            val successCallback = buildSuccessCallback(
-                context = activity,
-                providerClass = providerClass,
-                requestCode = resolveRequestCode(requestCode),
-                requestToken = requestToken,
-            )
-            val requestAccepted = requestPinCompat(
-                appWidgetManager = appWidgetManager,
-                provider = provider,
-                requestExtras = requestExtras,
-                successCallback = successCallback,
-            )
-            if (requestAccepted) {
-                return PinRequestResult(
-                    requestAccepted = true,
-                    pinSupported = true,
-                    fallbackOpened = false,
-                    fallbackType = fallbackTypeNone,
-                    usedCallback = true,
-                    manufacturer = manufacturer,
-                    brand = brand,
-                    launcherPackage = launcherPackage,
-                ).toMap()
-            }
-
-            val requestAcceptedWithoutCallback = requestPinCompat(
-                appWidgetManager = appWidgetManager,
-                provider = provider,
-                requestExtras = requestExtras,
-                successCallback = null,
-            )
-            if (requestAcceptedWithoutCallback) {
-                return PinRequestResult(
-                    requestAccepted = true,
-                    pinSupported = true,
-                    fallbackOpened = false,
-                    fallbackType = fallbackTypeNone,
-                    usedCallback = false,
-                    manufacturer = manufacturer,
-                    brand = brand,
-                    launcherPackage = launcherPackage,
-                ).toMap()
+            val pinAttempts = listOf(true, false)
+            pinAttempts.forEach { useCallback ->
+                val successCallback = if (useCallback) {
+                    buildSuccessCallback(
+                        context = activity,
+                        providerClass = providerClass,
+                        requestCode = resolveRequestCode(requestCode),
+                    )
+                } else {
+                    null
+                }
+                val requestAccepted = requestPinCompat(
+                    appWidgetManager = appWidgetManager,
+                    provider = provider,
+                    requestExtras = null,
+                    successCallback = successCallback,
+                )
+                if (requestAccepted) {
+                    // vivo/iQOO 设备上 requestPinAppWidget 返回 true 时可能不显示确认弹窗，
+                    // 需要手动跳回桌面让用户确认添加。
+                    val needsManualReturn = isVivoFamilyDevice(manufacturer)
+                    if (needsManualReturn) {
+                        activity.moveTaskToBack(true)
+                        returnToHomeScreen(activity)
+                    }
+                    return PinRequestResult(
+                        requestAccepted = true,
+                        pinSupported = true,
+                        fallbackOpened = false,
+                        fallbackType = fallbackTypeNone,
+                        usedCallback = useCallback,
+                        launchedHomeAfterRequest = needsManualReturn,
+                        manufacturer = manufacturer,
+                        brand = brand,
+                        launcherPackage = launcherPackage,
+                    ).toMap()
+                }
             }
         }
 
@@ -156,6 +152,7 @@ object DoorWidgetPinRequestHelper {
             fallbackOpened = fallback.opened,
             fallbackType = fallback.type,
             usedCallback = false,
+            launchedHomeAfterRequest = false,
             manufacturer = manufacturer,
             brand = brand,
             launcherPackage = launcherPackage,
@@ -165,7 +162,7 @@ object DoorWidgetPinRequestHelper {
     private fun requestPinCompat(
         appWidgetManager: AppWidgetManager,
         provider: ComponentName,
-        requestExtras: Bundle,
+        requestExtras: Bundle?,
         successCallback: PendingIntent?,
     ): Boolean {
         return try {
@@ -175,14 +172,6 @@ object DoorWidgetPinRequestHelper {
         } catch (_: SecurityException) {
             false
         }
-    }
-
-    private fun buildRequestExtras(requestToken: String): Bundle = Bundle().apply {
-        putString(extraPinRequestToken, requestToken)
-    }
-
-    private fun buildRequestToken(providerClass: Class<out AppWidgetProvider>): String {
-        return "${providerClass.name}:${SystemClock.elapsedRealtimeNanos()}"
     }
 
     private fun resolveRequestCode(baseRequestCode: Int): Int {
@@ -324,12 +313,11 @@ object DoorWidgetPinRequestHelper {
         context: Context,
         providerClass: Class<out AppWidgetProvider>,
         requestCode: Int,
-        requestToken: String,
     ): PendingIntent {
         val intent = Intent(context, DoorWidgetPinReceiver::class.java).apply {
             action = actionPinSuccess
             putExtra(extraProviderClassName, providerClass.name)
-            putExtra(extraPinRequestToken, requestToken)
+            data = Uri.parse("dormdevise://widget-pin/${providerClass.name}/$requestCode")
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> PendingIntent.FLAG_MUTABLE

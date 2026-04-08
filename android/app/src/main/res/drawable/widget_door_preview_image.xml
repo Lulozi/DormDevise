@@ -1,58 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 完整版组件预览图：2x2 尺寸，紧凑设计 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="rectangle">
-            <size android:width="220dp" android:height="220dp" />
-            <solid android:color="@android:color/transparent" />
-        </shape>
-    </item>
+    <!-- 背景 -->
+    <item android:drawable="@drawable/widget_container_bg" />
 
-    <item
-        android:bottom="8dp"
-        android:drawable="@drawable/widget_container_bg"
-        android:left="8dp"
-        android:right="8dp"
-        android:top="8dp" />
-
+    <!-- 门锁图标背景 -->
     <item
         android:gravity="top|center_horizontal"
-        android:height="74dp"
-        android:top="22dp"
-        android:width="74dp"
-        android:drawable="@drawable/widget_icon_bg" />
+        android:height="36dp"
+        android:top="8dp"
+        android:width="36dp"
+        android:drawable="@drawable/widget_icon_bg_small" />
 
+    <!-- 门锁图标 -->
     <item
         android:gravity="top|center_horizontal"
-        android:height="30dp"
-        android:top="44dp"
-        android:width="30dp"
+        android:height="20dp"
+        android:top="16dp"
+        android:width="20dp"
         android:drawable="@drawable/ic_lock_outline" />
 
+    <!-- 状态条1：待开门 -->
     <item
         android:gravity="top|center_horizontal"
         android:height="12dp"
-        android:top="114dp"
-        android:width="82dp"
+        android:top="50dp"
+        android:width="60dp"
         android:drawable="@drawable/widget_chip_gray" />
 
+    <!-- 状态条2：设备在线 -->
     <item
         android:gravity="top|center_horizontal"
         android:height="12dp"
-        android:top="131dp"
-        android:width="82dp"
+        android:top="64dp"
+        android:width="60dp"
         android:drawable="@drawable/widget_chip_green" />
 
+    <!-- 状态条3：WiFi状态 -->
     <item
         android:gravity="top|center_horizontal"
         android:height="12dp"
-        android:top="148dp"
-        android:width="82dp"
+        android:top="78dp"
+        android:width="60dp"
         android:drawable="@drawable/widget_chip_yellow" />
 
+    <!-- 状态条4：MQTT状态 -->
     <item
         android:gravity="top|center_horizontal"
         android:height="12dp"
-        android:top="165dp"
-        android:width="82dp"
-        android:drawable="@drawable/widget_chip_red" />
+        android:top="92dp"
+        android:width="60dp"
+        android:drawable="@drawable/widget_chip_gray" />
 </layer-list>

@@ -27,6 +27,8 @@ class DoorWidgetProvider : HomeWidgetProvider() {
     private const val PREFS_NAME = "door_widget_pin_state"
     private const val KEY_PENDING_PIN = "pending_pin_request"
     private const val COMPACT_LAYOUT_MAX_SIZE_DP = 108f
+    private const val DENSE_LAYOUT_MAX_HEIGHT_DP = 148f
+    private const val DENSE_LAYOUT_MAX_ASPECT_RATIO = 0.84f
     
     // 闪烁控制
     private var blinkHandler: Handler? = null
@@ -93,10 +95,15 @@ class DoorWidgetProvider : HomeWidgetProvider() {
 
     appWidgetIds.forEach { widgetId ->
       try {
-        val compactLayout = shouldUseCompactLayout(appWidgetManager, widgetId)
+        val layoutProfile = resolveLayoutProfile(appWidgetManager, widgetId)
+        val compactLayout = layoutProfile == WidgetLayoutProfile.COMPACT
         val views = RemoteViews(
           context.packageName,
-          if (compactLayout) R.layout.widget_door_compact else R.layout.widget_door,
+          when (layoutProfile) {
+            WidgetLayoutProfile.COMPACT -> R.layout.widget_door_compact
+            WidgetLayoutProfile.DENSE -> R.layout.widget_door_dense
+            WidgetLayoutProfile.REGULAR -> R.layout.widget_door
+          },
         )
 
         val busy = widgetData.getBoolean("door_widget_busy", false)
@@ -244,29 +251,47 @@ class DoorWidgetProvider : HomeWidgetProvider() {
     isBlinkVisible = true
   }
 
-  private fun shouldUseCompactLayout(
+  private enum class WidgetLayoutProfile {
+    COMPACT,
+    DENSE,
+    REGULAR,
+  }
+
+  private fun resolveLayoutProfile(
     appWidgetManager: AppWidgetManager,
     widgetId: Int,
-  ): Boolean {
-    val options = appWidgetManager.getAppWidgetOptions(widgetId)
-    val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).toFloat()
-    val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).toFloat()
-    val resolvedSize = if (minWidth > 0f && minHeight > 0f) {
-      SizeF(minWidth, minHeight)
-    } else {
-      getWidgetSizes(options)
-        .filter { size -> size.width > 0f && size.height > 0f }
-        .minByOrNull { size -> size.width * size.height }
-        ?: return false
-    }
-
+  ): WidgetLayoutProfile {
+    val resolvedSize = resolveWidgetSize(appWidgetManager.getAppWidgetOptions(widgetId))
+      ?: return WidgetLayoutProfile.REGULAR
+    val aspectRatio = resolvedSize.height / resolvedSize.width
     val compactLayout = resolvedSize.width <= COMPACT_LAYOUT_MAX_SIZE_DP &&
       resolvedSize.height <= COMPACT_LAYOUT_MAX_SIZE_DP
+    val denseLayout = !compactLayout && (
+      resolvedSize.height <= DENSE_LAYOUT_MAX_HEIGHT_DP ||
+        aspectRatio <= DENSE_LAYOUT_MAX_ASPECT_RATIO
+    )
+    val layoutProfile = when {
+      compactLayout -> WidgetLayoutProfile.COMPACT
+      denseLayout -> WidgetLayoutProfile.DENSE
+      else -> WidgetLayoutProfile.REGULAR
+    }
     android.util.Log.d(
       "DoorWidgetProvider",
-      "Widget $widgetId size=${resolvedSize.width}x${resolvedSize.height} compact=$compactLayout",
+      "Widget $widgetId size=${resolvedSize.width}x${resolvedSize.height} aspect=$aspectRatio profile=$layoutProfile",
     )
-    return compactLayout
+    return layoutProfile
+  }
+
+  private fun resolveWidgetSize(options: Bundle): SizeF? {
+    val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).toFloat()
+    val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).toFloat()
+    if (minWidth > 0f && minHeight > 0f) {
+      return SizeF(minWidth, minHeight)
+    }
+
+    return getWidgetSizes(options)
+      .filter { size -> size.width > 0f && size.height > 0f }
+      .minByOrNull { size -> size.width * size.height }
   }
 
   private fun getWidgetSizes(options: Bundle): List<SizeF> {

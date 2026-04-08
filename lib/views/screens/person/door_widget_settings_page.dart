@@ -13,6 +13,7 @@ class _NativePinRequestResult {
     required this.fallbackOpened,
     required this.fallbackType,
     required this.usedCallback,
+    required this.launchedHomeAfterRequest,
   });
 
   final bool requestAccepted;
@@ -20,6 +21,7 @@ class _NativePinRequestResult {
   final bool fallbackOpened;
   final String fallbackType;
   final bool usedCallback;
+  final bool launchedHomeAfterRequest;
 
   factory _NativePinRequestResult.fromNative(dynamic value) {
     if (value is bool) {
@@ -29,6 +31,7 @@ class _NativePinRequestResult {
         fallbackOpened: false,
         fallbackType: 'none',
         usedCallback: true,
+        launchedHomeAfterRequest: false,
       );
     }
 
@@ -39,6 +42,7 @@ class _NativePinRequestResult {
         fallbackOpened: value['fallbackOpened'] == true,
         fallbackType: (value['fallbackType'] as String?) ?? 'none',
         usedCallback: value['usedCallback'] != false,
+        launchedHomeAfterRequest: value['launchedHomeAfterRequest'] == true,
       );
     }
 
@@ -48,6 +52,7 @@ class _NativePinRequestResult {
       fallbackOpened: false,
       fallbackType: 'none',
       usedCallback: false,
+      launchedHomeAfterRequest: false,
     );
   }
 }
@@ -159,6 +164,9 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
       }
 
       if (pinResult.requestAccepted) {
+        if (pinResult.launchedHomeAfterRequest) {
+          return;
+        }
         AppToast.show(
           context,
           pinResult.usedCallback
@@ -387,9 +395,7 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
                 : () => _requestPinWidget(context, simple: _currentPage == 1),
             icon: const Icon(Icons.add_to_home_screen_rounded),
             label: Text(
-              _isRequestingPin
-                  ? '正在请求系统添加'
-                  : (_currentPage == 0 ? '添加完整版到桌面' : '添加简洁版到桌面'),
+              _currentPage == 0 ? '添加完整版到桌面' : '添加简洁版到桌面',
             ),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
@@ -433,11 +439,11 @@ class _SimpleDoorWidgetPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 76,
-        height: 76,
+        width: 72,
+        height: 72,
         decoration: BoxDecoration(
           color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Center(
           child: Container(

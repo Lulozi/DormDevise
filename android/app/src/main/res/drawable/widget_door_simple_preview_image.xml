@@ -1,28 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="rectangle">
-            <size android:width="120dp" android:height="120dp" />
-            <solid android:color="@android:color/transparent" />
-        </shape>
-    </item>
+    <!-- 外层圆角背景填满整个预览区域 -->
+    <item android:drawable="@drawable/widget_container_bg" />
 
-    <item
-        android:bottom="22dp"
-        android:drawable="@drawable/widget_container_bg_compact"
-        android:left="22dp"
-        android:right="22dp"
-        android:top="22dp" />
-
+    <!-- 中心圆形图标背景 -->
     <item
         android:gravity="center"
-        android:height="48dp"
-        android:width="48dp"
+        android:height="36dp"
+        android:width="36dp"
         android:drawable="@drawable/widget_icon_bg_small" />
 
+    <!-- 门锁图标 -->
     <item
         android:gravity="center"
-        android:height="22dp"
-        android:width="22dp"
+        android:height="20dp"
+        android:width="20dp"
         android:drawable="@drawable/ic_lock_outline" />
 </layer-list>
