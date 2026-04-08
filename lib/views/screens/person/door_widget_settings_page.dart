@@ -250,7 +250,7 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
                               child: FractionallySizedBox(
                                 widthFactor: 0.24,
                                 child: AspectRatio(
-                                  aspectRatio: 0.72,
+                                  aspectRatio: 1,
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
                                     decoration: BoxDecoration(
@@ -339,27 +339,34 @@ class _SimpleDoorWidgetPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: colorScheme.surface,
-            border: Border.all(
-              color: colorScheme.outline.withValues(alpha: 0.4),
-              width: 1.2,
+    return Center(
+      child: Container(
+        width: 74,
+        height: 74,
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Center(
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colorScheme.surface,
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.4),
+                width: 1.2,
+              ),
+            ),
+            child: Icon(
+              Icons.lock_outline_rounded,
+              size: 20,
+              color: colorScheme.onSurface,
             ),
           ),
-          child: Icon(
-            Icons.lock_outline_rounded,
-            size: 20,
-            color: colorScheme.onSurface,
-          ),
         ),
-      ],
+      ),
     );
   }
 }
