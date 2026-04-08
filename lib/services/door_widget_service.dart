@@ -113,8 +113,12 @@ class DoorWidgetService {
       );
       promptChannel.setMethodCallHandler((call) async {
         if (call.method == 'performAutoOpen') {
+          debugPrint('桌面微件直开: 开始触发');
           final DoorTriggerResult result = await DoorTriggerService.instance
               .triggerDoor();
+          debugPrint(
+            '桌面微件直开: ${result.success ? '成功' : '失败'}，原因：${result.message}',
+          );
           await recordManualTriggerResult(result);
           // 尝试通知 native 关闭任何可能存在的浮层（若无 Activity 在前台会被忽略）
           try {
