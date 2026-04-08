@@ -249,6 +249,20 @@ class DoorWidgetService {
     await _ensureStatusListener(force: true);
   }
 
+  /// 门锁配置变更后刷新状态与组件展示，保证已添加组件即时生效。
+  Future<void> onDoorLockConfigChanged({bool mqttConfigChanged = false}) async {
+    if (_disposed) {
+      return;
+    }
+    await _ensureLoaded();
+    if (mqttConfigChanged) {
+      await _ensureStatusListener(force: true);
+    }
+    await _checkAndUpdateState();
+    await _persistStateToWidget();
+    await syncWidget();
+  }
+
   /// 处理桌面微件发起的交互请求，例如滑动开门或手动刷新。
   Future<void> handleWidgetInteraction(Uri? uri) async {
     if (uri == null || uri.host != 'door_widget' || uri.pathSegments.isEmpty) {

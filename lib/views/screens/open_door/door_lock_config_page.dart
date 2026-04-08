@@ -282,8 +282,11 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
         mqttSubscriptionActivated = await _activateImportedMqttSubscription(
           resolvedConfig,
         );
-        await DoorWidgetService.instance.refreshStatusListener();
       }
+
+      await DoorWidgetService.instance.onDoorLockConfigChanged(
+        mqttConfigChanged: hasMqttConfig,
+      );
 
       if (!mounted) {
         return;
