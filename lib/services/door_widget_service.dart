@@ -16,6 +16,27 @@ import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 单次 WiFi 采样结果。
+///
+/// 使用状态 + 标识组合做去重，避免桌面组件因为瞬时采样抖动反复切换。
+class _WifiObservation {
+  const _WifiObservation({required this.status, required this.identifier});
+
+  final WifiStatus status;
+  final String? identifier;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _WifiObservation &&
+        other.status == status &&
+        other.identifier == identifier;
+  }
+
+  @override
+  int get hashCode => Object.hash(status, identifier);
+}
+
 /// 管理桌面微件生命周期、数据持久化与交互回调的核心服务。
 class DoorWidgetService {
   DoorWidgetService._();
@@ -63,6 +84,12 @@ class DoorWidgetService {
 
   /// 上一次检测到的WiFi信息（SSID:BSSID），用于避免重复更新
   String? _lastWifiIdentifier;
+
+  /// 最近一次已确认的 WiFi 采样结果。
+  _WifiObservation? _lastWifiObservation;
+
+  /// 首次出现的新 WiFi 采样结果，需二次确认后才真正更新状态。
+  _WifiObservation? _pendingWifiObservation;
 
   /// MQTT状态主题上一次收到的消息，用于避免重复更新
   String? _lastStatusPayload;
@@ -299,6 +326,13 @@ class DoorWidgetService {
     _state = await _loadState();
     // 从持久化状态恢复WiFi状态缓存，避免状态抖动
     _cachedWifiStatus = _state.wifiStatus;
+    _lastWifiObservation ??= _WifiObservation(
+      status: _state.wifiStatus,
+      identifier: _state.wifiStatus == WifiStatus.disconnected
+          ? ''
+          : _lastWifiIdentifier,
+    );
+    _pendingWifiObservation = null;
     _hasHydrated = true;
   }
 
@@ -936,10 +970,20 @@ class DoorWidgetService {
         }
       }
 
-      // 只有WiFi标识或状态变化时才更新
-      final bool identifierChanged = newWifiIdentifier != _lastWifiIdentifier;
-      final bool statusChanged = newWifiStatus != _cachedWifiStatus;
-      if (identifierChanged || statusChanged) {
+      final _WifiObservation observation = _WifiObservation(
+        status: newWifiStatus,
+        identifier: newWifiIdentifier,
+      );
+
+      if (observation == _lastWifiObservation) {
+        // 与上一次已确认采样一致时不更新，保持与 MQTT/设备状态相同的去重策略。
+        _pendingWifiObservation = null;
+      } else if (_pendingWifiObservation != observation) {
+        // 首次看到新采样先缓存，等待下一次采样再次确认，避免偶发抖动误切换。
+        _pendingWifiObservation = observation;
+      } else {
+        _pendingWifiObservation = null;
+        _lastWifiObservation = observation;
         _lastWifiIdentifier = newWifiIdentifier;
         _cachedWifiStatus = newWifiStatus;
         nextWifiStatus = newWifiStatus;
