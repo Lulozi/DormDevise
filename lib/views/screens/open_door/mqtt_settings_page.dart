@@ -374,10 +374,34 @@ class _MqttSettingsPageState extends State<MqttSettingsPage> {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       unawaited(_persistSubscribedTopic(null, cachedPrefs: prefs));
       await _loadConfig();
+
+      // 导入后立即执行一次订阅连接，避免“只保存未订阅”。
+      final bool mainSubscribed = await _subscribeMainTopic(
+        triggeredBySave: true,
+      );
+
+      // 若导入配置启用了状态主题订阅，则自动恢复状态主题监听。
+      final bool shouldResumeStatus =
+          config.statusEnabled &&
+          (config.statusTopic?.trim().isNotEmpty ?? false);
+      if (shouldResumeStatus && _statusSubscriptionService == null) {
+        await _subscribeStatusTopic(autoResume: true);
+      } else {
+        // 未启用状态订阅时，仍需同步刷新桌面组件监听。
+        await DoorWidgetService.instance.refreshStatusListener();
+      }
+
       final importStr = JsonEncoder.withIndent('  ').convert(decoded);
       if (!mounted) return;
-      _showStatus('配置已导入并保存');
-      _showBubble(context, '配置已导入并保存\n\n$importStr');
+      if (mainSubscribed) {
+        _showStatus('配置已导入并保存，并完成订阅连接');
+      } else {
+        _showStatus('配置已导入并保存，但订阅连接失败', isError: true);
+      }
+      _showBubble(
+        context,
+        '${mainSubscribed ? '配置已导入并完成订阅连接' : '配置已导入，但订阅连接失败'}\n\n$importStr',
+      );
     } catch (e) {
       if (!mounted) return;
       _showStatus('导入失败: $e', isError: true);

@@ -1,161 +1,408 @@
-import 'package:dormdevise/models/door_widget_settings.dart';
-import 'package:dormdevise/services/door_widget_service.dart';
-import 'package:flutter/material.dart';
+import 'dart:io';
 
-/// 桌面微件配置页，提供展示与刷新行为相关的开关。
+import 'package:dormdevise/models/door_widget_state.dart';
+import 'package:dormdevise/widgets/door_desktop_widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:home_widget/home_widget.dart';
+
+/// 桌面微件配置页，包含开门组件和课表组件两个Tab。
 class DoorWidgetSettingsPage extends StatefulWidget {
   const DoorWidgetSettingsPage({super.key});
 
-  /// 创建状态对象，以便处理用户操作并与服务同步。
   @override
   State<DoorWidgetSettingsPage> createState() => _DoorWidgetSettingsPageState();
 }
 
-class _DoorWidgetSettingsPageState extends State<DoorWidgetSettingsPage> {
-  late DoorWidgetSettings _settings;
-  bool _updating = false;
+class _DoorWidgetSettingsPageState extends State<DoorWidgetSettingsPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    _settings = DoorWidgetService.instance.settings;
+    _tabController = TabController(length: 2, vsync: this);
   }
 
-  /// 将修改后的配置同步到服务，并在 UI 中反映最新值。
-  Future<void> _applySettings(DoorWidgetSettings next) async {
-    setState(() {
-      _settings = next;
-      _updating = true;
-    });
-    await DoorWidgetService.instance.updateSettings(next);
-    if (mounted) {
-      setState(() {
-        _updating = false;
-      });
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('桌面组件配置'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: '开门组件', icon: Icon(Icons.lock_outline_rounded)),
+            Tab(text: '课表组件', icon: Icon(Icons.calendar_today_rounded)),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [_DoorWidgetTab(), _ScheduleWidgetTab()],
+      ),
+    );
+  }
+}
+
+/// 开门组件配置Tab
+class _DoorWidgetTab extends StatefulWidget {
+  const _DoorWidgetTab();
+
+  @override
+  State<_DoorWidgetTab> createState() => _DoorWidgetTabState();
+}
+
+class _DoorWidgetTabState extends State<_DoorWidgetTab> {
+  static const MethodChannel _homeChannel = MethodChannel(
+    'dormdevise/home_widget',
+  );
+  static const DoorWidgetState _previewState = DoorWidgetState(
+    busy: false,
+    lastResultSuccess: null,
+    lastResultMessage: '待开门',
+    lastUpdatedAt: null,
+    doorLockStatus: DoorLockStatus.pending,
+    deviceStatus: DeviceStatus.online,
+    wifiStatus: WifiStatus.unconfigured,
+    mqttConnectionStatus: MqttConnectionStatus.failed,
+    mqttSubscriptionStatus: MqttSubscriptionStatus.unsubscribed,
+  );
+
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _requestPinWidget(
+    BuildContext context, {
+    bool simple = false,
+  }) async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+
+    try {
+      final String methodName = simple
+          ? 'requestPinDoorSimpleWidget'
+          : 'requestPinDoorWidget';
+      final bool? requestedByNative = await _homeChannel.invokeMethod<bool>(
+        methodName,
+      );
+      if (requestedByNative == true) {
+        // 原生侧 requestPin 成功后会在用户确认“添加到主屏幕”时通过成功回调返回桌面。
+        return;
+      }
+
+      final String providerName = simple
+          ? 'DoorSimpleWidgetProvider'
+          : 'DoorWidgetProvider';
+      final String qualifiedName = simple
+          ? 'com.lulo.dormdevise.DoorSimpleWidgetProvider'
+          : 'com.lulo.dormdevise.DoorWidgetProvider';
+      await HomeWidget.requestPinWidget(
+        name: providerName,
+        qualifiedAndroidName: qualifiedName,
+      );
+    } catch (e) {
+      try {
+        final String providerName = simple
+            ? 'DoorSimpleWidgetProvider'
+            : 'DoorWidgetProvider';
+        final String qualifiedName = simple
+            ? 'com.lulo.dormdevise.DoorSimpleWidgetProvider'
+            : 'com.lulo.dormdevise.DoorWidgetProvider';
+        await HomeWidget.requestPinWidget(
+          name: providerName,
+          qualifiedAndroidName: qualifiedName,
+        );
+      } catch (_) {
+        // 静默失败
+      }
     }
   }
 
-  /// 构建单个开关条目，复用统一样式。
-  Widget _buildSwitchTile({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return SwitchListTile.adaptive(
-      title: Text(title),
-      subtitle: Text(subtitle),
-      value: value,
-      onChanged: _updating ? null : onChanged,
-    );
-  }
-
-  /// 构建自动刷新频率的下拉选择组件。
-  Widget _buildRefreshDropdown() {
-    const Map<int, String> options = <int, String>{
-      5: '每 5 分钟',
-      10: '每 10 分钟',
-      15: '每 15 分钟',
-      30: '每 30 分钟',
-      60: '每 60 分钟',
-    };
-    return ListTile(
-      title: const Text('自动刷新频率'),
-      subtitle: const Text('开启后将定期刷新微件显示数据'),
-      trailing: DropdownButton<int>(
-        value: options.containsKey(_settings.autoRefreshMinutes)
-            ? _settings.autoRefreshMinutes
-            : 30,
-        onChanged: _updating || !_settings.autoRefreshEnabled
-            ? null
-            : (int? value) {
-                if (value == null) {
-                  return;
-                }
-                _applySettings(_settings.copyWith(autoRefreshMinutes: value));
-              },
-        items: options.entries
-            .map(
-              (entry) => DropdownMenuItem<int>(
-                value: entry.key,
-                child: Text(entry.value),
-              ),
-            )
-            .toList(),
+  Widget _buildPageIndicator(int index, ColorScheme colorScheme) {
+    final bool isSelected = _currentPage == index;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: isSelected ? 24 : 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: isSelected
+            ? colorScheme.primary
+            : colorScheme.outline.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(4),
       ),
     );
   }
 
-  /// 构建页面主体，包括使用说明与设置项。
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('桌面微件配置')),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    '使用小贴士',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  SizedBox(height: 8),
-                  Text('1. 长按桌面空白处，添加微件「舍设开门」。'),
-                  Text('2. 滑动微件中央即可发送开门指令。'),
-                  Text('3. 下方设置项可调整反馈信息与刷新策略。'),
-                ],
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      children: [
+        // 组件预览标题
+        Text(
+          '组件预览',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '预览为固定示例状态：待开门、设备在线、WiFi非配置、MQTT连接失败',
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+
+        // 组件预览卡片 - 支持左右滑动
+        Card(
+          child: Column(
+            children: [
+              SizedBox(
+                height: 256,
+                child: PageView(
+                  controller: _pageController,
+                  onPageChanged: (index) {
+                    setState(() => _currentPage = index);
+                  },
+                  children: [
+                    // 2x2 完整组件预览
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              '完整版',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: colorScheme.onPrimaryContainer,
+                              ),
+                              textScaler: TextScaler.noScaling,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: Center(
+                              child: FractionallySizedBox(
+                                widthFactor: 0.62,
+                                child: AspectRatio(
+                                  aspectRatio: 1,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surfaceContainerLow,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: colorScheme.outlineVariant,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: DoorLockWidget(
+                                      state: _previewState,
+                                      busy: false,
+                                      onDoubleTap: null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 1x1 简洁组件预览
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              '简洁版',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: colorScheme.onSecondaryContainer,
+                              ),
+                              textScaler: TextScaler.noScaling,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: Center(
+                              child: FractionallySizedBox(
+                                widthFactor: 0.24,
+                                child: AspectRatio(
+                                  aspectRatio: 0.72,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surfaceContainerLow,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: colorScheme.outlineVariant,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: SimpleDoorLockWidget(
+                                      state: _previewState,
+                                      busy: false,
+                                      onDoubleTap: null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              // 页面指示器
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildPageIndicator(0, colorScheme),
+                    const SizedBox(width: 8),
+                    _buildPageIndicator(1, colorScheme),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 添加到桌面按钮
+        if (Platform.isAndroid)
+          FilledButton.icon(
+            onPressed: () =>
+                _requestPinWidget(context, simple: _currentPage == 1),
+            icon: const Icon(Icons.add_to_home_screen_rounded),
+            label: Text(_currentPage == 0 ? '添加完整版到桌面' : '添加简洁版到桌面'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
             ),
           ),
-          const SizedBox(height: 12),
-          _buildSwitchTile(
-            title: '展示上次开门结果',
-            subtitle: '在微件底部显示最近一次开门的状态与时间',
-            value: _settings.showLastResult,
-            onChanged: (bool value) =>
-                _applySettings(_settings.copyWith(showLastResult: value)),
+        if (Platform.isAndroid) const SizedBox(height: 12),
+        const SizedBox(height: 24),
+
+        // 使用说明卡片
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  '使用小贴士',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                SizedBox(height: 8),
+                Text('1. 点击上方按钮或长按桌面空白处添加组件。'),
+                Text('2. 双击门锁图标即可静默发送开门指令。'),
+                Text('3. 组件每秒自动检测状态变化并更新。'),
+                Text('4. 完整版显示WiFi、MQTT和设备状态。'),
+                Text('5. 简洁版只显示门锁图标和设备状态。'),
+              ],
+            ),
           ),
-          _buildSwitchTile(
-            title: '滑动时启用震动反馈',
-            subtitle: '在支持的设备上提供细微震动提示',
-            value: _settings.enableHaptics,
-            onChanged: (bool value) =>
-                _applySettings(_settings.copyWith(enableHaptics: value)),
-          ),
-          _buildSwitchTile(
-            title: '开启自动刷新',
-            subtitle: '定时刷新以防止数据与应用状态不同步',
-            value: _settings.autoRefreshEnabled,
-            onChanged: (bool value) =>
-                _applySettings(_settings.copyWith(autoRefreshEnabled: value)),
-          ),
-          _buildRefreshDropdown(),
-          if (_updating)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+        ),
+      ],
+    );
+  }
+}
+
+/// 课表组件配置Tab - 暂不实现功能
+class _ScheduleWidgetTab extends StatelessWidget {
+  const _ScheduleWidgetTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ScheduleWidget(),
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: Column(
                 children: [
-                  SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colorScheme.primary,
+                  Icon(
+                    Icons.construction_rounded,
+                    size: 32,
+                    color: colorScheme.outline,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '功能开发中',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurface,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  const Text('正在同步配置…'),
+                  const SizedBox(height: 8),
+                  Text(
+                    '课表桌面组件正在开发中，敬请期待！\n该组件将支持在桌面直接查看今日课程安排。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

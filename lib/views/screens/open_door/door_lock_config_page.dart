@@ -1,13 +1,16 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dormdevise/models/local_door_lock_config.dart';
 import 'package:dormdevise/models/mqtt_config.dart';
 import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:dormdevise/services/local_door_lock_config_service.dart';
 import 'package:dormdevise/services/mqtt_config_service.dart';
+import 'package:dormdevise/services/mqtt_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'door_config_share_sheet.dart';
 import 'local_door_lock_settings_page.dart';
@@ -48,6 +51,8 @@ class OpenDoorSettingsPage extends StatefulWidget {
 
 class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     with SingleTickerProviderStateMixin {
+  static const String _subscribedTopicKey = 'mqtt_last_subscribed_topic';
+
   late final TabController _tabController;
   int _pageRevision = 0;
 
@@ -175,6 +180,59 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
 
+  Future<void> _persistSubscribedTopic(String? topic) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String trimmedTopic = topic?.trim() ?? '';
+    if (trimmedTopic.isEmpty) {
+      await prefs.remove(_subscribedTopicKey);
+      return;
+    }
+    await prefs.setString(_subscribedTopicKey, trimmedTopic);
+  }
+
+  Future<bool> _activateImportedMqttSubscription(MqttConfig config) async {
+    final String topic = config.commandTopic.trim();
+    if (topic.isEmpty) {
+      await _persistSubscribedTopic(null);
+      return false;
+    }
+
+    SecurityContext? securityContext;
+    MqttService? service;
+    try {
+      if (config.withTls) {
+        securityContext = await buildSecurityContext(
+          caAsset: config.caPath,
+          clientCertAsset: config.certPath,
+          clientKeyAsset: config.keyPath,
+          clientKeyPassword: config.keyPassword,
+        );
+      }
+
+      service = MqttService(
+        host: config.host,
+        port: config.port,
+        clientId: config.clientId.isNotEmpty
+            ? config.clientId
+            : 'flutter_client',
+        username: config.username,
+        password: config.password,
+        securityContext: securityContext,
+      );
+      await service.connect();
+      await service.subscribe(topic);
+      await _persistSubscribedTopic(topic);
+      return true;
+    } catch (_) {
+      await _persistSubscribedTopic(null);
+      return false;
+    } finally {
+      if (service != null) {
+        await service.dispose();
+      }
+    }
+  }
+
   Future<void> _importConfigFromText(String raw) async {
     final String text = raw.trim();
     if (text.isEmpty) {
@@ -210,16 +268,19 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
         await LocalDoorLockConfigService.instance.saveConfig(localConfig);
       }
 
+      bool mqttSubscriptionActivated = true;
       if (hasMqttConfig) {
         final MqttConfig currentConfig = await MqttConfigService.instance
             .loadConfig(forceRefresh: true);
         final MqttConfig importedConfig = MqttConfig.fromStorage(
           Map<String, Object?>.from(decoded),
         );
-        await MqttConfigService.instance.saveConfig(
-          importedConfig.clientId.isEmpty
-              ? importedConfig.copyWith(clientId: currentConfig.clientId)
-              : importedConfig,
+        final MqttConfig resolvedConfig = importedConfig.clientId.isEmpty
+            ? importedConfig.copyWith(clientId: currentConfig.clientId)
+            : importedConfig;
+        await MqttConfigService.instance.saveConfig(resolvedConfig);
+        mqttSubscriptionActivated = await _activateImportedMqttSubscription(
+          resolvedConfig,
         );
         await DoorWidgetService.instance.refreshStatusListener();
       }
@@ -237,7 +298,21 @@ class _OpenDoorSettingsPageState extends State<OpenDoorSettingsPage>
       setState(() {
         _pageRevision++;
       });
-      AppToast.show(context, '门锁配置已导入并保存', variant: AppToastVariant.success);
+      if (hasMqttConfig && !mqttSubscriptionActivated) {
+        AppToast.show(
+          context,
+          '门锁配置已导入，但 MQTT 订阅连接激活失败',
+          variant: AppToastVariant.warning,
+        );
+      } else if (hasMqttConfig) {
+        AppToast.show(
+          context,
+          '门锁配置已导入并保存，MQTT 订阅已激活',
+          variant: AppToastVariant.success,
+        );
+      } else {
+        AppToast.show(context, '门锁配置已导入并保存', variant: AppToastVariant.success);
+      }
     } catch (error) {
       if (!mounted) {
         return;

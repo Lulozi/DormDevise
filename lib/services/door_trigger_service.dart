@@ -24,6 +24,7 @@ class DoorTriggerService {
   static final DoorTriggerService instance = DoorTriggerService._();
 
   MqttService? _mqttService;
+  Future<DoorTriggerResult>? _inFlightTrigger;
   String? _lastFingerprint;
   WifiSnapshot _cachedWifiSnapshot = const WifiSnapshot();
   bool _cachedWifiMatched = false;
@@ -73,7 +74,23 @@ class DoorTriggerService {
   }
 
   /// 触发开门动作，返回结果信息用于展示反馈。
-  Future<DoorTriggerResult> triggerDoor() async {
+  Future<DoorTriggerResult> triggerDoor() {
+    final Future<DoorTriggerResult>? inFlight = _inFlightTrigger;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final Future<DoorTriggerResult> request = _triggerDoorInternal();
+    _inFlightTrigger = request;
+    request.whenComplete(() {
+      if (identical(_inFlightTrigger, request)) {
+        _inFlightTrigger = null;
+      }
+    });
+    return request;
+  }
+
+  Future<DoorTriggerResult> _triggerDoorInternal() async {
     try {
       final LocalDoorLockConfig localConfig = await LocalDoorLockConfigService
           .instance

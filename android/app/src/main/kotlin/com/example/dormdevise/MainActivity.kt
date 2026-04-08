@@ -1,5 +1,8 @@
 package com.lulo.dormdevise
 
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
@@ -138,6 +141,77 @@ class MainActivity : FlutterActivity() {
 					runOnUiThread {
 						setShowWhenLockedAndTurnScreenOn(show, turn)
 						result.success(null)
+					}
+				}
+				else -> result.notImplemented()
+			}
+		}
+
+		MethodChannel(
+			flutterEngine.dartExecutor.binaryMessenger,
+			"dormdevise/home_widget"
+		).setMethodCallHandler { call, result ->
+			when (call.method) {
+				"requestPinDoorWidget" -> {
+					runOnUiThread {
+						try {
+							if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+								result.success(false)
+								return@runOnUiThread
+							}
+
+							val appWidgetManager = getSystemService(AppWidgetManager::class.java)
+							if (appWidgetManager == null || !appWidgetManager.isRequestPinAppWidgetSupported) {
+								result.success(false)
+								return@runOnUiThread
+							}
+
+							val provider = ComponentName(this, DoorWidgetProvider::class.java)
+							val requested = appWidgetManager.requestPinAppWidget(provider, null, null)
+							result.success(requested)
+						} catch (e: Exception) {
+							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
+						}
+					}
+				}
+				"returnToHomeScreen" -> {
+					runOnUiThread {
+						try {
+							moveTaskToBack(true)
+							val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+								addCategory(Intent.CATEGORY_HOME)
+								addFlags(
+									Intent.FLAG_ACTIVITY_NEW_TASK or
+									Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+								)
+							}
+							startActivity(homeIntent)
+							result.success(null)
+						} catch (e: Exception) {
+							result.error("HOME_SCREEN_LAUNCH_FAILED", e.message, null)
+						}
+					}
+				}
+				"requestPinDoorSimpleWidget" -> {
+					runOnUiThread {
+						try {
+							if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+								result.success(false)
+								return@runOnUiThread
+							}
+
+							val appWidgetManager = getSystemService(AppWidgetManager::class.java)
+							if (appWidgetManager == null || !appWidgetManager.isRequestPinAppWidgetSupported) {
+								result.success(false)
+								return@runOnUiThread
+							}
+
+							val provider = ComponentName(this, DoorSimpleWidgetProvider::class.java)
+							val requested = appWidgetManager.requestPinAppWidget(provider, null, null)
+							result.success(requested)
+						} catch (e: Exception) {
+							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
+						}
 					}
 				}
 				else -> result.notImplemented()

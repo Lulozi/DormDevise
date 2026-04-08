@@ -1,85 +1,115 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/door_widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_container_bg"
-    android:padding="8dp">
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="4dp">
 
-    <LinearLayout
-        android:id="@+id/door_widget_content"
+    <!-- 门锁图标 - 占50%高度 -->
+    <FrameLayout
+        android:id="@+id/door_widget_icon_container"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/door_widget_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/door_widget_action_label"
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="12sp"
-            android:singleLine="true" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_gravity="center">
 
         <FrameLayout
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/widget_icon_bg"
-            android:foregroundGravity="center">
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:background="@drawable/widget_icon_bg">
 
             <ImageView
                 android:id="@+id/door_widget_icon"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:adjustViewBounds="true"
                 android:layout_gravity="center"
-                android:src="@android:drawable/ic_lock_idle_lock"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_lock_outline"
                 android:contentDescription="@string/door_widget_name" />
         </FrameLayout>
+    </FrameLayout>
 
+    <!-- 状态区域 - 占50%高度 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:layout_marginTop="2dp">
+
+        <!-- 门锁状态标签 -->
         <TextView
-            android:id="@+id/door_widget_status"
+            android:id="@+id/door_widget_door_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
-            android:background="@drawable/widget_status_bg"
-            android:text="@string/door_widget_default_message"
-            android:textColor="@color/widget_text"
-            android:textSize="12sp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:background="@drawable/widget_chip_gray"
+            android:text="待开门"
+            android:textColor="@color/widget_gray"
+            android:textSize="11sp"
             android:singleLine="true"
-            android:ellipsize="end"
             android:gravity="center" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <!-- 设备状态 -->
+        <TextView
+            android:id="@+id/door_widget_device_status"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:layout_marginTop="6dp">
+            android:layout_marginTop="2dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:background="@drawable/widget_chip_green"
+            android:text="设备在线"
+            android:textColor="@color/widget_success"
+            android:textSize="11sp"
+            android:singleLine="true"
+            android:gravity="center" />
 
-            <TextView
-                android:id="@+id/door_widget_http_status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="HTTP: -"
-                android:textColor="@color/widget_text_secondary"
-                android:textSize="10sp"
-                android:layout_marginEnd="12dp" />
+        <!-- WiFi状态 -->
+        <TextView
+            android:id="@+id/door_widget_wifi_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:background="@drawable/widget_chip_yellow"
+            android:text="WiFi：非配置"
+            android:textColor="@color/widget_warning"
+            android:textSize="11sp"
+            android:singleLine="true"
+            android:gravity="center" />
 
-            <TextView
-                android:id="@+id/door_widget_mqtt_status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="MQTT: -"
-                android:textColor="@color/widget_text_secondary"
-                android:textSize="10sp" />
-        </LinearLayout>
-
+        <!-- MQTT状态 -->
+        <TextView
+            android:id="@+id/door_widget_mqtt_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:background="@drawable/widget_chip_gray"
+            android:text="MQTT：未连接"
+            android:textColor="@color/widget_gray"
+            android:textSize="11sp"
+            android:singleLine="true"
+            android:gravity="center" />
     </LinearLayout>
 
-</RelativeLayout>
+</LinearLayout>

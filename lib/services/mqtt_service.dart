@@ -56,6 +56,7 @@ class MqttService {
   final String? password;
   final SecurityContext? securityContext;
   final void Function()? onConnected;
+  final void Function()? onDisconnectedCallback;
 
   final Set<String> _subscriptions = {};
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
@@ -86,10 +87,12 @@ class MqttService {
     this.onError,
     this.securityContext,
     this.onConnected,
+    this.onDisconnectedCallback,
   }) {
     _client = MqttServerClient(host, clientId)
       ..port = port
       ..keepAlivePeriod = keepAliveSeconds
+      // 使用业务层重连策略，避免 SDK 内部自动重连把 SocketException 抛到主线程。
       ..autoReconnect = false
       ..resubscribeOnAutoReconnect = false
       ..secure = securityContext != null
@@ -253,6 +256,11 @@ class MqttService {
   /// 连接断开时仅记录状态，等待业务触发重连。
   void onDisconnected() {
     _warn('⚠️ [MQTT] disconnected');
+    try {
+      onDisconnectedCallback?.call();
+    } catch (e, st) {
+      _error('⚠️ [MQTT] onDisconnected callback error: $e', e, st);
+    }
   }
 
   /// 关闭客户端并清理待完成的请求。

@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_primary">#4C7CFF</color>
-    <color name="widget_secondary">#2647D9</color>
-    <color name="widget_surface">#E6F0FF</color>
-    <color name="widget_text">#FFFFFFFF</color>
-    <color name="widget_text_secondary">#B3FFFFFF</color>
-    <color name="widget_success">#A2FFCF</color>
-    <color name="widget_error">#FF9A9A</color>
+    <!-- 组件背景色改为浅色以匹配Flutter预览 -->
+    <color name="widget_primary">#F5F5F5</color>
+    <color name="widget_secondary">#EEEEEE</color>
+    <color name="widget_surface">#FFFFFF</color>
+    <color name="widget_text">#212121</color>
+    <color name="widget_text_secondary">#757575</color>
+    <color name="widget_success">#4CAF50</color>
+    <color name="widget_error">#F44336</color>
+    <color name="widget_warning">#FFC107</color>
+    <color name="widget_gray">#9E9E9E</color>
+    <!-- Status chip backgrounds with alpha -->
+    <color name="widget_chip_green_bg">#264CAF50</color>
+    <color name="widget_chip_gray_bg">#269E9E9E</color>
+    <color name="widget_chip_yellow_bg">#26FFC107</color>
+    <color name="widget_chip_red_bg">#26F44336</color>
 </resources>
