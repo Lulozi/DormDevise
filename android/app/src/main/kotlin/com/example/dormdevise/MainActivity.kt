@@ -160,13 +160,13 @@ class MainActivity : FlutterActivity() {
 				"requestPinDoorWidget" -> {
 					runOnUiThread {
 						try {
-							val requested = DoorWidgetPinRequestHelper.requestPin(
+							val pinResult = DoorWidgetPinRequestHelper.requestPin(
 								activity = this,
 								providerClass = DoorWidgetProvider::class.java,
 								previewLayoutResId = R.layout.widget_door,
 								requestCode = PIN_DOOR_WIDGET_REQUEST_CODE,
 							)
-							result.success(requested)
+							result.success(pinResult)
 						} catch (e: Exception) {
 							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
 						}
@@ -186,13 +186,13 @@ class MainActivity : FlutterActivity() {
 				"requestPinDoorSimpleWidget" -> {
 					runOnUiThread {
 						try {
-							val requested = DoorWidgetPinRequestHelper.requestPin(
+							val pinResult = DoorWidgetPinRequestHelper.requestPin(
 								activity = this,
 								providerClass = DoorSimpleWidgetProvider::class.java,
 								previewLayoutResId = R.layout.widget_door_simple,
 								requestCode = PIN_DOOR_SIMPLE_WIDGET_REQUEST_CODE,
 							)
-							result.success(requested)
+							result.success(pinResult)
 						} catch (e: Exception) {
 							result.error("PIN_WIDGET_REQUEST_FAILED", e.message, null)
 						}

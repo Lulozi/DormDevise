@@ -5,6 +5,47 @@ import 'package:dormdevise/widgets/door_desktop_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+class _NativePinRequestResult {
+  const _NativePinRequestResult({
+    required this.requestAccepted,
+    required this.pinSupported,
+    required this.fallbackOpened,
+    required this.fallbackType,
+  });
+
+  final bool requestAccepted;
+  final bool pinSupported;
+  final bool fallbackOpened;
+  final String fallbackType;
+
+  factory _NativePinRequestResult.fromNative(dynamic value) {
+    if (value is bool) {
+      return _NativePinRequestResult(
+        requestAccepted: value,
+        pinSupported: value,
+        fallbackOpened: false,
+        fallbackType: 'none',
+      );
+    }
+
+    if (value is Map) {
+      return _NativePinRequestResult(
+        requestAccepted: value['requestAccepted'] == true,
+        pinSupported: value['pinSupported'] == true,
+        fallbackOpened: value['fallbackOpened'] == true,
+        fallbackType: (value['fallbackType'] as String?) ?? 'none',
+      );
+    }
+
+    return const _NativePinRequestResult(
+      requestAccepted: false,
+      pinSupported: false,
+      fallbackOpened: false,
+      fallbackType: 'none',
+    );
+  }
+}
+
 /// 桌面微件配置页，包含开门组件和课表组件两个Tab。
 class DoorWidgetSettingsPage extends StatefulWidget {
   const DoorWidgetSettingsPage({super.key});
@@ -95,17 +136,31 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
       final String methodName = simple
           ? 'requestPinDoorSimpleWidget'
           : 'requestPinDoorWidget';
-      final bool? requestedByNative = await _homeChannel.invokeMethod<bool>(
+      final dynamic nativeResponse = await _homeChannel.invokeMethod<dynamic>(
         methodName,
       );
+      final pinResult = _NativePinRequestResult.fromNative(nativeResponse);
       if (!context.mounted) {
         return;
       }
-      if (requestedByNative != true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('当前桌面暂不支持应用内自动添加，请长按桌面空白处手动添加组件。')),
+
+      final messenger = ScaffoldMessenger.of(context);
+      if (pinResult.requestAccepted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('系统添加请求已发起，请在系统弹窗中确认添加。')),
         );
+        return;
       }
+
+      final String message = switch (pinResult.fallbackType) {
+        'permission' => '已打开系统权限页，请允许桌面快捷方式或桌面组件相关权限后重试。',
+        'app_details' => '已打开应用信息页，请检查桌面组件相关权限或系统限制后重试。',
+        'home_screen' => '当前桌面未弹出系统添加窗口，已返回桌面，请长按空白处手动添加组件。',
+        _ when !pinResult.pinSupported || !pinResult.fallbackOpened =>
+          '当前桌面暂不支持应用内自动添加，请长按桌面空白处手动添加组件。',
+        _ => '当前桌面未响应系统添加请求，请长按桌面空白处手动添加组件。',
+      };
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } on PlatformException {
       if (!context.mounted) {
         return;
