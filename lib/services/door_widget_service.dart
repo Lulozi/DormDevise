@@ -33,6 +33,7 @@ class DoorWidgetService {
       'com.lulo.dormdevise.DoorWidgetProvider';
   static const String _androidProviderName = 'DoorWidgetProvider';
   static const Duration _manualTriggerDebounceInterval = Duration(seconds: 4);
+  static const Duration _manualSuccessDisplayDuration = Duration(seconds: 2);
   static const Duration _deviceOnlineGracePeriod = Duration(seconds: 45);
 
   DoorWidgetSettings _settings = DoorWidgetSettings.defaults();
@@ -851,7 +852,7 @@ class DoorWidgetService {
   /// 成功开门后延时恢复默认提示，保持微件状态清爽。
   void _scheduleSuccessReset() {
     _successResetTimer?.cancel();
-    _successResetTimer = Timer(_manualTriggerDebounceInterval, () async {
+    _successResetTimer = Timer(_manualSuccessDisplayDuration, () async {
       await _ensureLoaded();
       if (_state.busy) {
         return;

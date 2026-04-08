@@ -40,6 +40,9 @@ class _DoorWidgetPanelState extends State<DoorWidgetPanel> {
   /// 防抖间隔（参考开门页面4秒）
   static const Duration _debounceInterval = Duration(seconds: 4);
 
+  /// 开门成功后保持成功态展示 2 秒，再自动关闭面板。
+  static const Duration _successAutoCloseDelay = Duration(seconds: 2);
+
   @override
   void initState() {
     super.initState();
@@ -85,7 +88,7 @@ class _DoorWidgetPanelState extends State<DoorWidgetPanel> {
     // 成功后自动关闭面板
     if (result.success) {
       unawaited(
-        Future<void>.delayed(const Duration(milliseconds: 1200)).then((_) {
+        Future<void>.delayed(_successAutoCloseDelay).then((_) {
           if (mounted) {
             widget.onClose?.call();
           }
