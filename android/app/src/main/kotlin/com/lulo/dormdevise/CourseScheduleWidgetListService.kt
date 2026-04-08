@@ -137,6 +137,7 @@ private class CourseScheduleWidgetRemoteViewsFactory(
                     CourseScheduleWidgetProvider.buildWidgetRoute(
                         snapshot = snapshot,
                         startSection = item.startSection,
+                        courseName = item.name,
                     ),
                 )
             },

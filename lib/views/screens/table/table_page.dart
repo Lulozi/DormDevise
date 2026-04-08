@@ -35,6 +35,7 @@ class TablePage extends StatefulWidget {
     this.initialFocusWeek,
     this.initialFocusWeekday,
     this.initialFocusSection,
+    this.initialFocusCourseName,
     this.launchedFromWidget = false,
   });
 
@@ -50,6 +51,9 @@ class TablePage extends StatefulWidget {
   /// 通过桌面组件点击具体课程时需要滚动到的起始节次。
   final int? initialFocusSection;
 
+  /// 通过桌面组件点击具体课程时需要高亮的课程名。
+  final String? initialFocusCourseName;
+
   /// 是否由桌面组件启动。由组件启动时返回键直接回桌面，不回到应用此前页面。
   final bool launchedFromWidget;
 
@@ -63,11 +67,27 @@ class _WidgetTableFocusRequest {
     required this.week,
     this.weekday,
     this.startSection,
+    this.courseName,
   });
 
   final int week;
   final int? weekday;
   final int? startSection;
+  final String? courseName;
+}
+
+class _WidgetCourseHighlightTarget {
+  const _WidgetCourseHighlightTarget({
+    required this.week,
+    required this.weekday,
+    required this.startSection,
+    this.courseName,
+  });
+
+  final int week;
+  final int weekday;
+  final int startSection;
+  final String? courseName;
 }
 
 class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
@@ -116,6 +136,8 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   int _adaptiveLayoutGeneration = 0;
   double _lastResolvedSectionHeight = 76;
   _WidgetTableFocusRequest? _pendingWidgetFocus;
+  _WidgetCourseHighlightTarget? _highlightedCourseTarget;
+  Timer? _widgetCourseHighlightTimer;
 
   final GlobalKey _importBtnKey = GlobalKey();
   final GlobalKey _shareBtnKey = GlobalKey();
@@ -315,6 +337,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         week: widget.initialFocusWeek!,
         weekday: widget.initialFocusWeekday,
         startSection: widget.initialFocusSection,
+        courseName: widget.initialFocusCourseName,
       );
     }
     _pageController = PageController(initialPage: 0);
@@ -482,7 +505,27 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       _currentWeek = targetWeek;
       _highlightDate = targetDate;
       _lastObservedDate = _dateOnly(DateTime.now());
+      _highlightedCourseTarget =
+          request.weekday != null && request.startSection != null
+          ? _WidgetCourseHighlightTarget(
+              week: targetWeek,
+              weekday: request.weekday!,
+              startSection: request.startSection!,
+              courseName: request.courseName,
+            )
+          : null;
     });
+    if (_highlightedCourseTarget != null) {
+      _widgetCourseHighlightTimer?.cancel();
+      _widgetCourseHighlightTimer = Timer(const Duration(seconds: 3), () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _highlightedCourseTarget = null;
+        });
+      });
+    }
     if (shouldSyncPage) {
       _syncPageToCurrentWeek(animate: animate);
     }
@@ -521,9 +564,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         return;
       }
 
-      final double targetOffset = (_resolveSectionScrollOffset(startSection) - 20)
-          .clamp(0.0, controller.position.maxScrollExtent)
-          .toDouble();
+      final double targetOffset =
+          (_resolveSectionScrollOffset(startSection) - 20)
+              .clamp(0.0, controller.position.maxScrollExtent)
+              .toDouble();
       if ((controller.offset - targetOffset).abs() < 1) {
         return;
       }
@@ -644,6 +688,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _midnightRefreshTimer?.cancel();
+    _widgetCourseHighlightTimer?.cancel();
     _toolbarBubbleController?.dismiss();
     _timeColumnController.dispose();
     for (final ScrollController controller in _weekScrollControllers.values) {
@@ -1279,6 +1324,16 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
                       _pickDate(context);
                     },
                     highlightDate: _highlightDate,
+                    highlightedCourseTarget:
+                        _highlightedCourseTarget != null &&
+                            _highlightedCourseTarget!.week == targetWeek
+                        ? CourseTableHighlightTarget(
+                            weekday: _highlightedCourseTarget!.weekday,
+                            startSection:
+                                _highlightedCourseTarget!.startSection,
+                            courseName: _highlightedCourseTarget!.courseName,
+                          )
+                        : null,
                     includeTimeColumn: false,
                     timeColumnWidth: timeColumnWidth,
                     leadingInset: 0,

@@ -400,6 +400,7 @@ class CourseScheduleWidgetProvider : HomeWidgetProvider() {
         internal fun buildWidgetRoute(
             snapshot: CourseScheduleWidgetSnapshot,
             startSection: Int? = null,
+            courseName: String? = null,
         ): String {
             val queryParts = buildList {
                 add("fromWidget=1")
@@ -411,6 +412,9 @@ class CourseScheduleWidgetProvider : HomeWidgetProvider() {
                 }
                 if (startSection != null && startSection > 0) {
                     add("section=$startSection")
+                }
+                if (!courseName.isNullOrBlank()) {
+                    add("course=${Uri.encode(courseName)}")
                 }
             }
             return if (queryParts.isEmpty()) {

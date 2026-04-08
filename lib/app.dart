@@ -93,12 +93,15 @@ class DormDeviseApp extends StatelessWidget {
                 final int? focusSection = int.tryParse(
                   parsedRoute.queryParameters['section'] ?? '',
                 );
+                final String? focusCourseName =
+                    parsedRoute.queryParameters['course'];
                 return MaterialPageRoute<void>(
                   builder: (_) => ManagementScreen(
                     initialOriginalIndex: 0,
                     initialTableFocusWeek: focusWeek,
                     initialTableFocusWeekday: focusWeekday,
                     initialTableFocusSection: focusSection,
+                    initialTableFocusCourseName: focusCourseName,
                   ),
                 );
               default:
@@ -121,12 +124,14 @@ class ManagementScreen extends StatefulWidget {
     this.initialTableFocusWeek,
     this.initialTableFocusWeekday,
     this.initialTableFocusSection,
+    this.initialTableFocusCourseName,
   });
 
   final int? initialOriginalIndex;
   final int? initialTableFocusWeek;
   final int? initialTableFocusWeekday;
   final int? initialTableFocusSection;
+  final String? initialTableFocusCourseName;
 
   /// 创建与主页面关联的状态对象。
   @override
@@ -191,11 +196,12 @@ class ManagementScreenState extends State<ManagementScreen>
     if (originalIndex == 1) {
       return const OpenDoorPage();
     }
-    return TablePage(
-      initialFocusWeek: widget.initialTableFocusWeek,
-      initialFocusWeekday: widget.initialTableFocusWeekday,
-      initialFocusSection: widget.initialTableFocusSection,
-    );
+        return TablePage(
+          initialFocusWeek: widget.initialTableFocusWeek,
+          initialFocusWeekday: widget.initialTableFocusWeekday,
+          initialFocusSection: widget.initialTableFocusSection,
+          initialFocusCourseName: widget.initialTableFocusCourseName,
+        );
   }
 
   /// 为分页添加淡入与平移动画。
