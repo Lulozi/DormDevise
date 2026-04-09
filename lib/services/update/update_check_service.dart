@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pub_semver/pub_semver.dart';
@@ -792,7 +793,29 @@ class UpdateCheckService {
                 ),
                 const SizedBox(height: 6),
                 Text('安装包大小：$sizeLabel', style: textTheme.bodyMedium),
-                if (highlights.isNotEmpty) ...<Widget>[
+                if (description != null && description.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 16),
+                  Text('更新说明：', style: textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  MarkdownBody(
+                    data: description,
+                    styleSheet:
+                        MarkdownStyleSheet.fromTheme(
+                          Theme.of(dialogContext),
+                        ).copyWith(
+                          p: textTheme.bodyMedium,
+                          blockquote: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          code: textTheme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                          ),
+                          listBullet: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                  ),
+                ] else if (highlights.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 16),
                   Text('更新亮点：', style: textTheme.titleSmall),
                   const SizedBox(height: 8),
@@ -811,10 +834,6 @@ class UpdateCheckService {
                       ),
                     ),
                   ),
-                ] else if (description != null &&
-                    description.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 16),
-                  Text(description),
                 ] else ...<Widget>[
                   const SizedBox(height: 16),
                   const Text('暂无更新说明，是否继续下载并安装？'),
