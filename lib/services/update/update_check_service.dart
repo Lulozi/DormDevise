@@ -900,6 +900,8 @@ class UpdateCheckService {
       );
     }
 
+    await downloadService.markHomePagePromptDownloadRunning();
+
     // 启动后台下载（由 DownloadService 自行负责标记与进度更新）
     unawaited(downloadService.startBackgroundDownload(request: request));
     return const UpdateStartResult(

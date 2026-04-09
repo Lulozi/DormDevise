@@ -172,6 +172,15 @@ class UpdateDownloadService {
       'update_download_pending_install_path';
   static const String _pendingInstallAwaitingResumeKey =
       'update_download_pending_install_awaiting_resume';
+  static const String _homePromptDownloadStateKey =
+      'update_home_prompt_download_state';
+  static const String _homePromptDownloadStateUpdatedAtKey =
+      'update_home_prompt_download_state_updated_at';
+  static const String _homePromptDownloadStateRunning = 'running';
+  static const String _homePromptDownloadStateSuccess = 'success';
+  static const String _homePromptDownloadStateCancelled = 'cancelled';
+  static const String _homePromptDownloadStateFailure = 'failure';
+  static const Duration _homePromptDownloadRunningTtl = Duration(hours: 6);
   static const String _installNotificationPayload = 'update_install';
   static const String _androidNotificationIcon = 'icon_dormdevise_notification';
   Color get _androidNotificationColor =>
@@ -363,6 +372,52 @@ class UpdateDownloadService {
     await _notificationsPlugin.cancel(_notificationId);
   }
 
+  /// 标记“首页更新弹窗”应当因下载进行中而被抑制。
+  Future<void> markHomePagePromptDownloadRunning() async {
+    await _updateHomePromptDownloadState(_homePromptDownloadStateRunning);
+  }
+
+  /// 当前是否需要抑制首页“发现新版本”弹窗。
+  ///
+  /// 规则：
+  /// 1. 只要本进程正在下载，直接抑制；
+  /// 2. 若持久化状态仍为 running（例如重新打开应用），也抑制；
+  /// 3. 若 running 状态超过 TTL，视为陈旧状态并自动清理，恢复弹窗。
+  Future<bool> shouldSuppressHomePageUpdatePrompt() async {
+    if (coordinator.isDownloading) {
+      return true;
+    }
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? state = prefs.getString(_homePromptDownloadStateKey);
+    if (state != _homePromptDownloadStateRunning) {
+      return false;
+    }
+
+    final int updatedAt =
+        prefs.getInt(_homePromptDownloadStateUpdatedAtKey) ?? 0;
+    if (updatedAt <= 0) {
+      return true;
+    }
+
+    final int elapsed = DateTime.now().millisecondsSinceEpoch - updatedAt;
+    if (elapsed <= _homePromptDownloadRunningTtl.inMilliseconds) {
+      return true;
+    }
+
+    await _updateHomePromptDownloadState(_homePromptDownloadStateFailure);
+    return false;
+  }
+
+  Future<void> _updateHomePromptDownloadState(String state) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_homePromptDownloadStateKey, state);
+    await prefs.setInt(
+      _homePromptDownloadStateUpdatedAtKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
   /// 启动后台下载任务
   Future<void> startBackgroundDownload({
     required DownloadRequest request,
@@ -372,6 +427,7 @@ class UpdateDownloadService {
       return;
     }
 
+    await markHomePagePromptDownloadRunning();
     await initializeNotifications();
     _cancelRequested = false;
     // 不在此处预置具体进度（保持为 null），以便在“准备下载”阶段显示不确定的转圈。
@@ -403,11 +459,14 @@ class UpdateDownloadService {
     _activeClientOwned = false;
 
     if (result.isSuccess) {
+      await _updateHomePromptDownloadState(_homePromptDownloadStateSuccess);
       final File file = result.file!;
       await registerDownloadedFileForInstall(file, openNow: true);
     } else if (result.isCancelled) {
+      await _updateHomePromptDownloadState(_homePromptDownloadStateCancelled);
       await _cancelNotification();
     } else {
+      await _updateHomePromptDownloadState(_homePromptDownloadStateFailure);
       await _showResultNotification('下载失败', result.error.toString());
     }
   }

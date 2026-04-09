@@ -381,11 +381,13 @@ class ManagementScreenState extends State<ManagementScreen>
         _updatePromptVisible) {
       return;
     }
-    if (UpdateDownloadService.instance.coordinator.isDownloading) {
+    final UpdateDownloadService downloadService =
+        UpdateDownloadService.instance;
+    if (await downloadService.shouldSuppressHomePageUpdatePrompt()) {
       return;
     }
     _updateCheckInProgress = true;
-    if (await UpdateDownloadService.instance.hasPendingInstall()) {
+    if (await downloadService.hasPendingInstall()) {
       _updateCheckInProgress = false;
       return;
     }
