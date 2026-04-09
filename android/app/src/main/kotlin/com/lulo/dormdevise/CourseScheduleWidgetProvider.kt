@@ -188,14 +188,14 @@ class CourseScheduleWidgetProvider : HomeWidgetProvider() {
             )?.let { pendingIntent ->
                 views.setPendingIntentTemplate(R.id.course_widget_list, pendingIntent)
             }
-            views.setOnClickPendingIntent(
-                R.id.course_widget_prev_day,
-                buildNavigateDatePendingIntent(context, widgetId, -1),
-            )
-            views.setOnClickPendingIntent(
-                R.id.course_widget_next_day,
-                buildNavigateDatePendingIntent(context, widgetId, 1),
-            )
+            val prevDayIntent = buildNavigateDatePendingIntent(context, widgetId, -1)
+            val nextDayIntent = buildNavigateDatePendingIntent(context, widgetId, 1)
+            views.setOnClickPendingIntent(R.id.course_widget_prev_day_hit, prevDayIntent)
+            views.setOnClickPendingIntent(R.id.course_widget_prev_day_anchor, prevDayIntent)
+            views.setOnClickPendingIntent(R.id.course_widget_prev_day, prevDayIntent)
+            views.setOnClickPendingIntent(R.id.course_widget_next_day_hit, nextDayIntent)
+            views.setOnClickPendingIntent(R.id.course_widget_next_day_anchor, nextDayIntent)
+            views.setOnClickPendingIntent(R.id.course_widget_next_day, nextDayIntent)
 
             return views
         }
