@@ -573,6 +573,9 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
   int _headerFontSize = CourseWidgetDisplaySettings.defaultHeaderFontSize;
   int _contentFontSize = CourseWidgetDisplaySettings.defaultContentFontSize;
   int _reminderMinutes = CourseWidgetDisplaySettings.defaultReminderMinutes;
+  FixedExtentScrollController? _headerPickerController;
+  FixedExtentScrollController? _contentPickerController;
+  FixedExtentScrollController? _reminderPickerController;
 
   @override
   void initState() {
@@ -592,6 +595,15 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
       _headerFontSize = settings.headerFontSize;
       _contentFontSize = settings.contentFontSize;
       _reminderMinutes = settings.reminderMinutes;
+      if (_isHeaderFontExpanded) {
+        _rebuildHeaderPickerController();
+      }
+      if (_isContentFontExpanded) {
+        _rebuildContentPickerController();
+      }
+      if (_isReminderExpanded) {
+        _rebuildReminderPickerController();
+      }
     });
   }
 
@@ -622,6 +634,60 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
     await _loadWidgetDisplaySettings();
   }
 
+  FixedExtentScrollController _createPickerController({
+    required int value,
+    required int min,
+    required int max,
+    required int step,
+    bool looping = true,
+  }) {
+    final int itemCount = ((max - min) / step).floor() + 1;
+    final int baseIndex = ((value - min) / step).floor().clamp(
+      0,
+      itemCount - 1,
+    );
+    final int initialItem = looping ? baseIndex + itemCount * 100 : baseIndex;
+    return FixedExtentScrollController(initialItem: initialItem);
+  }
+
+  void _rebuildHeaderPickerController() {
+    _headerPickerController?.dispose();
+    _headerPickerController = _createPickerController(
+      value: _headerFontSize,
+      min: CourseWidgetDisplaySettings.minHeaderFontSize,
+      max: CourseWidgetDisplaySettings.maxHeaderFontSize,
+      step: 1,
+    );
+  }
+
+  void _rebuildContentPickerController() {
+    _contentPickerController?.dispose();
+    _contentPickerController = _createPickerController(
+      value: _contentFontSize,
+      min: CourseWidgetDisplaySettings.minContentFontSize,
+      max: CourseWidgetDisplaySettings.maxContentFontSize,
+      step: 1,
+    );
+  }
+
+  void _rebuildReminderPickerController() {
+    _reminderPickerController?.dispose();
+    _reminderPickerController = _createPickerController(
+      value: _reminderMinutes,
+      min: CourseWidgetDisplaySettings.minReminderMinutes,
+      max: CourseWidgetDisplaySettings.maxReminderMinutes,
+      step: CourseWidgetDisplaySettings.reminderStepMinutes,
+    );
+  }
+
+  @override
+  void dispose() {
+    _headerPickerController?.dispose();
+    _contentPickerController?.dispose();
+    _reminderPickerController?.dispose();
+    super.dispose();
+  }
+
   Widget _buildGroup({required List<Widget> children}) {
     return Container(
       decoration: BoxDecoration(
@@ -648,20 +714,15 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
   }
 
   Widget _buildNumberPicker({
-    required int value,
     required int min,
     required int max,
     required int step,
+    required FixedExtentScrollController scrollController,
     required ValueChanged<int> onChanged,
     required String Function(int value) labelBuilder,
     bool looping = true,
   }) {
     final int itemCount = ((max - min) / step).floor() + 1;
-    final int baseIndex = ((value - min) / step).floor().clamp(
-      0,
-      itemCount - 1,
-    );
-    final int initialItem = looping ? baseIndex + itemCount * 100 : baseIndex;
 
     return Container(
       height: 150,
@@ -672,7 +733,7 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
         looping: looping,
         selectionOverlay: Container(),
         itemExtent: 44,
-        scrollController: FixedExtentScrollController(initialItem: initialItem),
+        scrollController: scrollController,
         onSelectedItemChanged: (int index) {
           final int normalized = index % itemCount;
           onChanged(min + normalized * step);
@@ -757,7 +818,6 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                         designHeight: 188,
                         child: _CourseScheduleWidgetPreview(
                           colorScheme: colorScheme,
-                          reminderMinutes: _reminderMinutes,
                         ),
                       ),
                     ],
@@ -823,23 +883,35 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                     isExpanded: _isHeaderFontExpanded,
                     onTap: () {
                       setState(() {
-                        _isHeaderFontExpanded = !_isHeaderFontExpanded;
-                        if (_isHeaderFontExpanded) {
+                        final bool nextExpanded = !_isHeaderFontExpanded;
+                        _isHeaderFontExpanded = nextExpanded;
+                        if (nextExpanded) {
+                          _rebuildHeaderPickerController();
                           _isContentFontExpanded = false;
                           _isReminderExpanded = false;
                         }
                       });
                     },
-                    content: _buildNumberPicker(
-                      value: _headerFontSize,
-                      min: CourseWidgetDisplaySettings.minHeaderFontSize,
-                      max: CourseWidgetDisplaySettings.maxHeaderFontSize,
-                      step: 1,
-                      onChanged: (int value) {
-                        _saveWidgetDisplaySettings(headerFontSize: value);
-                      },
-                      labelBuilder: (int value) => '$value 号',
-                    ),
+                    content: _isHeaderFontExpanded
+                        ? _buildNumberPicker(
+                            min: CourseWidgetDisplaySettings.minHeaderFontSize,
+                            max: CourseWidgetDisplaySettings.maxHeaderFontSize,
+                            step: 1,
+                            scrollController: _headerPickerController ??=
+                                _createPickerController(
+                                  value: _headerFontSize,
+                                  min: CourseWidgetDisplaySettings
+                                      .minHeaderFontSize,
+                                  max: CourseWidgetDisplaySettings
+                                      .maxHeaderFontSize,
+                                  step: 1,
+                                ),
+                            onChanged: (int value) {
+                              _saveWidgetDisplaySettings(headerFontSize: value);
+                            },
+                            labelBuilder: (int value) => '$value 号',
+                          )
+                        : const SizedBox.shrink(),
                     showDivider: false,
                   ),
                   _buildDivider(),
@@ -855,23 +927,37 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                     isExpanded: _isContentFontExpanded,
                     onTap: () {
                       setState(() {
-                        _isContentFontExpanded = !_isContentFontExpanded;
-                        if (_isContentFontExpanded) {
+                        final bool nextExpanded = !_isContentFontExpanded;
+                        _isContentFontExpanded = nextExpanded;
+                        if (nextExpanded) {
+                          _rebuildContentPickerController();
                           _isHeaderFontExpanded = false;
                           _isReminderExpanded = false;
                         }
                       });
                     },
-                    content: _buildNumberPicker(
-                      value: _contentFontSize,
-                      min: CourseWidgetDisplaySettings.minContentFontSize,
-                      max: CourseWidgetDisplaySettings.maxContentFontSize,
-                      step: 1,
-                      onChanged: (int value) {
-                        _saveWidgetDisplaySettings(contentFontSize: value);
-                      },
-                      labelBuilder: (int value) => '$value 号',
-                    ),
+                    content: _isContentFontExpanded
+                        ? _buildNumberPicker(
+                            min: CourseWidgetDisplaySettings.minContentFontSize,
+                            max: CourseWidgetDisplaySettings.maxContentFontSize,
+                            step: 1,
+                            scrollController: _contentPickerController ??=
+                                _createPickerController(
+                                  value: _contentFontSize,
+                                  min: CourseWidgetDisplaySettings
+                                      .minContentFontSize,
+                                  max: CourseWidgetDisplaySettings
+                                      .maxContentFontSize,
+                                  step: 1,
+                                ),
+                            onChanged: (int value) {
+                              _saveWidgetDisplaySettings(
+                                contentFontSize: value,
+                              );
+                            },
+                            labelBuilder: (int value) => '$value 号',
+                          )
+                        : const SizedBox.shrink(),
                     showDivider: false,
                   ),
                   _buildDivider(),
@@ -887,24 +973,40 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                     isExpanded: _isReminderExpanded,
                     onTap: () {
                       setState(() {
-                        _isReminderExpanded = !_isReminderExpanded;
-                        if (_isReminderExpanded) {
+                        final bool nextExpanded = !_isReminderExpanded;
+                        _isReminderExpanded = nextExpanded;
+                        if (nextExpanded) {
+                          _rebuildReminderPickerController();
                           _isHeaderFontExpanded = false;
                           _isContentFontExpanded = false;
                         }
                       });
                     },
-                    content: _buildNumberPicker(
-                      value: _reminderMinutes,
-                      min: CourseWidgetDisplaySettings.minReminderMinutes,
-                      max: CourseWidgetDisplaySettings.maxReminderMinutes,
-                      step: CourseWidgetDisplaySettings.reminderStepMinutes,
-                      onChanged: (int value) {
-                        _saveWidgetDisplaySettings(reminderMinutes: value);
-                      },
-                      labelBuilder: (int value) =>
-                          value == 0 ? '不提醒' : '$value 分钟',
-                    ),
+                    content: _isReminderExpanded
+                        ? _buildNumberPicker(
+                            min: CourseWidgetDisplaySettings.minReminderMinutes,
+                            max: CourseWidgetDisplaySettings.maxReminderMinutes,
+                            step:
+                                CourseWidgetDisplaySettings.reminderStepMinutes,
+                            scrollController: _reminderPickerController ??=
+                                _createPickerController(
+                                  value: _reminderMinutes,
+                                  min: CourseWidgetDisplaySettings
+                                      .minReminderMinutes,
+                                  max: CourseWidgetDisplaySettings
+                                      .maxReminderMinutes,
+                                  step: CourseWidgetDisplaySettings
+                                      .reminderStepMinutes,
+                                ),
+                            onChanged: (int value) {
+                              _saveWidgetDisplaySettings(
+                                reminderMinutes: value,
+                              );
+                            },
+                            labelBuilder: (int value) =>
+                                value == 0 ? '不提醒' : '$value 分钟',
+                          )
+                        : const SizedBox.shrink(),
                     showDivider: false,
                   ),
                 ],
@@ -1012,13 +1114,9 @@ class _FixedWidgetPreviewFrame extends StatelessWidget {
 }
 
 class _CourseScheduleWidgetPreview extends StatelessWidget {
-  const _CourseScheduleWidgetPreview({
-    required this.colorScheme,
-    required this.reminderMinutes,
-  });
+  const _CourseScheduleWidgetPreview({required this.colorScheme});
 
   final ColorScheme colorScheme;
-  final int reminderMinutes;
 
   @override
   Widget build(BuildContext context) {
@@ -1026,9 +1124,7 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
     const double resolvedHeaderSize = 14;
     const double resolvedDateSize = 11;
     const double resolvedArrowSize = 12;
-    final String upcomingHint = reminderMinutes == 0
-        ? '3-4节'
-        : (reminderMinutes <= 5 ? '3-4节 · 即将' : '3-4节 · 8分钟后');
+    const String upcomingHint = '3-4节 · 8分钟后';
 
     return Container(
       padding: const EdgeInsets.all(12),
