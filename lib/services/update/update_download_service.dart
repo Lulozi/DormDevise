@@ -404,16 +404,7 @@ class UpdateDownloadService {
 
     if (result.isSuccess) {
       final File file = result.file!;
-      if (_isAppInForeground) {
-        await _showResultNotification(
-          '下载完成',
-          '正在尝试安装更新...',
-          payload: _installNotificationPayload,
-        );
-        await registerDownloadedFileForInstall(file, openNow: true);
-      } else {
-        await registerDownloadedFileForInstall(file, openNow: false);
-      }
+      await registerDownloadedFileForInstall(file, openNow: true);
     } else if (result.isCancelled) {
       await _cancelNotification();
     } else {
@@ -421,7 +412,7 @@ class UpdateDownloadService {
     }
   }
 
-  /// 标记当前应用是否处于前台，便于决定是否立即唤起安装器。
+  /// 标记当前应用是否处于前台，供前后台相关逻辑判断使用。
   void setAppInForeground(bool isForeground) {
     _isAppInForeground = isForeground;
   }
@@ -440,7 +431,7 @@ class UpdateDownloadService {
     return false;
   }
 
-  /// 注册一个已经下载完成的安装包，并按当前前后台状态决定是否立即安装。
+  /// 注册一个已经下载完成的安装包，并按调用参数决定是否立即安装。
   Future<void> registerDownloadedFileForInstall(
     File file, {
     required bool openNow,
@@ -450,12 +441,9 @@ class UpdateDownloadService {
       await _clearPendingInstallState();
       return;
     }
-    await _savePendingInstallState(
-      file.path,
-      awaitingResume: !(openNow && _isAppInForeground),
-    );
+    await _savePendingInstallState(file.path, awaitingResume: !openNow);
 
-    if (openNow && _isAppInForeground) {
+    if (openNow) {
       await _attemptInstallPendingFile(file);
       return;
     }
