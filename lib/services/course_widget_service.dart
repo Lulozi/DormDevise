@@ -6,6 +6,7 @@ import 'package:dormdevise/utils/course_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 课表桌面组件的数据模型
 class CourseWidgetItem {
@@ -38,6 +39,53 @@ class CourseWidgetItem {
   };
 }
 
+/// 课表组件显示设置。
+class CourseWidgetDisplaySettings {
+  const CourseWidgetDisplaySettings({
+    required this.headerFontSize,
+    required this.contentFontSize,
+    required this.reminderMinutes,
+  });
+
+  static const int minHeaderFontSize = 10;
+  static const int maxHeaderFontSize = 24;
+  static const int minContentFontSize = 9;
+  static const int maxContentFontSize = 20;
+  static const int minReminderMinutes = 0;
+  static const int maxReminderMinutes = 60;
+  static const int reminderStepMinutes = 5;
+
+  static const int defaultHeaderFontSize = 14;
+  static const int defaultContentFontSize = 12;
+  static const int defaultReminderMinutes = 0;
+
+  final int headerFontSize;
+  final int contentFontSize;
+  final int reminderMinutes;
+
+  CourseWidgetDisplaySettings normalized() {
+    return CourseWidgetDisplaySettings(
+      headerFontSize: headerFontSize
+          .clamp(minHeaderFontSize, maxHeaderFontSize)
+          .toInt(),
+      contentFontSize: contentFontSize
+          .clamp(minContentFontSize, maxContentFontSize)
+          .toInt(),
+      reminderMinutes: _normalizeReminderMinutes(reminderMinutes),
+    );
+  }
+
+  static int _normalizeReminderMinutes(int minutes) {
+    final int clamped = minutes.clamp(minReminderMinutes, maxReminderMinutes);
+    if (clamped == 0) {
+      return 0;
+    }
+    final int snapped =
+        (clamped / reminderStepMinutes).round() * reminderStepMinutes;
+    return snapped.clamp(minReminderMinutes, maxReminderMinutes).toInt();
+  }
+}
+
 /// 课表桌面组件服务，负责将课程数据同步到 Android 桌面组件。
 class CourseWidgetService {
   CourseWidgetService._();
@@ -50,6 +98,9 @@ class CourseWidgetService {
   static const MethodChannel _homeWidgetChannel = MethodChannel(
     'dormdevise/home_widget',
   );
+  static const String _headerFontSizeKey = 'course_widget_header_font_size';
+  static const String _contentFontSizeKey = 'course_widget_content_font_size';
+  static const String _reminderMinutesKey = 'course_widget_reminder_minutes';
 
   bool _initialized = false;
 
@@ -60,11 +111,45 @@ class CourseWidgetService {
     await syncWidget();
   }
 
+  /// 读取课表组件显示设置。
+  Future<CourseWidgetDisplaySettings> loadDisplaySettings() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    return CourseWidgetDisplaySettings(
+      headerFontSize:
+          prefs.getInt(_headerFontSizeKey) ??
+          CourseWidgetDisplaySettings.defaultHeaderFontSize,
+      contentFontSize:
+          prefs.getInt(_contentFontSizeKey) ??
+          CourseWidgetDisplaySettings.defaultContentFontSize,
+      reminderMinutes:
+          prefs.getInt(_reminderMinutesKey) ??
+          CourseWidgetDisplaySettings.defaultReminderMinutes,
+    ).normalized();
+  }
+
+  /// 保存课表组件显示设置，并触发组件刷新。
+  Future<void> saveDisplaySettings(
+    CourseWidgetDisplaySettings settings, {
+    bool syncWidgetAfterSave = true,
+  }) async {
+    final CourseWidgetDisplaySettings normalized = settings.normalized();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_headerFontSizeKey, normalized.headerFontSize);
+    await prefs.setInt(_contentFontSizeKey, normalized.contentFontSize);
+    await prefs.setInt(_reminderMinutesKey, normalized.reminderMinutes);
+    if (syncWidgetAfterSave) {
+      await syncWidget();
+    }
+  }
+
   /// 同步课程数据到桌面组件
   Future<void> syncWidget({bool resetDisplayDateToToday = false}) async {
     try {
       final now = DateTime.now();
       final weekday = now.weekday; // 1=周一, 7=周日
+      final CourseWidgetDisplaySettings displaySettings =
+          await loadDisplaySettings();
 
       // 计算当前周次
       final semesterStart = await CourseService.instance.loadSemesterStart();
@@ -124,7 +209,9 @@ class CourseWidgetService {
                   sectionCount: session.sectionCount,
                   startTime: startTime,
                   endTime: endTime,
-                  indicatorColor: _resolveIndicatorColor(course.color).toARGB32(),
+                  indicatorColor: _resolveIndicatorColor(
+                    course.color,
+                  ).toARGB32(),
                 ),
               );
             }
@@ -180,11 +267,25 @@ class CourseWidgetService {
         'course_widget_is_configured',
         hasConfiguredSchedule,
       );
+      await HomeWidget.saveWidgetData<int>(
+        _headerFontSizeKey,
+        displaySettings.headerFontSize,
+      );
+      await HomeWidget.saveWidgetData<int>(
+        _contentFontSizeKey,
+        displaySettings.contentFontSize,
+      );
+      await HomeWidget.saveWidgetData<int>(
+        _reminderMinutesKey,
+        displaySettings.reminderMinutes,
+      );
 
       // 发生课程表导入、编辑或保存时，强制把组件视图切回今天再刷新。
       if (resetDisplayDateToToday) {
         try {
-          await _homeWidgetChannel.invokeMethod<void>('syncCourseWidgetToToday');
+          await _homeWidgetChannel.invokeMethod<void>(
+            'syncCourseWidgetToToday',
+          );
         } on MissingPluginException {
           await HomeWidget.updateWidget(
             name: _androidProviderName,

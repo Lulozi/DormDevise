@@ -564,10 +564,9 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
         return;
       }
 
-      final double targetOffset =
-          (_resolveSectionScrollOffset(startSection) - 20)
-              .clamp(0.0, controller.position.maxScrollExtent)
-              .toDouble();
+      final double targetOffset = (_resolveSectionScrollOffset(
+        startSection,
+      )).clamp(0.0, controller.position.maxScrollExtent).toDouble();
       if ((controller.offset - targetOffset).abs() < 1) {
         return;
       }
@@ -635,7 +634,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     _midnightRefreshTimer?.cancel();
   }
 
-  Future<void> _loadData({bool jumpToCurrentWeek = false}) async {
+  Future<void> _loadData({
+    bool jumpToCurrentWeek = false,
+    bool resetWidgetDisplayDateToToday = false,
+  }) async {
     final service = CourseService.instance;
     final courses = await service.loadCourses();
     final config = await service.loadConfig();
@@ -675,7 +677,11 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
 
       _isLoading = false;
     });
-    unawaited(CourseWidgetService.instance.syncWidget());
+    unawaited(
+      CourseWidgetService.instance.syncWidget(
+        resetDisplayDateToToday: resetWidgetDisplayDateToToday,
+      ),
+    );
 
     if (shouldSyncPage) {
       _syncPageToCurrentWeek();
@@ -1205,7 +1211,10 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       ),
     );
     final bool shouldJumpToCurrentWeek = result == 'jump_to_current_week';
-    _loadData(jumpToCurrentWeek: shouldJumpToCurrentWeek);
+    _loadData(
+      jumpToCurrentWeek: shouldJumpToCurrentWeek,
+      resetWidgetDisplayDateToToday: shouldJumpToCurrentWeek,
+    );
   }
 
   /// 构建带有固定左列的分页课表视图。

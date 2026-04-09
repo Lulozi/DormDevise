@@ -619,7 +619,7 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
               if (!isCurrent) {
                 await CourseService.instance.switchSchedule(id);
                 if (context.mounted) {
-                  Navigator.of(context).pop('refresh_only');
+                  Navigator.of(context).pop('jump_to_current_week');
                 }
               } else {
                 // 如果点击的是当前课表，且当前课表ID与进入页面时的ID不同（说明发生了切换或重建），则返回true刷新

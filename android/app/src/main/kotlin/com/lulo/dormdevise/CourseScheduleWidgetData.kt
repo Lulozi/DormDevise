@@ -38,6 +38,9 @@ internal data class CourseScheduleWidgetSnapshot(
     val weekday: Int,
     val courses: List<CourseScheduleWidgetItem>,
     val displayDateMillis: Long,
+    val reminderMinutes: Int,
+    val headerFontSizeSp: Float,
+    val contentFontSizeSp: Float,
 )
 
 internal enum class CourseScheduleItemState {
@@ -69,6 +72,11 @@ private data class CourseScheduleSectionTime(
 )
 
 internal object CourseScheduleWidgetData {
+    private const val DEFAULT_HEADER_FONT_SIZE = 14
+    private const val DEFAULT_CONTENT_FONT_SIZE = 12
+    private const val DEFAULT_REMINDER_MINUTES = 0
+    private const val MINUTE_MILLIS = 60_000L
+
     private val LEGACY_INDICATOR_COLORS = intArrayOf(
         0xFF4285F4.toInt(),
         0xFF34A853.toInt(),
@@ -85,6 +93,17 @@ internal object CourseScheduleWidgetData {
         val targetDate = Calendar.getInstance().apply {
             timeInMillis = displayDate.timeInMillis
         }
+        val reminderMinutes = widgetData
+            .getInt("course_widget_reminder_minutes", DEFAULT_REMINDER_MINUTES)
+            .coerceIn(0, 60)
+        val headerFontSizeSp = widgetData
+            .getInt("course_widget_header_font_size", DEFAULT_HEADER_FONT_SIZE)
+            .coerceIn(10, 24)
+            .toFloat()
+        val contentFontSizeSp = widgetData
+            .getInt("course_widget_content_font_size", DEFAULT_CONTENT_FONT_SIZE)
+            .coerceIn(9, 20)
+            .toFloat()
         val currentWeek = resolveCurrentWeek(widgetData, targetDate)
         val weekday = resolveWeekday(targetDate)
         val todayCourses = if (currentWeek > 0) {
@@ -111,6 +130,9 @@ internal object CourseScheduleWidgetData {
             weekday = weekday,
             courses = todayCourses,
             displayDateMillis = targetDate.timeInMillis,
+            reminderMinutes = reminderMinutes,
+            headerFontSizeSp = headerFontSizeSp,
+            contentFontSizeSp = contentFontSizeSp,
         )
     }
 
@@ -163,6 +185,7 @@ internal object CourseScheduleWidgetData {
         now: Calendar = Calendar.getInstance(),
     ): Long? {
         val nowMillis = now.timeInMillis
+        val reminderWindowMillis = snapshot.reminderMinutes.coerceAtLeast(0) * MINUTE_MILLIS
         var nextMillis: Long? = null
         val displayDate = Calendar.getInstance().apply {
             timeInMillis = snapshot.displayDateMillis
@@ -177,6 +200,18 @@ internal object CourseScheduleWidgetData {
 
             if (startMillis != null && startMillis > nowMillis) {
                 nextMillis = minOfNullable(nextMillis, startMillis)
+
+                if (reminderWindowMillis > 0L) {
+                    val reminderStartMillis = startMillis - reminderWindowMillis
+                    if (nowMillis < reminderStartMillis) {
+                        nextMillis = minOfNullable(nextMillis, reminderStartMillis)
+                    } else {
+                        val nextMinuteTick = ((nowMillis / MINUTE_MILLIS) + 1) * MINUTE_MILLIS
+                        if (nextMinuteTick < startMillis) {
+                            nextMillis = minOfNullable(nextMillis, nextMinuteTick)
+                        }
+                    }
+                }
             }
             if (endMillis != null && endMillis > nowMillis) {
                 nextMillis = minOfNullable(nextMillis, endMillis)

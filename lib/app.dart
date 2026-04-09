@@ -95,6 +95,8 @@ class DormDeviseApp extends StatelessWidget {
                 );
                 final String? focusCourseName =
                     parsedRoute.queryParameters['course'];
+                final bool launchedFromWidget =
+                    parsedRoute.queryParameters['fromWidget'] == '1';
                 return MaterialPageRoute<void>(
                   builder: (_) => ManagementScreen(
                     initialOriginalIndex: 0,
@@ -102,6 +104,7 @@ class DormDeviseApp extends StatelessWidget {
                     initialTableFocusWeekday: focusWeekday,
                     initialTableFocusSection: focusSection,
                     initialTableFocusCourseName: focusCourseName,
+                    initialTableLaunchedFromWidget: launchedFromWidget,
                   ),
                 );
               default:
@@ -125,6 +128,7 @@ class ManagementScreen extends StatefulWidget {
     this.initialTableFocusWeekday,
     this.initialTableFocusSection,
     this.initialTableFocusCourseName,
+    this.initialTableLaunchedFromWidget = false,
   });
 
   final int? initialOriginalIndex;
@@ -132,6 +136,7 @@ class ManagementScreen extends StatefulWidget {
   final int? initialTableFocusWeekday;
   final int? initialTableFocusSection;
   final String? initialTableFocusCourseName;
+  final bool initialTableLaunchedFromWidget;
 
   /// 创建与主页面关联的状态对象。
   @override
@@ -196,12 +201,13 @@ class ManagementScreenState extends State<ManagementScreen>
     if (originalIndex == 1) {
       return const OpenDoorPage();
     }
-        return TablePage(
-          initialFocusWeek: widget.initialTableFocusWeek,
-          initialFocusWeekday: widget.initialTableFocusWeekday,
-          initialFocusSection: widget.initialTableFocusSection,
-          initialFocusCourseName: widget.initialTableFocusCourseName,
-        );
+    return TablePage(
+      initialFocusWeek: widget.initialTableFocusWeek,
+      initialFocusWeekday: widget.initialTableFocusWeekday,
+      initialFocusSection: widget.initialTableFocusSection,
+      initialFocusCourseName: widget.initialTableFocusCourseName,
+      launchedFromWidget: widget.initialTableLaunchedFromWidget,
+    );
   }
 
   /// 为分页添加淡入与平移动画。

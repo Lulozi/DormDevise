@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.SizeF
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
@@ -112,17 +113,46 @@ class CourseScheduleWidgetProvider : HomeWidgetProvider() {
             } else {
                 weekdayName
             }
+            val headerFontSize = snapshot.headerFontSizeSp
+            val dateFontSize = (headerFontSize - 3f).coerceAtLeast(9f)
+            val arrowFontSize = (headerFontSize - 2f).coerceAtLeast(10f)
+            val emptyTextSize = (snapshot.contentFontSizeSp - 1f).coerceAtLeast(10f)
 
             views.setTextViewText(
                 R.id.course_widget_title,
                 tableName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.course_widget_name),
             )
             views.setTextViewText(R.id.course_widget_date, dateText)
+            views.setTextViewTextSize(
+                R.id.course_widget_title,
+                TypedValue.COMPLEX_UNIT_SP,
+                headerFontSize,
+            )
+            views.setTextViewTextSize(
+                R.id.course_widget_date,
+                TypedValue.COMPLEX_UNIT_SP,
+                dateFontSize,
+            )
+            views.setTextViewTextSize(
+                R.id.course_widget_prev_day,
+                TypedValue.COMPLEX_UNIT_SP,
+                arrowFontSize,
+            )
+            views.setTextViewTextSize(
+                R.id.course_widget_next_day,
+                TypedValue.COMPLEX_UNIT_SP,
+                arrowFontSize,
+            )
             views.setTextViewText(
                 R.id.course_widget_empty_text,
                 context.getString(
                     if (isConfigured) R.string.course_widget_empty else R.string.course_widget_not_configured,
                 ),
+            )
+            views.setTextViewTextSize(
+                R.id.course_widget_empty_text,
+                TypedValue.COMPLEX_UNIT_SP,
+                emptyTextSize,
             )
             views.setTextColor(
                 R.id.course_widget_empty_text,

@@ -3,12 +3,17 @@ import 'dart:io';
 import 'package:dormdevise/models/course.dart';
 import 'package:dormdevise/models/door_widget_state.dart';
 import 'package:dormdevise/services/course_service.dart';
+import 'package:dormdevise/services/course_widget_service.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import 'package:dormdevise/views/screens/table/widgets/expandable_item.dart';
 import 'package:dormdevise/widgets/door_desktop_widgets.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-const MethodChannel _homeWidgetChannel = MethodChannel('dormdevise/home_widget');
+const MethodChannel _homeWidgetChannel = MethodChannel(
+  'dormdevise/home_widget',
+);
 
 class _NativePinRequestResult {
   const _NativePinRequestResult({
@@ -72,9 +77,8 @@ Future<void> _requestPinHomeWidget(
 
   onRequestingChanged(true);
   try {
-    final dynamic nativeResponse = await _homeWidgetChannel.invokeMethod<dynamic>(
-      methodName,
-    );
+    final dynamic nativeResponse = await _homeWidgetChannel
+        .invokeMethod<dynamic>(methodName);
     final pinResult = _NativePinRequestResult.fromNative(nativeResponse);
     if (!context.mounted) {
       return;
@@ -111,10 +115,7 @@ Future<void> _requestPinHomeWidget(
         '当前桌面暂不支持应用内自动添加，请长按桌面空白处手动添加组件。',
         AppToastVariant.warning,
       ),
-      _ => (
-        '当前桌面未响应系统添加请求，请长按桌面空白处手动添加组件。',
-        AppToastVariant.warning,
-      ),
+      _ => ('当前桌面未响应系统添加请求，请长按桌面空白处手动添加组件。', AppToastVariant.warning),
     };
     AppToast.show(context, message, variant: variant);
   } on PlatformException {
@@ -142,8 +143,7 @@ class _CourseWidgetSummary {
   final int currentWeek;
   final bool isConfigured;
 
-  String get headline =>
-      isConfigured ? '当前课表：$tableName' : '当前还没有已配置的课表';
+  String get headline => isConfigured ? '当前课表：$tableName' : '当前还没有已配置的课表';
 
   String get detail {
     if (!isConfigured) {
@@ -287,7 +287,9 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
     }
     await _requestPinHomeWidget(
       context,
-      methodName: simple ? 'requestPinDoorSimpleWidget' : 'requestPinDoorWidget',
+      methodName: simple
+          ? 'requestPinDoorSimpleWidget'
+          : 'requestPinDoorWidget',
       onRequestingChanged: (requesting) {
         if (!mounted) {
           return;
@@ -482,9 +484,7 @@ class _DoorWidgetTabState extends State<_DoorWidgetTab> {
                 ? null
                 : () => _requestPinWidget(context, simple: _currentPage == 1),
             icon: const Icon(Icons.add_to_home_screen_rounded),
-            label: Text(
-              _currentPage == 0 ? '添加完整版到桌面' : '添加简洁版到桌面',
-            ),
+            label: Text(_currentPage == 0 ? '添加完整版到桌面' : '添加简洁版到桌面'),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
             ),
@@ -567,17 +567,127 @@ class _ScheduleWidgetTab extends StatefulWidget {
 class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
   late Future<_CourseWidgetSummary> _summaryFuture;
   bool _isRequestingPin = false;
+  bool _isHeaderFontExpanded = false;
+  bool _isContentFontExpanded = false;
+  bool _isReminderExpanded = false;
+  int _headerFontSize = CourseWidgetDisplaySettings.defaultHeaderFontSize;
+  int _contentFontSize = CourseWidgetDisplaySettings.defaultContentFontSize;
+  int _reminderMinutes = CourseWidgetDisplaySettings.defaultReminderMinutes;
 
   @override
   void initState() {
     super.initState();
     _summaryFuture = _loadCourseWidgetSummary();
+    _loadWidgetDisplaySettings();
+  }
+
+  Future<void> _loadWidgetDisplaySettings() async {
+    final CourseWidgetDisplaySettings settings = await CourseWidgetService
+        .instance
+        .loadDisplaySettings();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _headerFontSize = settings.headerFontSize;
+      _contentFontSize = settings.contentFontSize;
+      _reminderMinutes = settings.reminderMinutes;
+    });
+  }
+
+  Future<void> _saveWidgetDisplaySettings({
+    int? headerFontSize,
+    int? contentFontSize,
+    int? reminderMinutes,
+  }) async {
+    final CourseWidgetDisplaySettings settings = CourseWidgetDisplaySettings(
+      headerFontSize: headerFontSize ?? _headerFontSize,
+      contentFontSize: contentFontSize ?? _contentFontSize,
+      reminderMinutes: reminderMinutes ?? _reminderMinutes,
+    ).normalized();
+
+    setState(() {
+      _headerFontSize = settings.headerFontSize;
+      _contentFontSize = settings.contentFontSize;
+      _reminderMinutes = settings.reminderMinutes;
+    });
+
+    await CourseWidgetService.instance.saveDisplaySettings(settings);
   }
 
   Future<void> _reloadSummary() async {
     setState(() {
       _summaryFuture = _loadCourseWidgetSummary();
     });
+    await _loadWidgetDisplaySettings();
+  }
+
+  Widget _buildGroup({required List<Widget> children}) {
+    return Container(
+      decoration: BoxDecoration(
+        color:
+            Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Divider(
+      height: 1,
+      indent: 16,
+      endIndent: 16,
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+    );
+  }
+
+  Widget _buildNumberPicker({
+    required int value,
+    required int min,
+    required int max,
+    required int step,
+    required ValueChanged<int> onChanged,
+    required String Function(int value) labelBuilder,
+    bool looping = true,
+  }) {
+    final int itemCount = ((max - min) / step).floor() + 1;
+    final int baseIndex = ((value - min) / step).floor().clamp(
+      0,
+      itemCount - 1,
+    );
+    final int initialItem = looping ? baseIndex + itemCount * 100 : baseIndex;
+
+    return Container(
+      height: 150,
+      color:
+          Theme.of(context).cardTheme.color ??
+          Theme.of(context).colorScheme.surface,
+      child: CupertinoPicker(
+        looping: looping,
+        selectionOverlay: Container(),
+        itemExtent: 44,
+        scrollController: FixedExtentScrollController(initialItem: initialItem),
+        onSelectedItemChanged: (int index) {
+          final int normalized = index % itemCount;
+          onChanged(min + normalized * step);
+        },
+        children: List<Widget>.generate(itemCount, (int index) {
+          final int current = min + index * step;
+          return Center(
+            child: Text(
+              labelBuilder(current),
+              style: const TextStyle(fontSize: 24),
+            ),
+          );
+        }),
+      ),
+    );
   }
 
   @override
@@ -649,6 +759,9 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                             aspectRatio: 1.86,
                             child: _CourseScheduleWidgetPreview(
                               colorScheme: colorScheme,
+                              headerFontSize: _headerFontSize,
+                              contentFontSize: _contentFontSize,
+                              reminderMinutes: _reminderMinutes,
                             ),
                           ),
                         ),
@@ -702,22 +815,123 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                 ),
               ),
               const SizedBox(height: 12),
+              _buildGroup(
+                children: [
+                  ExpandableItem(
+                    title: '顶栏字体字号',
+                    value: Text(
+                      '$_headerFontSize 号',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    isExpanded: _isHeaderFontExpanded,
+                    onTap: () {
+                      setState(() {
+                        _isHeaderFontExpanded = !_isHeaderFontExpanded;
+                        if (_isHeaderFontExpanded) {
+                          _isContentFontExpanded = false;
+                          _isReminderExpanded = false;
+                        }
+                      });
+                    },
+                    content: _buildNumberPicker(
+                      value: _headerFontSize,
+                      min: CourseWidgetDisplaySettings.minHeaderFontSize,
+                      max: CourseWidgetDisplaySettings.maxHeaderFontSize,
+                      step: 1,
+                      onChanged: (int value) {
+                        _saveWidgetDisplaySettings(headerFontSize: value);
+                      },
+                      labelBuilder: (int value) => '$value 号',
+                    ),
+                    showDivider: false,
+                  ),
+                  _buildDivider(),
+                  ExpandableItem(
+                    title: '卡片内容字号',
+                    value: Text(
+                      '$_contentFontSize 号',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    isExpanded: _isContentFontExpanded,
+                    onTap: () {
+                      setState(() {
+                        _isContentFontExpanded = !_isContentFontExpanded;
+                        if (_isContentFontExpanded) {
+                          _isHeaderFontExpanded = false;
+                          _isReminderExpanded = false;
+                        }
+                      });
+                    },
+                    content: _buildNumberPicker(
+                      value: _contentFontSize,
+                      min: CourseWidgetDisplaySettings.minContentFontSize,
+                      max: CourseWidgetDisplaySettings.maxContentFontSize,
+                      step: 1,
+                      onChanged: (int value) {
+                        _saveWidgetDisplaySettings(contentFontSize: value);
+                      },
+                      labelBuilder: (int value) => '$value 号',
+                    ),
+                    showDivider: false,
+                  ),
+                  _buildDivider(),
+                  ExpandableItem(
+                    title: '提前提醒',
+                    value: Text(
+                      _reminderMinutes == 0 ? '不提醒' : '$_reminderMinutes 分钟',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    isExpanded: _isReminderExpanded,
+                    onTap: () {
+                      setState(() {
+                        _isReminderExpanded = !_isReminderExpanded;
+                        if (_isReminderExpanded) {
+                          _isHeaderFontExpanded = false;
+                          _isContentFontExpanded = false;
+                        }
+                      });
+                    },
+                    content: _buildNumberPicker(
+                      value: _reminderMinutes,
+                      min: CourseWidgetDisplaySettings.minReminderMinutes,
+                      max: CourseWidgetDisplaySettings.maxReminderMinutes,
+                      step: CourseWidgetDisplaySettings.reminderStepMinutes,
+                      onChanged: (int value) {
+                        _saveWidgetDisplaySettings(reminderMinutes: value);
+                      },
+                      labelBuilder: (int value) =>
+                          value == 0 ? '不提醒' : '$value 分钟',
+                    ),
+                    showDivider: false,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               if (Platform.isAndroid)
                 FilledButton.icon(
                   onPressed: _isRequestingPin
                       ? null
                       : () => _requestPinHomeWidget(
-                            context,
-                            methodName: 'requestPinCourseScheduleWidget',
-                            onRequestingChanged: (requesting) {
-                              if (!mounted) {
-                                return;
-                              }
-                              setState(() {
-                                _isRequestingPin = requesting;
-                              });
-                            },
-                          ),
+                          context,
+                          methodName: 'requestPinCourseScheduleWidget',
+                          onRequestingChanged: (requesting) {
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(() {
+                              _isRequestingPin = requesting;
+                            });
+                          },
+                        ),
                   icon: const Icon(Icons.add_to_home_screen_rounded),
                   label: const Text('添加课表组件到桌面'),
                   style: FilledButton.styleFrom(
@@ -742,9 +956,11 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                       Text('1. 课表组件会自动读取当前正在使用的课程表。'),
                       Text('2. 修改课程、周次配置或切换课表后，桌面组件会自动同步。'),
                       Text('3. 组件支持上下滑动查看全天课程，放大后会直接显示更多课程。'),
-                      Text('4. 正在上课的课程会高亮显示，已结束课程会自动变灰。'),
-                      Text('5. 轻点课表组件可直接打开应用查看完整课表。'),
-                      Text('6. 若系统不支持应用内添加，可长按桌面空白处手动添加。'),
+                      Text('4. 可分别调整顶栏和卡片内容字号，提升桌面可读性。'),
+                      Text('5. 提前提醒支持 0-60 分钟（每 5 分钟），0 分钟表示不提醒。'),
+                      Text('6. 正在上课为绿色高亮；提醒窗口内会同色高亮并显示分钟倒计时，1 分钟内显示“即将”。'),
+                      Text('7. 轻点课表组件可直接打开应用查看完整课表。'),
+                      Text('8. 若系统不支持应用内添加，可长按桌面空白处手动添加。'),
                     ],
                   ),
                 ),
@@ -758,12 +974,31 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
 }
 
 class _CourseScheduleWidgetPreview extends StatelessWidget {
-  const _CourseScheduleWidgetPreview({required this.colorScheme});
+  const _CourseScheduleWidgetPreview({
+    required this.colorScheme,
+    required this.headerFontSize,
+    required this.contentFontSize,
+    required this.reminderMinutes,
+  });
 
   final ColorScheme colorScheme;
+  final int headerFontSize;
+  final int contentFontSize;
+  final int reminderMinutes;
 
   @override
   Widget build(BuildContext context) {
+    final double resolvedHeaderSize = headerFontSize.toDouble();
+    final double resolvedDateSize = (resolvedHeaderSize - 3)
+        .clamp(9, 20)
+        .toDouble();
+    final double resolvedArrowSize = (resolvedHeaderSize - 2)
+        .clamp(10, 22)
+        .toDouble();
+    final String upcomingHint = reminderMinutes == 0
+        ? '3-4节'
+        : (reminderMinutes <= 5 ? '3-4节 · 即将' : '3-4节 · 8分钟后');
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -781,7 +1016,7 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: resolvedHeaderSize,
                     fontWeight: FontWeight.w700,
                     color: colorScheme.onSurface,
                   ),
@@ -794,7 +1029,7 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
                   Text(
                     '<',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: resolvedArrowSize,
                       fontWeight: FontWeight.w700,
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -803,7 +1038,7 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
                   Text(
                     '周一 · 第1周',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: resolvedDateSize,
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
@@ -811,7 +1046,7 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
                   Text(
                     '>',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: resolvedArrowSize,
                       fontWeight: FontWeight.w700,
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -828,7 +1063,8 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
                   color: const Color(0xFFBBDEFB),
                   name: '高等数学',
                   info: '08:30-10:05 · 教一101',
-                  section: '1-2节',
+                  section: '1-2节 · 进行中',
+                  contentFontSize: contentFontSize,
                   colorScheme: colorScheme,
                 ),
                 const SizedBox(height: 6),
@@ -836,7 +1072,8 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
                   color: const Color(0xFFC8E6C9),
                   name: '大学英语',
                   info: '10:35-12:10 · 教二203',
-                  section: '3-4节',
+                  section: upcomingHint,
+                  contentFontSize: contentFontSize,
                   colorScheme: colorScheme,
                 ),
               ],
@@ -854,6 +1091,7 @@ class _CoursePreviewRow extends StatelessWidget {
     required this.name,
     required this.info,
     required this.section,
+    required this.contentFontSize,
     required this.colorScheme,
   });
 
@@ -861,10 +1099,15 @@ class _CoursePreviewRow extends StatelessWidget {
   final String name;
   final String info;
   final String section;
+  final int contentFontSize;
   final ColorScheme colorScheme;
 
   @override
   Widget build(BuildContext context) {
+    final double resolvedTitleSize = contentFontSize.toDouble();
+    final double resolvedDetailSize = (resolvedTitleSize - 2)
+        .clamp(8, 18)
+        .toDouble();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       decoration: BoxDecoration(
@@ -891,7 +1134,7 @@ class _CoursePreviewRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: resolvedTitleSize,
                     fontWeight: FontWeight.w700,
                     color: colorScheme.onSurface,
                   ),
@@ -902,7 +1145,7 @@ class _CoursePreviewRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: resolvedDetailSize,
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -913,7 +1156,7 @@ class _CoursePreviewRow extends StatelessWidget {
           Text(
             section,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: resolvedDetailSize,
               color: colorScheme.onSurfaceVariant,
             ),
           ),
