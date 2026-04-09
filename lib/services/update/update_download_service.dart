@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -161,6 +162,8 @@ class UpdateDownloadService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
   bool _isNotificationsInitialized = false;
+  bool _hasRequestedAndroidNotificationPermission = false;
+  Future<void>? _notificationsInitializationFuture;
   static const int _notificationId = 888;
   static const String _channelId = 'dormdevise_download_channel_v2';
   static const String _channelName = '更新下载';
@@ -189,50 +192,91 @@ class UpdateDownloadService {
 
   /// 初始化通知插件并请求权限
   Future<void> initializeNotifications() async {
-    if (_isNotificationsInitialized) return;
-
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings(_androidNotificationIcon);
-
-    const DarwinInitializationSettings initializationSettingsDarwin =
-        DarwinInitializationSettings();
-
-    const InitializationSettings initializationSettings =
-        InitializationSettings(
-          android: initializationSettingsAndroid,
-          iOS: initializationSettingsDarwin,
-          macOS: initializationSettingsDarwin,
-        );
-
-    await _notificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        if (response.payload == _installNotificationPayload) {
-          unawaited(
-            Future<void>.delayed(
-              const Duration(milliseconds: 300),
-              () => resumePendingInstallIfNeeded(force: true),
-            ),
-          );
-        }
-      },
-    );
-
-    if (Platform.isAndroid) {
-      final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
-          _notificationsPlugin
-              .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin
-              >();
-
-      await androidImplementation?.requestNotificationsPermission();
+    final Future<void>? inFlight = _notificationsInitializationFuture;
+    if (inFlight != null) {
+      await inFlight;
+      return;
     }
 
-    _isNotificationsInitialized = true;
-    _installSubscription ??= UpdateInstaller.onPackageInstalled.listen((_) {
-      unawaited(_clearPendingInstallState());
-      unawaited(UpdateInstaller.cleanupTemporaryApks());
+    final Future<void> initTask = _initializeNotificationsInternal();
+    _notificationsInitializationFuture = initTask;
+    await initTask.whenComplete(() {
+      if (identical(_notificationsInitializationFuture, initTask)) {
+        _notificationsInitializationFuture = null;
+      }
     });
+  }
+
+  Future<void> _initializeNotificationsInternal() async {
+    try {
+      if (!_isNotificationsInitialized) {
+        const AndroidInitializationSettings initializationSettingsAndroid =
+            AndroidInitializationSettings(_androidNotificationIcon);
+
+        const DarwinInitializationSettings initializationSettingsDarwin =
+            DarwinInitializationSettings();
+
+        const InitializationSettings initializationSettings =
+            InitializationSettings(
+              android: initializationSettingsAndroid,
+              iOS: initializationSettingsDarwin,
+              macOS: initializationSettingsDarwin,
+            );
+
+        await _notificationsPlugin.initialize(
+          initializationSettings,
+          onDidReceiveNotificationResponse: (NotificationResponse response) {
+            if (response.payload == _installNotificationPayload) {
+              unawaited(
+                Future<void>.delayed(
+                  const Duration(milliseconds: 300),
+                  () => resumePendingInstallIfNeeded(force: true),
+                ),
+              );
+            }
+          },
+        );
+
+        _isNotificationsInitialized = true;
+        _installSubscription ??= UpdateInstaller.onPackageInstalled.listen((_) {
+          unawaited(_clearPendingInstallState());
+          unawaited(UpdateInstaller.cleanupTemporaryApks());
+        });
+      }
+
+      await _requestAndroidNotificationPermissionIfNeeded();
+    } catch (error, stackTrace) {
+      debugPrint('初始化更新通知失败: $error\n$stackTrace');
+    }
+  }
+
+  Future<void> _requestAndroidNotificationPermissionIfNeeded() async {
+    if (!Platform.isAndroid || _hasRequestedAndroidNotificationPermission) {
+      return;
+    }
+
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+    if (androidImplementation == null) {
+      _hasRequestedAndroidNotificationPermission = true;
+      return;
+    }
+
+    try {
+      await androidImplementation.requestNotificationsPermission();
+      _hasRequestedAndroidNotificationPermission = true;
+    } on PlatformException catch (error) {
+      if (error.code == 'permissionRequestInProgress') {
+        debugPrint('通知权限请求进行中，稍后会自动重试。');
+        return;
+      }
+      debugPrint('请求通知权限失败: $error');
+    } catch (error, stackTrace) {
+      debugPrint('请求通知权限异常: $error\n$stackTrace');
+    }
   }
 
   /// 显示或更新进度通知
