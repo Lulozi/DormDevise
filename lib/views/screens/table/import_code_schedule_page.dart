@@ -165,6 +165,32 @@ class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage>
                 ),
               ),
               const SizedBox(height: 16),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isImporting ? null : _pasteImportCode,
+                      icon: const Icon(Icons.content_paste_rounded),
+                      label: const Text('粘贴导入码'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _isImporting ? null : _submitImport,
+                      icon: const Icon(Icons.download_rounded),
+                      label: Text(_isImporting ? '正在导入' : '开始导入'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               Expanded(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -200,32 +226,6 @@ class _ImportCodeSchedulePageState extends State<ImportCodeSchedulePage>
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isImporting ? null : _pasteImportCode,
-                      icon: const Icon(Icons.content_paste_rounded),
-                      label: const Text('粘贴导入码'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _isImporting ? null : _submitImport,
-                      icon: const Icon(Icons.download_rounded),
-                      label: Text(_isImporting ? '正在导入' : '开始导入'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
