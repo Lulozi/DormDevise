@@ -752,18 +752,12 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Center(
-                        child: FractionallySizedBox(
-                          widthFactor: 0.92,
-                          child: AspectRatio(
-                            aspectRatio: 1.86,
-                            child: _CourseScheduleWidgetPreview(
-                              colorScheme: colorScheme,
-                              headerFontSize: _headerFontSize,
-                              contentFontSize: _contentFontSize,
-                              reminderMinutes: _reminderMinutes,
-                            ),
-                          ),
+                      _FixedWidgetPreviewFrame(
+                        designWidth: 320,
+                        designHeight: 188,
+                        child: _CourseScheduleWidgetPreview(
+                          colorScheme: colorScheme,
+                          reminderMinutes: _reminderMinutes,
                         ),
                       ),
                     ],
@@ -958,7 +952,7 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
                       Text('3. 组件支持上下滑动查看全天课程，放大后会直接显示更多课程。'),
                       Text('4. 可分别调整顶栏和卡片内容字号，提升桌面可读性。'),
                       Text('5. 提前提醒支持 0-60 分钟（每 5 分钟），0 分钟表示不提醒。'),
-                      Text('6. 正在上课为绿色高亮；提醒窗口内会同色高亮并显示分钟倒计时，1 分钟内显示“即将”。'),
+                      Text('6. 正在上课为绿色高亮；提醒窗口内为蓝色高亮并显示分钟倒计时，1 分钟内显示“即将”。'),
                       Text('7. 轻点课表组件可直接打开应用查看完整课表。'),
                       Text('8. 若系统不支持应用内添加，可长按桌面空白处手动添加。'),
                     ],
@@ -973,28 +967,65 @@ class _ScheduleWidgetTabState extends State<_ScheduleWidgetTab> {
   }
 }
 
+class _FixedWidgetPreviewFrame extends StatelessWidget {
+  const _FixedWidgetPreviewFrame({
+    required this.child,
+    required this.designWidth,
+    required this.designHeight,
+  });
+
+  final Widget child;
+  final double designWidth;
+  final double designHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double scale = availableWidth < designWidth
+            ? availableWidth / designWidth
+            : 1.0;
+
+        return Center(
+          child: SizedBox(
+            width: designWidth * scale,
+            height: designHeight * scale,
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: designWidth,
+                height: designHeight,
+                child: MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.noScaling),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _CourseScheduleWidgetPreview extends StatelessWidget {
   const _CourseScheduleWidgetPreview({
     required this.colorScheme,
-    required this.headerFontSize,
-    required this.contentFontSize,
     required this.reminderMinutes,
   });
 
   final ColorScheme colorScheme;
-  final int headerFontSize;
-  final int contentFontSize;
   final int reminderMinutes;
 
   @override
   Widget build(BuildContext context) {
-    final double resolvedHeaderSize = headerFontSize.toDouble();
-    final double resolvedDateSize = (resolvedHeaderSize - 3)
-        .clamp(9, 20)
-        .toDouble();
-    final double resolvedArrowSize = (resolvedHeaderSize - 2)
-        .clamp(10, 22)
-        .toDouble();
+    const int previewContentFontSize = 12;
+    const double resolvedHeaderSize = 14;
+    const double resolvedDateSize = 11;
+    const double resolvedArrowSize = 12;
     final String upcomingHint = reminderMinutes == 0
         ? '3-4节'
         : (reminderMinutes <= 5 ? '3-4节 · 即将' : '3-4节 · 8分钟后');
@@ -1060,20 +1091,20 @@ class _CourseScheduleWidgetPreview extends StatelessWidget {
             child: Column(
               children: [
                 _CoursePreviewRow(
-                  color: const Color(0xFFBBDEFB),
+                  color: const Color(0xFFC8E6C9),
                   name: '高等数学',
                   info: '08:30-10:05 · 教一101',
                   section: '1-2节 · 进行中',
-                  contentFontSize: contentFontSize,
+                  contentFontSize: previewContentFontSize,
                   colorScheme: colorScheme,
                 ),
                 const SizedBox(height: 6),
                 _CoursePreviewRow(
-                  color: const Color(0xFFC8E6C9),
+                  color: const Color(0xFFBBDEFB),
                   name: '大学英语',
                   info: '10:35-12:10 · 教二203',
                   section: upcomingHint,
-                  contentFontSize: contentFontSize,
+                  contentFontSize: previewContentFontSize,
                   colorScheme: colorScheme,
                 ),
               ],

@@ -13,6 +13,9 @@
     <color name="widget_course_active_bg">#1A4CAF50</color>
     <color name="widget_course_active_border">#3381C784</color>
     <color name="widget_course_active_text">#2E7D32</color>
+    <color name="widget_course_reminder_bg">#1A1E88E5</color>
+    <color name="widget_course_reminder_border">#3342A5F5</color>
+    <color name="widget_course_reminder_text">#1565C0</color>
     <color name="widget_course_finished_bg">#149E9E9E</color>
     <color name="widget_course_finished_text">#9E9E9E</color>
     <!-- Status chip backgrounds with alpha -->

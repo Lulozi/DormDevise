@@ -116,7 +116,7 @@ private class CourseScheduleWidgetRemoteViewsFactory(
                 )
             }
 
-            state == CourseScheduleItemState.ONGOING || reminderDue -> {
+            state == CourseScheduleItemState.ONGOING -> {
                 views.setInt(
                     R.id.course_widget_item_root,
                     "setBackgroundResource",
@@ -133,6 +133,26 @@ private class CourseScheduleWidgetRemoteViewsFactory(
                 views.setTextColor(
                     R.id.course_widget_item_section,
                     ContextCompat.getColor(context, R.color.widget_course_active_text),
+                )
+            }
+
+            reminderDue -> {
+                views.setInt(
+                    R.id.course_widget_item_root,
+                    "setBackgroundResource",
+                    R.drawable.widget_course_item_bg_reminder,
+                )
+                views.setTextColor(
+                    R.id.course_widget_item_name,
+                    ContextCompat.getColor(context, R.color.widget_text),
+                )
+                views.setTextColor(
+                    R.id.course_widget_item_info,
+                    ContextCompat.getColor(context, R.color.widget_text_secondary),
+                )
+                views.setTextColor(
+                    R.id.course_widget_item_section,
+                    ContextCompat.getColor(context, R.color.widget_course_reminder_text),
                 )
             }
 
