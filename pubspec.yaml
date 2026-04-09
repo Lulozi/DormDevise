@@ -69,6 +69,7 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.2.0
   flutter_native_splash: ^2.2.18
+  flutter_markdown: ^0.7.7+1
 
 dev_dependencies:
   flutter_test:
