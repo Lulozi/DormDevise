@@ -1135,9 +1135,19 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     if (a == null || b == null) {
       return false;
     }
+    final String? aCourseName = a.courseName;
+    final String? bCourseName = b.courseName;
     return a.weekday == b.weekday &&
         a.startSection == b.startSection &&
-        a.courseName == b.courseName;
+        (aCourseName == null && bCourseName == null ||
+            aCourseName != null &&
+                bCourseName != null &&
+                _normalizeCourseNameForHighlight(aCourseName) ==
+                    _normalizeCourseNameForHighlight(bCourseName));
+  }
+
+  static String _normalizeCourseNameForHighlight(String name) {
+    return name.trim().replaceAll(RegExp(r'\s+'), ' ');
   }
 
   void _syncWidgetHighlightAnimation({CourseTableHighlightTarget? oldTarget}) {
@@ -2132,7 +2142,10 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         block.session.weekday == highlightedCourseTarget.weekday &&
         block.session.startSection == highlightedCourseTarget.startSection &&
         (highlightedCourseTarget.courseName == null ||
-            block.course.name == highlightedCourseTarget.courseName);
+            _normalizeCourseNameForHighlight(block.course.name) ==
+                _normalizeCourseNameForHighlight(
+                  highlightedCourseTarget.courseName!,
+                ));
     final bool canAdjustCourseBlock = !widget.isScheduleLocked;
 
     Widget buildWidgetHighlightOverlay() {

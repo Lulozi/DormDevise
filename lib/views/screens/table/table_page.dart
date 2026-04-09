@@ -546,12 +546,33 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
       if (!mounted) {
         return;
       }
-      final ScrollController controller = _scrollControllerForWeek(week - 1);
-      if (!controller.hasClients) {
-        if (attempt >= 6) {
+      final int targetPage = (week - 1).clamp(0, _maxWeek - 1);
+      if (_pageController.hasClients) {
+        final int currentPage =
+            (_pageController.page ?? _pageController.initialPage).round();
+        if (currentPage != targetPage) {
+          if (attempt >= 20) {
+            return;
+          }
+          Future<void>.delayed(const Duration(milliseconds: 64), () {
+            if (!mounted) {
+              return;
+            }
+            _scheduleScrollToSection(
+              week: week,
+              startSection: startSection,
+              attempt: attempt + 1,
+            );
+          });
           return;
         }
-        Future<void>.delayed(const Duration(milliseconds: 48), () {
+      }
+      final ScrollController controller = _scrollControllerForWeek(week - 1);
+      if (!controller.hasClients) {
+        if (attempt >= 20) {
+          return;
+        }
+        Future<void>.delayed(const Duration(milliseconds: 64), () {
           if (!mounted) {
             return;
           }
