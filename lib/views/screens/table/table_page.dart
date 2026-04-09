@@ -517,7 +517,7 @@ class _TablePageState extends State<TablePage> with WidgetsBindingObserver {
     });
     if (_highlightedCourseTarget != null) {
       _widgetCourseHighlightTimer?.cancel();
-      _widgetCourseHighlightTimer = Timer(const Duration(seconds: 3), () {
+      _widgetCourseHighlightTimer = Timer(const Duration(seconds: 2), () {
         if (!mounted) {
           return;
         }

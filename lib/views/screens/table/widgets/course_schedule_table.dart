@@ -1064,6 +1064,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
   late final Animation<double> _selectionAnimation;
   late final AnimationController _widgetHighlightAnimationController;
   late final Animation<double> _widgetHighlightAnimation;
+  late final AnimationController _widgetHighlightFadeController;
+  late final Animation<double> _widgetHighlightFadeAnimation;
+  CourseTableHighlightTarget? _activeWidgetHighlightTarget;
   double _horizontalOffset = 0;
   ({int weekday, int section})? _selectedSlot;
   ({int weekday, int section})? _previousSlot;
@@ -1155,30 +1158,47 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         widget.highlightedCourseTarget;
     final bool hadTarget = oldTarget != null;
     final bool hasTarget = newTarget != null;
-    final bool targetChanged = !_isSameHighlightTarget(oldTarget, newTarget);
 
-    if (hasTarget && (!hadTarget || targetChanged)) {
-      _widgetHighlightAnimationController.repeat(reverse: true);
+    if (hasTarget) {
+      final bool targetChanged = !_isSameHighlightTarget(
+        oldTarget,
+        newTarget,
+      );
+      _activeWidgetHighlightTarget = newTarget;
+      if (!hadTarget || targetChanged) {
+        _widgetHighlightFadeController.stop();
+        _widgetHighlightFadeController.value = 1;
+        _widgetHighlightFadeController.reverse(from: 1);
+        _widgetHighlightAnimationController.repeat(reverse: true);
+      } else if (!_widgetHighlightAnimationController.isAnimating) {
+        _widgetHighlightAnimationController.repeat(reverse: true);
+      }
       return;
     }
+
     if (!hasTarget && hadTarget) {
-      _widgetHighlightAnimationController.stop();
-      _widgetHighlightAnimationController.value = 0;
+      if (_widgetHighlightFadeController.status != AnimationStatus.dismissed) {
+        _widgetHighlightFadeController.reverse(
+          from: _widgetHighlightFadeController.value,
+        );
+      }
     }
   }
 
   Color _resolveWidgetHighlightBorderColor() {
     final double t = _widgetHighlightAnimationController.value;
     final double pulse = _widgetHighlightAnimation.value;
+    final double fade = _widgetHighlightFadeAnimation.value;
     final double hue = (90 + 280 * t) % 360;
-    final double alpha = (0.56 + pulse * 0.36).clamp(0.0, 1.0);
+    final double alpha = ((0.56 + pulse * 0.36) * fade).clamp(0.0, 1.0);
     final double value = (0.82 + pulse * 0.18).clamp(0.0, 1.0);
     return HSVColor.fromAHSV(alpha, hue, 0.78, value).toColor();
   }
 
   double _resolveWidgetHighlightBorderWidth() {
     final double pulse = _widgetHighlightAnimation.value;
-    return 1.6 + pulse * 1.4;
+    final double fade = _widgetHighlightFadeAnimation.value;
+    return (1.6 + pulse * 1.4) * fade;
   }
 
   // 排版参数已由 widget 类上的静态方法 resolveTypography 提供，
@@ -1329,7 +1349,32 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       parent: _widgetHighlightAnimationController,
       curve: Curves.easeInOut,
     );
+    _widgetHighlightFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    );
+    _widgetHighlightFadeAnimation = CurvedAnimation(
+      parent: _widgetHighlightFadeController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeOutCubic,
+    );
+    _widgetHighlightFadeController.addStatusListener((AnimationStatus status) {
+      if (status != AnimationStatus.dismissed || !mounted) {
+        return;
+      }
+      if (_activeWidgetHighlightTarget == null) {
+        return;
+      }
+      setState(() {
+        _activeWidgetHighlightTarget = null;
+      });
+      _widgetHighlightAnimationController.stop();
+      _widgetHighlightAnimationController.value = 0;
+    });
     if (widget.highlightedCourseTarget != null) {
+      _activeWidgetHighlightTarget = widget.highlightedCourseTarget;
+      _widgetHighlightFadeController.value = 1;
+      _widgetHighlightFadeController.reverse(from: 1);
       _widgetHighlightAnimationController.repeat(reverse: true);
     }
   }
@@ -1412,6 +1457,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     _horizontalController.dispose();
     _selectionAnimationController.dispose();
     _widgetHighlightAnimationController.dispose();
+    _widgetHighlightFadeController.dispose();
     super.dispose();
   }
 
@@ -2136,7 +2182,7 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         _selectedBlock!.renderStartSection == block.renderStartSection &&
         _selectedBlock!.renderSectionCount == block.renderSectionCount;
     final CourseTableHighlightTarget? highlightedCourseTarget =
-        widget.highlightedCourseTarget;
+      _activeWidgetHighlightTarget;
     final bool isWidgetHighlighted =
         highlightedCourseTarget != null &&
         block.session.weekday == highlightedCourseTarget.weekday &&
@@ -2151,8 +2197,15 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
     Widget buildWidgetHighlightOverlay() {
       return IgnorePointer(
         child: AnimatedBuilder(
-          animation: _widgetHighlightAnimationController,
+          animation: Listenable.merge(<Listenable>[
+            _widgetHighlightAnimationController,
+            _widgetHighlightFadeController,
+          ]),
           builder: (BuildContext context, Widget? child) {
+            final double fade = _widgetHighlightFadeAnimation.value;
+            if (fade <= 0) {
+              return const SizedBox.shrink();
+            }
             final Color borderColor = _resolveWidgetHighlightBorderColor();
             final double borderWidth = _resolveWidgetHighlightBorderWidth();
             return DecoratedBox(
@@ -2161,9 +2214,9 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
                 border: Border.all(color: borderColor, width: borderWidth),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: borderColor.withValues(alpha: 0.25),
-                    blurRadius: 12,
-                    spreadRadius: 0.6,
+                    color: borderColor.withValues(alpha: 0.25 * fade),
+                    blurRadius: 10 + 4 * fade,
+                    spreadRadius: 0.4 + 0.3 * fade,
                     offset: const Offset(0, 2),
                   ),
                 ],
