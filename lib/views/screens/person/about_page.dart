@@ -464,7 +464,9 @@ class _AboutPageState extends State<AboutPage> {
                       child: LicensePage(
                         applicationName: 'DormDevise',
                         applicationVersion: versionLabel,
-                        applicationLegalese: '© 2025-26 DormDevise',
+                        // 与仓库 LICENSE 保持一致：BSD 3-Clause。
+                        applicationLegalese:
+                            '© 2025-2026 DormDevise · BSD 3-Clause License',
                       ),
                     ),
                   ),
@@ -556,7 +558,7 @@ class _AboutPageState extends State<AboutPage> {
                   subtitle: '查看依赖与第三方组件授权',
                   onTap: (_) => _showLicenseDialog(),
                 ),
-                Text('所有用户配置均存储在本地 SharedPreferences 内，除非主动授权，不会上传至云端。'),
+                const Text('DormDevise 基于 BSD 3-Clause License 开源。'),
               ],
             ),
             const SizedBox(height: 16),
@@ -629,10 +631,11 @@ class _AboutHeader extends StatelessWidget {
             CircleAvatar(
               radius: 36,
               backgroundColor: colorScheme.primary.withValues(alpha: 0.12),
-              child: Icon(
-                Icons.meeting_room_outlined,
-                size: 36,
-                color: colorScheme.primary,
+              child: Image.asset(
+                'assets/images/start/icon_dormdevise_door.png',
+                width: 52,
+                height: 52,
+                fit: BoxFit.contain,
               ),
             ),
             const SizedBox(height: 16),
