@@ -247,7 +247,7 @@ This project is open-sourced under the [BSD 3-Clause License](LICENSE).
 
 <div align="center">
 
-**Made with ❤️ by Lulo**
+**Made with ❤️ by [Lulo](https://github.com/Lulozi)**
 
 *Making dormitory life smarter*
 
