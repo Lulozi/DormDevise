@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart';
 
 /// 个人页面与分享预览共用的身份信息。
 const String kPersonDisplayName = '匿名';
@@ -58,7 +60,7 @@ class PersonIdentityProfile {
   String get birthDateText {
     final DateTime? date = birthDate;
     if (date == null) {
-      return '未设置';
+      return '未配置';
     }
     return '${date.year}年${date.month}月${date.day}日';
   }
@@ -119,6 +121,8 @@ class PersonIdentityService extends ChangeNotifier {
   static const String _birthDateKey = 'person_identity_birth_date';
   static const String _signatureKey = 'person_identity_signature';
   static const String _uidKey = 'person_identity_uid';
+  static const String _localCredentialStoreKey =
+      'person_identity_local_credentials';
   static const String _avatarStorageFolderName = 'person_avatar';
 
   /// 加载当前身份信息。
@@ -162,7 +166,48 @@ class PersonIdentityService extends ChangeNotifier {
     );
   }
 
-  /// 本地模拟登录：仅做本地持久化，不接入服务器。
+  /// 本地注册：当前仅在本地设备保存账号与密码哈希。
+  ///
+  /// 为了便于后续切换远程注册，本方法中将“本地注册逻辑”和“服务器注册模板”
+  /// 放在同一位置并用分段注释明确区分：
+  /// 1. 继续使用本地注册：保持当前代码不变。
+  /// 2. 切换到服务器注册：注释掉“本地注册逻辑”，取消注释“服务器注册模板”。
+  Future<void> register({
+    required String account,
+    required String password,
+  }) async {
+    final String normalizedAccount = account.trim();
+    final String normalizedPassword = password.trim();
+    if (normalizedAccount.isEmpty || normalizedPassword.isEmpty) {
+      throw const FormatException('账号或密码不能为空');
+    }
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    // ======================== 本地注册逻辑（当前启用） ========================
+    final Map<String, String> localStore = _loadLocalCredentialStore(prefs);
+    if (localStore.containsKey(normalizedAccount)) {
+      throw const FormatException('账号已存在，请直接登录');
+    }
+    localStore[normalizedAccount] = _hashPasswordForLocalAuth(
+      normalizedPassword,
+    );
+    await _saveLocalCredentialStore(prefs, localStore);
+
+    // ====================== 服务器注册模板（默认注释） =======================
+    // 切换步骤：
+    // 1. 注释掉上面的“本地注册逻辑”代码块
+    // 2. 取消注释下面这一行
+    // 3. 在 _registerWithServer 中接入你的真实 HTTPS 接口
+    // await _registerWithServer(
+    //   account: normalizedAccount,
+    //   password: normalizedPassword,
+    // );
+  }
+
+  /// 登录：当前启用本地账号校验，并预留了远程服务器校验模板。
+  ///
+  /// 切换方式与 [register] 保持一致：注释本地逻辑，取消注释服务器逻辑即可。
   Future<void> login({
     required String account,
     required String password,
@@ -174,10 +219,29 @@ class PersonIdentityService extends ChangeNotifier {
     }
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_isLoggedInKey, true);
-    await prefs.setString(_accountKey, normalizedAccount);
-    // 每次登录都使用当前账号作为昵称，确保切换账号后页面同步更新。
-    await prefs.setString(_displayNameKey, normalizedAccount);
+
+    // ======================== 本地登录校验（当前启用） ========================
+    final Map<String, String> localStore = _loadLocalCredentialStore(prefs);
+    final String? storedPasswordHash = localStore[normalizedAccount];
+    if (storedPasswordHash == null) {
+      throw const FormatException('账号不存在，请先注册');
+    }
+    final String passwordHash = _hashPasswordForLocalAuth(normalizedPassword);
+    if (storedPasswordHash != passwordHash) {
+      throw const FormatException('账号密码错误');
+    }
+
+    // ====================== 服务器登录模板（默认注释） =======================
+    // 切换步骤：
+    // 1. 注释掉上面的“本地登录校验”代码块
+    // 2. 取消注释下面这一行
+    // 3. 在 _loginWithServer 中接入你的真实 HTTPS 接口
+    // await _loginWithServer(
+    //   account: normalizedAccount,
+    //   password: normalizedPassword,
+    // );
+
+    await _persistLoginSuccess(prefs: prefs, account: normalizedAccount);
     notifyListeners();
   }
 
@@ -462,4 +526,118 @@ class PersonIdentityService extends ChangeNotifier {
     }
     return '.jpg';
   }
+
+  /// 统一处理登录成功后的本地状态写入，避免登录入口重复写字段。
+  Future<void> _persistLoginSuccess({
+    required SharedPreferences prefs,
+    required String account,
+  }) async {
+    await prefs.setBool(_isLoggedInKey, true);
+    await prefs.setString(_accountKey, account);
+    // 每次登录都将昵称与账号对齐，确保切换账号后个人页文案即时同步。
+    await prefs.setString(_displayNameKey, account);
+  }
+
+  /// 读取本地账号仓库（account -> passwordHash）。
+  ///
+  /// 本方法在数据损坏时会抛出 [FormatException]，用于显式暴露问题，
+  /// 避免静默忽略导致登录行为异常且难以排查。
+  Map<String, String> _loadLocalCredentialStore(SharedPreferences prefs) {
+    final String raw = prefs.getString(_localCredentialStoreKey)?.trim() ?? '';
+    if (raw.isEmpty) {
+      return <String, String>{};
+    }
+    final dynamic decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      throw const FormatException('本地账号数据损坏，请重新注册账号');
+    }
+
+    final Map<String, String> result = <String, String>{};
+    for (final MapEntry<dynamic, dynamic> entry in decoded.entries) {
+      final String account = entry.key.toString().trim();
+      final String passwordHash = entry.value.toString().trim();
+      if (account.isEmpty || passwordHash.isEmpty) {
+        continue;
+      }
+      result[account] = passwordHash;
+    }
+    return result;
+  }
+
+  /// 持久化本地账号仓库。
+  Future<void> _saveLocalCredentialStore(
+    SharedPreferences prefs,
+    Map<String, String> store,
+  ) async {
+    await prefs.setString(_localCredentialStoreKey, jsonEncode(store));
+  }
+
+  /// 本地模式下的密码摘要算法（SHA-256）。
+  ///
+  /// 目的：避免明文密码直接落地存储；后续切换远程接口时可整体替换。
+  String _hashPasswordForLocalAuth(String password) {
+    return sha256.convert(utf8.encode(password)).toString();
+  }
+
+  /*
+  /// ====================== 服务器登录模板（预留） ======================
+  ///
+  /// 使用说明：
+  /// 1. 先在 login() 中注释“本地登录校验”并取消注释 _loginWithServer 调用
+  /// 2. 将示例域名和路径替换为你的服务端接口
+  /// 3. 按后端协议处理状态码与错误消息
+  Future<void> _loginWithServer({
+    required String account,
+    required String password,
+  }) async {
+    final Uri uri = Uri.https('api.example.com', '/v1/auth/login');
+    final http.Response response = await http.post(
+      uri,
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(<String, String>{
+        'account': account,
+        'password': password,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw FormatException('登录失败：${response.statusCode}');
+    }
+    final dynamic payload = jsonDecode(response.body);
+    if (payload is! Map || payload['success'] != true) {
+      throw const FormatException('账号密码错误');
+    }
+  }
+
+  /// ====================== 服务器注册模板（预留） ======================
+  ///
+  /// 使用说明：
+  /// 1. 先在 register() 中注释“本地注册逻辑”并取消注释 _registerWithServer 调用
+  /// 2. 将示例域名和路径替换为你的服务端接口
+  /// 3. 按后端协议处理状态码与错误消息
+  Future<void> _registerWithServer({
+    required String account,
+    required String password,
+  }) async {
+    final Uri uri = Uri.https('api.example.com', '/v1/auth/register');
+    final http.Response response = await http.post(
+      uri,
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(<String, String>{
+        'account': account,
+        'password': password,
+      }),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw FormatException('注册失败：${response.statusCode}');
+    }
+    final dynamic payload = jsonDecode(response.body);
+    if (payload is! Map || payload['success'] != true) {
+      throw const FormatException('注册失败，请稍后重试');
+    }
+  }
+  */
 }
