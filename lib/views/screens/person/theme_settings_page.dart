@@ -1,0 +1,2076 @@
+import 'package:dormdevise/services/theme/theme_service.dart';
+import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter/services.dart';
+
+/// 个性主题设置页，提供主题模式（浅色/跟随系统/深色）切换、
+/// 预设色板、HSB 自定义取色、效果预览以及主页导航顺序自定义。
+class ThemeSettingsPage extends StatefulWidget {
+  const ThemeSettingsPage({super.key});
+
+  @override
+  State<ThemeSettingsPage> createState() => _ThemeSettingsPageState();
+}
+
+class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
+  /// 开关预览的状态（可交互切换，仅做展示用）
+  bool _previewSwitchValue = true;
+
+  /// 预设主色列表（差异化色系，每排五个）。
+  /// 标签根据 Material 3 派生的实际 primary 颜色命名，而非种子色。
+  /// M3 primary 色相分布：6°→44°→66°→118°→187°→220°→261°→295°
+  static const List<_PresetColor> _presets = [
+    _PresetColor(color: Colors.white, label: '洁白'),
+    _PresetColor(color: Colors.red, label: '朱砂'),
+    _PresetColor(color: Colors.amber, label: '琥珀'),
+    _PresetColor(color: Colors.lime, label: '苔绿'),
+    _PresetColor(color: Colors.green, label: '松绿'),
+    _PresetColor(color: Colors.cyan, label: '碧波'),
+    _PresetColor(color: Colors.blueAccent, label: '雾蓝'),
+    _PresetColor(color: Colors.deepPurple, label: '堇紫'),
+    _PresetColor(color: Colors.purple, label: '紫藤'),
+  ];
+
+  /// 缓存：每个预设种子色经 Material 3 转换后的浅色/深色 primary 对。
+  /// 色块展示色 = lerp(lightPrimary, darkPrimary, themeTransitionProgress)，
+  /// 与主按钮颜色保持完全一致。
+  static final List<(Color light, Color dark)> _presetPrimaries = _presets.map((
+    p,
+  ) {
+    // 洁白/乌黑由独立逻辑处理（白→黑 线性过渡）
+    if (p.color == Colors.white) return (Colors.white, Colors.black);
+    return (
+      ColorScheme.fromSeed(
+        seedColor: p.color,
+        brightness: Brightness.light,
+      ).primary,
+      ColorScheme.fromSeed(
+        seedColor: p.color,
+        brightness: Brightness.dark,
+      ).primary,
+    );
+  }).toList();
+
+  /// 弹出 HSB 色轮取色对话框（与编辑课程的自定义颜色弹窗风格统一）。
+  ///
+  /// 取色成功后自动应用为当前主色。
+  Future<void> _showCustomColorDialog() async {
+    if (!mounted) return;
+    final _ThemeCustomColorResult? result = await Navigator.of(context)
+        .push<_ThemeCustomColorResult>(
+          PageRouteBuilder<_ThemeCustomColorResult>(
+            opaque: false,
+            barrierDismissible: true,
+            barrierColor: Colors.black.withValues(alpha: 0.55),
+            pageBuilder: (context, animation, secondaryAnimation) {
+              return const _ThemeCustomColorDialog();
+            },
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+          ),
+        );
+    if (result != null && mounted) {
+      await ThemeService.instance.setCustomThemeColor(
+        color: result.color,
+        switchThumbColor: result.switchThumbColor,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final currentColor = ThemeService.instance.primaryColor;
+    final currentMode = ThemeService.instance.themeModeSetting;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 不再单独计算白色预设，改用通用方法
+    final previewInputFillColor = _resolvePreviewInputFillColor(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('个性主题')),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        children: [
+          // —— 主题模式切换 ——
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        isDark
+                            ? Icons.dark_mode_outlined
+                            : Icons.light_mode_outlined,
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '主题模式',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildAppearanceToggle(context, currentMode),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // —— 选择主题颜色 ——
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.color_lens_outlined,
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '主题颜色',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 5,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          // 正方形色块 + 底部标签
+                          childAspectRatio: 0.68,
+                        ),
+                    // +1 为末尾的"自定义"入口
+                    itemCount: _presets.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index < _presets.length) {
+                        // 预设色块：使用 M3 派生的实际 primary 颜色展示
+                        final preset = _presets[index];
+                        return _ColorTile(
+                          preset: preset,
+                          isSelected:
+                              !ThemeService.instance.isCustomPreviewEnabled &&
+                              preset.color.toARGB32() ==
+                                  currentColor.toARGB32(),
+                          displayColor: _resolvePresetDisplayColor(
+                            context,
+                            index,
+                          ),
+                          selectedBorderColor: colorScheme.primary,
+                          onTap: () async {
+                            await ThemeService.instance.setPrimaryColor(
+                              preset.color,
+                            );
+                          },
+                        );
+                      } else {
+                        // 自定义入口：仅在自定义模式下选中
+                        return _CustomColorTile(
+                          // 排除洁白，仅用其他 8 个预设的 M3 primary 组成过渡色
+                          // 深色模式用深色端 primary，浅色模式用浅色端
+                          rainbowColors: _presetPrimaries
+                              .skip(1) // 跳过洁白/乌黑
+                              .map((pair) => isDark ? pair.$2 : pair.$1)
+                              .toList(),
+                          selectedColor: currentColor,
+                          isSelected:
+                              ThemeService.instance.isCustomPreviewEnabled,
+                          onTap: () async {
+                            await _showCustomColorDialog();
+                          },
+                        );
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        await ThemeService.instance.setPrimaryColor(
+                          ThemeService.defaultPrimaryColor,
+                        );
+                      },
+                      icon: const Icon(Icons.restore, size: 18),
+                      label: const Text('恢复默认'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // —— 主题预览区 ——
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.visibility_outlined,
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '效果预览',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {},
+                          child: const Text('主按钮'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {},
+                          child: const Text('次按钮'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // 不使用 const 以确保主题切换时输入框跟随渐变重建
+                  TextField(
+                    decoration: InputDecoration(
+                      labelText: '输入框预览',
+                      hintText: '请输入内容...',
+                      // 用与主题切换同一插值进度的填充色，避免视觉节奏不一致。
+                      fillColor: previewInputFillColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('开关预览'),
+                      Switch(
+                        value: _previewSwitchValue,
+                        onChanged: (v) =>
+                            setState(() => _previewSwitchValue = v),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // —— 主页导航顺序自定义 ——
+          _buildNavOrderCard(context),
+          const SizedBox(height: 12),
+
+          // —— 主页设置（默认启动页） ——
+          _buildHomePageCard(context),
+        ],
+      ),
+    );
+  }
+
+  /// 解析主题切换进度（0=亮色端，1=暗色端）。
+  ///
+  /// 通过当前 `scaffoldBackgroundColor` 在亮/暗主题端点间的位置反推插值进度，
+  /// 让自定义颜色变化与 MaterialApp 的主题过渡保持同一节奏。
+  double _resolveThemeTransitionProgress(BuildContext context) {
+    final currentColor = Theme.of(context).scaffoldBackgroundColor;
+    final lightColor = ThemeService.instance.lightTheme.scaffoldBackgroundColor;
+    final darkColor = ThemeService.instance.darkTheme.scaffoldBackgroundColor;
+    return _estimateColorLerpProgress(
+      beginColor: lightColor,
+      endColor: darkColor,
+      currentColor: currentColor,
+    );
+  }
+
+  /// 估算颜色线性插值进度（0~1），优先使用变化幅度最大的通道避免数值抖动。
+  double _estimateColorLerpProgress({
+    required Color beginColor,
+    required Color endColor,
+    required Color currentColor,
+  }) {
+    final channels = <({double begin, double end, double current})>[
+      (begin: beginColor.r, end: endColor.r, current: currentColor.r),
+      (begin: beginColor.g, end: endColor.g, current: currentColor.g),
+      (begin: beginColor.b, end: endColor.b, current: currentColor.b),
+    ];
+    channels.sort(
+      (a, b) => (b.end - b.begin).abs().compareTo((a.end - a.begin).abs()),
+    );
+
+    final primary = channels.first;
+    final delta = primary.end - primary.begin;
+    if (delta.abs() > 0.0001) {
+      return ((primary.current - primary.begin) / delta)
+          .clamp(0.0, 1.0)
+          .toDouble();
+    }
+
+    final luminanceDelta =
+        endColor.computeLuminance() - beginColor.computeLuminance();
+    if (luminanceDelta.abs() <= 0.000001) {
+      return 0.0;
+    }
+    return ((currentColor.computeLuminance() - beginColor.computeLuminance()) /
+            luminanceDelta)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
+  /// 解析指定预设色块的展示颜色（Material 3 派生的 primary）。
+  ///
+  /// 在亮暗主题过渡期间按 [_resolveThemeTransitionProgress] 线性插值，
+  /// 确保色块颜色变化与主按钮等主题组件完全同步。
+  Color _resolvePresetDisplayColor(BuildContext context, int index) {
+    final progress = _resolveThemeTransitionProgress(context);
+    final (light, dark) = _presetPrimaries[index];
+    return Color.lerp(light, dark, progress) ?? light;
+  }
+
+  /// 输入框预览底色与全局主题切换保持同速过渡。
+  Color _resolvePreviewInputFillColor(BuildContext context) {
+    final progress = _resolveThemeTransitionProgress(context);
+    final lightFillColor =
+        ThemeService.instance.lightTheme.inputDecorationTheme.fillColor ??
+        Colors.white;
+    final darkFillColor =
+        ThemeService.instance.darkTheme.inputDecorationTheme.fillColor ??
+        ThemeService.instance.darkTheme.colorScheme.surfaceContainerHigh;
+    return Color.lerp(lightFillColor, darkFillColor, progress) ??
+        lightFillColor;
+  }
+
+  /// 主页导航拖拽块与主题切换使用一致插值进度，避免块体颜色跳变。
+  Color _resolveNavDragBlockColor(BuildContext context) {
+    final progress = _resolveThemeTransitionProgress(context);
+    final darkBlockColor =
+        ThemeService.instance.darkTheme.colorScheme.surfaceContainerHigh;
+    return Color.lerp(Colors.white, darkBlockColor, progress) ?? Colors.white;
+  }
+
+  // ─────────────── 三段式主题模式切换 ───────────────
+
+  /// 构建主题模式（浅色/跟随系统/深色）三段分段切换控件。
+  ///
+  /// 不使用 AnimatedContainer 包裹轨道颜色，而是让 MaterialApp 的主题渐变
+  /// 动画直接驱动 colorScheme 的颜色过渡，确保与整体渐变完全同步。
+  /// 即：轨道底色、滑块颜色均取自 Theme.of(context).colorScheme，
+  /// 由 MaterialApp.themeAnimationDuration（500ms）统一插值。
+  Widget _buildAppearanceToggle(
+    BuildContext context,
+    ThemeModeSetting currentMode,
+  ) {
+    final panelColors = _resolveThemeModeLikePanelColors(context);
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        // 主题模式滑轨基准色。
+        color: panelColors.railColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: panelColors.railBorderColor, width: 1),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double totalWidth = constraints.maxWidth;
+          // 三段式：每段宽度 = (轨道总宽 - 两侧边距) / 3
+          final double indicatorWidth = (totalWidth - 4) / 3;
+
+          // 滑块对齐位置：-1=左(浅色), 0=中(跟随系统), 1=右(深色)
+          final Alignment alignment;
+          switch (currentMode) {
+            case ThemeModeSetting.light:
+              alignment = Alignment.centerLeft;
+            case ThemeModeSetting.system:
+              alignment = Alignment.center;
+            case ThemeModeSetting.dark:
+              alignment = Alignment.centerRight;
+          }
+
+          return Stack(
+            children: [
+              // 滑块动画（500ms 匹配 app.dart 的 themeAnimationDuration）
+              AnimatedAlign(
+                alignment: alignment,
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeInOut,
+                child: Container(
+                  width: indicatorWidth,
+                  height: 36,
+                  margin: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: panelColors.indicatorColor,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.04,
+                        ),
+                        blurRadius: 1,
+                        offset: const Offset(0, 1),
+                      ),
+                      BoxShadow(
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.12,
+                        ),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 三个选项
+              Row(
+                children: [
+                  _buildAppearanceOption(
+                    icon: Icons.light_mode_rounded,
+                    label: '浅色模式',
+                    isSelected: currentMode == ThemeModeSetting.light,
+                    onTap: () async {
+                      await ThemeService.instance.setThemeModeSetting(
+                        ThemeModeSetting.light,
+                      );
+                    },
+                  ),
+                  _buildAppearanceOption(
+                    icon: Icons.brightness_auto_rounded,
+                    label: '跟随系统',
+                    isSelected: currentMode == ThemeModeSetting.system,
+                    onTap: () async {
+                      await ThemeService.instance.setThemeModeSetting(
+                        ThemeModeSetting.system,
+                      );
+                    },
+                  ),
+                  _buildAppearanceOption(
+                    icon: Icons.dark_mode_rounded,
+                    label: '深色模式',
+                    isSelected: currentMode == ThemeModeSetting.dark,
+                    onTap: () async {
+                      await ThemeService.instance.setThemeModeSetting(
+                        ThemeModeSetting.dark,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 主题模式切换的单个选项
+  Widget _buildAppearanceOption({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.translucent,
+        child: Container(
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurface.withValues(
+                  alpha: isSelected ? 1.0 : 0.6,
+                ),
+              ),
+              const SizedBox(width: 4),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+                child: Text(label),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────── HSB 取色器 ───────────────
+
+  /// 构建 HSB 取色器卡片（展开在主题模式和颜色选择之间）。
+  // ─────────────── 主页导航顺序自定义 ───────────────
+
+  /// 导航目的地定义（图标、选中图标、标签），索引对应原始页面：
+  /// 0=课表, 1=开门, 2=我的
+  static const List<_NavDestination> _allDestinations = [
+    _NavDestination(
+      icon: FontAwesomeIcons.calendar,
+      selectedIcon: FontAwesomeIcons.solidCalendar,
+      label: '课表',
+    ),
+    _NavDestination(
+      icon: Icons.door_front_door_outlined,
+      selectedIcon: Icons.door_front_door,
+      label: '开门',
+      iconScale: 1.18,
+    ),
+    _NavDestination(
+      icon: FontAwesomeIcons.user,
+      selectedIcon: FontAwesomeIcons.solidUser,
+      label: '我的',
+    ),
+  ];
+
+  /// 统一“主题模式 / 主页设置 / 主页导航顺序”的配色，保持同一套视觉规则。
+  ({
+    Color railColor,
+    Color railBorderColor,
+    Color indicatorColor,
+    Color indicatorShadowColor,
+    Color optionSelectedColor,
+    Color optionUnselectedColor,
+    Color navBlockColor,
+    Color navBlockBorderColor,
+    Color navBlockForegroundColor,
+  })
+  _resolveThemeModeLikePanelColors(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return (
+      railColor: isDark
+          ? colorScheme.surfaceContainer
+          : colorScheme.surfaceContainerLowest,
+      railBorderColor: colorScheme.outlineVariant.withValues(alpha: 0.3),
+      indicatorColor: isDark ? colorScheme.surfaceContainerHigh : Colors.white,
+      indicatorShadowColor: Colors.black,
+      optionSelectedColor: colorScheme.onSurface,
+      optionUnselectedColor: colorScheme.onSurface.withValues(alpha: 0.6),
+      // 拖拽块与滑块颜色一致。
+      navBlockColor: _resolveNavDragBlockColor(context),
+      navBlockBorderColor: colorScheme.outlineVariant.withValues(alpha: 0.45),
+      navBlockForegroundColor: colorScheme.onSurface,
+    );
+  }
+
+  /// 构建主页导航顺序自定义卡片（水平排列，左右拖拽）。
+  ///
+  /// 用户可通过长按拖拽重新排列底部导航栏的页面顺序，
+  /// 修改后实时生效并持久化到 SharedPreferences。
+  Widget _buildNavOrderCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final navOrder = ThemeService.instance.navOrder;
+    final panelColors = _resolveThemeModeLikePanelColors(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.swap_horiz_outlined,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    '主页导航顺序',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                // 恢复默认按钮
+                if (!_isDefaultOrder(navOrder))
+                  GestureDetector(
+                    onTap: () async {
+                      await ThemeService.instance.setNavOrder(
+                        ThemeService.defaultNavOrder,
+                      );
+                      if (!mounted) {
+                        return;
+                      }
+                      setState(() {});
+                    },
+                    child: Text(
+                      '重置',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '长按拖拽可调整底部导航栏顺序',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // 水平可拖拽重排的导航项列表
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // 统一规则：整体左右边距固定为 2px，块间距固定为 2px，
+                // 并按剩余宽度均分，确保每个拖拽块可视宽度一致。
+                const double containerPadH = 2; // 容器左右内边距（每侧）
+                const double containerPadV = 2; // 容器上下内边距（每侧）
+                const double blockGap = 2; // 拖拽块之间的间距
+                const double borderW = 1; // 容器边框宽度
+                final int count = navOrder.length;
+                // 边框也会占用内部空间，必须一并扣除。
+                final double available =
+                    constraints.maxWidth - (containerPadH + borderW) * 2;
+                final double totalGaps = (count > 0 ? count - 1 : 0) * blockGap;
+                final double itemWidth =
+                    (available - totalGaps) / (count > 0 ? count : 1);
+
+                return Container(
+                  height: 72,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: containerPadH,
+                    vertical: containerPadV,
+                  ),
+                  decoration: BoxDecoration(
+                    // 调整框使用整体背景色，与页面背景融合。
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: panelColors.railBorderColor,
+                      width: 1,
+                    ),
+                  ),
+                  child: ReorderableListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    clipBehavior: Clip.none,
+                    buildDefaultDragHandles: false,
+                    proxyDecorator: (child, index, animation) {
+                      final curved = CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                        reverseCurve: Curves.easeInCubic,
+                      );
+                      return AnimatedBuilder(
+                        animation: curved,
+                        builder: (context, child) {
+                          final double t = curved.value;
+                          return Transform.scale(
+                            scale: 1.0 + 0.02 * t,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(
+                                      alpha: 0.10 + 0.08 * t,
+                                    ),
+                                    blurRadius: 6 + 8 * t,
+                                    offset: Offset(0, 2 + 3 * t),
+                                  ),
+                                ],
+                              ),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: child,
+                      );
+                    },
+                    itemCount: navOrder.length,
+                    onReorder: (oldIndex, newIndex) async {
+                      if (newIndex > oldIndex) newIndex--;
+                      final newOrder = List<int>.from(navOrder);
+                      final item = newOrder.removeAt(oldIndex);
+                      newOrder.insert(newIndex, item);
+                      final persistFuture = ThemeService.instance.setNavOrder(
+                        newOrder,
+                      );
+                      // 立即刷新，避免拖拽完成后图标闪烁跳动。
+                      setState(() {});
+                      await persistFuture;
+                    },
+                    itemBuilder: (context, index) {
+                      final destIndex = navOrder[index];
+                      final dest = _allDestinations[destIndex];
+                      final bool isLast = index == navOrder.length - 1;
+                      return ReorderableDragStartListener(
+                        key: ValueKey('nav-drag-$destIndex'),
+                        index: index,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            right: isLast ? 0 : blockGap,
+                          ),
+                          child: SizedBox(
+                            width: itemWidth,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                // 拖拽块颜色与滑块颜色一致。
+                                color: panelColors.navBlockColor,
+                                border: Border.all(
+                                  color: panelColors.navBlockBorderColor,
+                                  width: 1,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                // 浅色模式下添加与主题模式选中滑块一致的阴影。
+                                boxShadow: isDark
+                                    ? null
+                                    : [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.04,
+                                          ),
+                                          blurRadius: 1,
+                                          offset: const Offset(0, 1),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    dest.icon,
+                                    size: 22 * dest.iconScale,
+                                    color: panelColors.navBlockForegroundColor,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    dest.label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          panelColors.navBlockForegroundColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────── 主页设置（默认启动页） ───────────────
+
+  /// 构建主页设置卡片（选择 App 打开时默认显示的页面）。
+  Widget _buildHomePageCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final navOrder = ThemeService.instance.navOrder;
+    final currentHomePage = ThemeService.instance.defaultHomePage;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.home_outlined, size: 20, color: colorScheme.primary),
+                const SizedBox(width: 8),
+                const Text(
+                  '主页设置',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildHomePageToggle(context, navOrder, currentHomePage),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建主页选择三段滑块（与主题模式切换风格一致）。
+  ///
+  /// 选项按当前导航顺序排列，选中项对应默认启动页。
+  Widget _buildHomePageToggle(
+    BuildContext context,
+    List<int> navOrder,
+    int currentHomePage,
+  ) {
+    final panelColors = _resolveThemeModeLikePanelColors(context);
+    // 在导航顺序中查找当前默认主页的显示位置
+    final displayPos = navOrder.indexOf(currentHomePage).clamp(0, 2);
+
+    final Alignment alignment;
+    switch (displayPos) {
+      case 0:
+        alignment = Alignment.centerLeft;
+      case 1:
+        alignment = Alignment.center;
+      default:
+        alignment = Alignment.centerRight;
+    }
+
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        // 与主题模式滑轨颜色保持一致。
+        color: panelColors.railColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: panelColors.railBorderColor, width: 1),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double totalWidth = constraints.maxWidth;
+          final double indicatorWidth = (totalWidth - 4) / 3;
+
+          return Stack(
+            children: [
+              AnimatedAlign(
+                alignment: alignment,
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeInOut,
+                child: Container(
+                  width: indicatorWidth,
+                  height: 36,
+                  margin: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: panelColors.indicatorColor,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.04,
+                        ),
+                        blurRadius: 1,
+                        offset: const Offset(0, 1),
+                      ),
+                      BoxShadow(
+                        color: panelColors.indicatorShadowColor.withValues(
+                          alpha: 0.12,
+                        ),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 每个导航项按其在 navOrder 中的位置做动画定位，
+              // 拖拽顺序变更后选项会丝滑滑动到新位置。
+              ...List.generate(3, (destIndex) {
+                final displayIndex = navOrder.indexOf(destIndex);
+                final dest = _allDestinations[destIndex];
+                final isSelected = destIndex == currentHomePage;
+                return AnimatedPositioned(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeInOutCubic,
+                  left: displayIndex * indicatorWidth + 2, // 与滑块 margin 对齐
+                  top: 0,
+                  bottom: 0,
+                  width: indicatorWidth,
+                  child: _buildHomePageOption(
+                    icon: dest.icon,
+                    label: dest.label,
+                    iconSize: 16 * dest.iconScale,
+                    isSelected: isSelected,
+                    selectedColor: panelColors.optionSelectedColor,
+                    unselectedColor: panelColors.optionUnselectedColor,
+                    onTap: () async {
+                      await ThemeService.instance.setDefaultHomePage(destIndex);
+                      if (!mounted) {
+                        return;
+                      }
+                      setState(() {});
+                    },
+                  ),
+                );
+              }),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 主页选择的单个选项（图标 + 文字）
+  Widget _buildHomePageOption({
+    required IconData icon,
+    required String label,
+    required double iconSize,
+    required bool isSelected,
+    required Color selectedColor,
+    required Color unselectedColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: iconSize,
+              color: isSelected ? selectedColor : unselectedColor,
+            ),
+            const SizedBox(width: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? selectedColor : unselectedColor,
+              ),
+              child: Text(label),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 判断当前导航顺序是否为默认值
+  bool _isDefaultOrder(List<int> order) {
+    if (order.length != ThemeService.defaultNavOrder.length) return false;
+    for (int i = 0; i < order.length; i++) {
+      if (order[i] != ThemeService.defaultNavOrder[i]) return false;
+    }
+    return true;
+  }
+}
+
+// ─────────────── HSB 自定义颜色对话框 ───────────────
+
+/// 自定义主题颜色应用结果。
+class _ThemeCustomColorResult {
+  final Color color;
+  final Color switchThumbColor;
+
+  const _ThemeCustomColorResult({
+    required this.color,
+    required this.switchThumbColor,
+  });
+}
+
+/// HSB 色轮自定义颜色伪弹窗页面（透明路由 + 背景变暗）。
+///
+/// 页面包含「效果预览 + 色轮取色」同屏内容，
+/// 通过 Navigator.pop 返回包含主题色与开关圆点色的结果对象。
+class _ThemeCustomColorDialog extends StatefulWidget {
+  const _ThemeCustomColorDialog();
+
+  @override
+  State<_ThemeCustomColorDialog> createState() =>
+      _ThemeCustomColorDialogState();
+}
+
+class _ThemeCustomColorDialogState extends State<_ThemeCustomColorDialog> {
+  late double _hue;
+  late double _saturation;
+  late double _brightness;
+  late double _switchThumbTone;
+  bool _isSwitchThumbToneManuallyAdjusted = false;
+  bool _previewSwitchValue = true;
+  bool _isPickerInteracting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 初始化为当前主色的 HSB 值；白色无色相，用少女粉作默认
+    final color = ThemeService.instance.primaryColor;
+    final hsv = HSVColor.fromColor(
+      color == Colors.white ? const Color(0xFFFF6699) : color,
+    );
+    _hue = hsv.hue;
+    _saturation = hsv.saturation;
+    _brightness = hsv.value;
+    _switchThumbTone = _resolveAutoSwitchThumbTone(_pickerColor);
+  }
+
+  Color get _pickerColor =>
+      HSVColor.fromAHSV(1.0, _hue, _saturation, _brightness).toColor();
+
+  Color get _switchThumbColor =>
+      Color.lerp(
+        Colors.white,
+        Colors.black,
+        _switchThumbTone.clamp(0.0, 1.0),
+      ) ??
+      Colors.white;
+
+  /// 自动推导开关圆点灰阶：深色主题色偏向浅灰，浅色主题色偏向深灰。
+  double _resolveAutoSwitchThumbTone(Color color) {
+    return color.computeLuminance().clamp(0.0, 1.0);
+  }
+
+  /// 在未手动调整灰度色条时，随当前取色自动更新开关圆点灰阶。
+  void _syncSwitchThumbToneIfNeeded() {
+    if (_isSwitchThumbToneManuallyAdjusted) return;
+    _switchThumbTone = _resolveAutoSwitchThumbTone(_pickerColor);
+  }
+
+  void _setPickerInteracting(bool value) {
+    if (!mounted || _isPickerInteracting == value) {
+      return;
+    }
+    setState(() {
+      _isPickerInteracting = value;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _pickerColor;
+    final colorScheme = Theme.of(context).colorScheme;
+    final textOnColor =
+        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
+    final r = (color.r * 255).round();
+    final g = (color.g * 255).round();
+    final b = (color.b * 255).round();
+    final hexStr =
+        r.toRadixString(16).padLeft(2, '0') +
+        g.toRadixString(16).padLeft(2, '0') +
+        b.toRadixString(16).padLeft(2, '0');
+
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(16),
+              // 裁剪子组件到圆角范围内，防止 SingleChildScrollView
+              // 滚动时内容从圆角处溢出导致视觉错乱
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: SingleChildScrollView(
+                physics: _isPickerInteracting
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '自定义主题颜色',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                          tooltip: '关闭',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withValues(
+                            alpha: 0.45,
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.visibility_outlined,
+                                size: 18,
+                                color: color,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '效果预览',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () {},
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: color,
+                                    foregroundColor: textOnColor,
+                                  ),
+                                  child: const Text('主按钮'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () {},
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: color,
+                                    side: BorderSide(color: color),
+                                  ),
+                                  child: const Text('次按钮'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: '输入框预览',
+                              hintText: '示例文本',
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: color.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: color,
+                                  width: 1.6,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '开关预览',
+                                style: TextStyle(color: colorScheme.onSurface),
+                              ),
+                              Switch(
+                                value: _previewSwitchValue,
+                                onChanged: (v) {
+                                  setState(() {
+                                    _previewSwitchValue = v;
+                                  });
+                                },
+                                activeTrackColor: color,
+                                activeThumbColor: _switchThumbColor,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // SV 矩形拾色区（全宽，固定高度）
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        height: 200,
+                        child: _SVPicker(
+                          hue: _hue,
+                          saturation: _saturation,
+                          brightness: _brightness,
+                          onInteractionStart: () => _setPickerInteracting(true),
+                          onInteractionEnd: () => _setPickerInteracting(false),
+                          onChanged: (s, v) => setState(() {
+                            _saturation = s;
+                            _brightness = v;
+                            _syncSwitchThumbToneIfNeeded();
+                          }),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // 色相条 + 右侧颜色预览
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 24,
+                            child: _HueSlider(
+                              hue: _hue,
+                              onInteractionStart: () =>
+                                  _setPickerInteracting(true),
+                              onInteractionEnd: () =>
+                                  _setPickerInteracting(false),
+                              onChanged: (h) => setState(() {
+                                _hue = h;
+                                _syncSwitchThumbToneIfNeeded();
+                              }),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 36,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // 开关圆点灰度色条（白 ↔ 黑）
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 24,
+                            child: _GraySlider(
+                              value: _switchThumbTone,
+                              onInteractionStart: () =>
+                                  _setPickerInteracting(true),
+                              onInteractionEnd: () =>
+                                  _setPickerInteracting(false),
+                              onChanged: (v) => setState(() {
+                                _switchThumbTone = v;
+                                _isSwitchThumbToneManuallyAdjusted = true;
+                              }),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 36,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: _switchThumbColor,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '开关圆点灰度（未手动调整时自动匹配）',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Hex / RGB 输入
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _CompactTextField(
+                            label: 'Hex',
+                            value: hexStr.toUpperCase(),
+                            onSubmitted: (text) {
+                              final hex = text.replaceAll('#', '').trim();
+                              if (hex.length == 6) {
+                                final parsed = int.tryParse(hex, radix: 16);
+                                if (parsed != null) {
+                                  final c = Color(0xFF000000 | parsed);
+                                  final hsv = HSVColor.fromColor(c);
+                                  setState(() {
+                                    _hue = hsv.hue;
+                                    _saturation = hsv.saturation;
+                                    _brightness = hsv.value;
+                                    _syncSwitchThumbToneIfNeeded();
+                                  });
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _CompactTextField(
+                            label: 'R',
+                            value: '$r',
+                            onSubmitted: (v) => _setFromRGB(r: int.tryParse(v)),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _CompactTextField(
+                            label: 'G',
+                            value: '$g',
+                            onSubmitted: (v) => _setFromRGB(g: int.tryParse(v)),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _CompactTextField(
+                            label: 'B',
+                            value: '$b',
+                            onSubmitted: (v) => _setFromRGB(b: int.tryParse(v)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // 快捷预设色点
+                    _buildQuickPresets(),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('取消'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(
+                            context,
+                            _ThemeCustomColorResult(
+                              color: color,
+                              switchThumbColor: _switchThumbColor,
+                            ),
+                          ),
+                          child: const Text('应用'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 通过 RGB 值更新 HSB 状态
+  void _setFromRGB({int? r, int? g, int? b}) {
+    final c = _pickerColor;
+    final nr = (r ?? (c.r * 255).round()).clamp(0, 255);
+    final ng = (g ?? (c.g * 255).round()).clamp(0, 255);
+    final nb = (b ?? (c.b * 255).round()).clamp(0, 255);
+    final newColor = Color.fromARGB(255, nr, ng, nb);
+    final hsv = HSVColor.fromColor(newColor);
+    setState(() {
+      _hue = hsv.hue;
+      _saturation = hsv.saturation;
+      _brightness = hsv.value;
+      _syncSwitchThumbToneIfNeeded();
+    });
+  }
+
+  /// 快捷预设色点
+  Widget _buildQuickPresets() {
+    const presets = [
+      Color(0xFFCC0033),
+      Color(0xFFE86826),
+      Color(0xFFDBC824),
+      Color(0xFF8B6914),
+      Color(0xFF5D8C2A),
+      Color(0xFF356B3F),
+      Color(0xFF8844AA),
+      Color(0xFF5533CC),
+      Color(0xFF4477DD),
+      Color(0xFF33AAAA),
+      Color(0xFFAADD44),
+      Color(0xFF222222),
+      Color(0xFF555555),
+      Color(0xFF999999),
+      Color(0xFFCCCCCC),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: presets.map((color) {
+        return GestureDetector(
+          onTap: () {
+            final hsv = HSVColor.fromColor(color);
+            setState(() {
+              _hue = hsv.hue;
+              _saturation = hsv.saturation;
+              _brightness = hsv.value;
+              _syncSwitchThumbToneIfNeeded();
+            });
+          },
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.grey.shade400, width: 0.5),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ─────────────── HSB 子组件 ───────────────
+
+/// SV 矩形拾色区（Photoshop 风格）。
+///
+/// 横轴表示饱和度（左=0 右=1），纵轴表示明度（上=1 下=0）。
+/// 背景由当前色相决定：左上角为白色，右上角为纯色，
+/// 左下角为黑色，右下角为纯色变暗。
+class _SVPicker extends StatelessWidget {
+  final double hue;
+  final double saturation;
+  final double brightness;
+  final void Function(double saturation, double brightness) onChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+
+  const _SVPicker({
+    required this.hue,
+    required this.saturation,
+    required this.brightness,
+    required this.onChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+  });
+
+  void _handleInteraction(Offset localPosition, Size size) {
+    final s = (localPosition.dx / size.width).clamp(0.0, 1.0);
+    final v = 1.0 - (localPosition.dy / size.height).clamp(0.0, 1.0);
+    onChanged(s, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Listener(
+          onPointerDown: (_) => onInteractionStart?.call(),
+          onPointerUp: (_) => onInteractionEnd?.call(),
+          onPointerCancel: (_) => onInteractionEnd?.call(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) =>
+                _handleInteraction(d.localPosition, constraints.biggest),
+            onPanStart: (d) =>
+                _handleInteraction(d.localPosition, constraints.biggest),
+            onPanUpdate: (d) =>
+                _handleInteraction(d.localPosition, constraints.biggest),
+            child: CustomPaint(
+              painter: _SVPainter(hue: hue),
+              child: Stack(
+                children: [
+                  // 圆形选择指示器
+                  Positioned(
+                    left: saturation * constraints.maxWidth - 8,
+                    top: (1.0 - brightness) * constraints.maxHeight - 8,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 4),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// SV 矩形的 CustomPainter，绘制饱和度-明度渐变。
+///
+/// 叠加两层渐变：
+/// 1. 水平渐变：白色 → 纯色（色相色）
+/// 2. 垂直渐变：透明 → 黑色
+class _SVPainter extends CustomPainter {
+  final double hue;
+
+  _SVPainter({required this.hue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(8));
+    canvas.clipRRect(rrect);
+
+    // 基础纯色（由色相决定）
+    final pureColor = HSVColor.fromAHSV(1.0, hue, 1.0, 1.0).toColor();
+
+    // 层 1：水平渐变（白色 → 纯色）
+    final horizontalGradient = LinearGradient(
+      colors: [Colors.white, pureColor],
+    ).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = horizontalGradient);
+
+    // 层 2：垂直渐变（透明 → 黑色）
+    final verticalGradient = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Colors.transparent, Colors.black],
+    ).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = verticalGradient);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SVPainter oldDelegate) {
+    return oldDelegate.hue != hue;
+  }
+}
+
+/// 水平色相滑块，渲染 0°~360° 的彩虹渐变。
+class _HueSlider extends StatelessWidget {
+  final double hue;
+  final ValueChanged<double> onChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+
+  const _HueSlider({
+    required this.hue,
+    required this.onChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+  });
+
+  void _handleInteraction(Offset localPosition, double width) {
+    final h = (localPosition.dx / width).clamp(0.0, 1.0) * 360;
+    onChanged(h);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return Listener(
+          onPointerDown: (_) => onInteractionStart?.call(),
+          onPointerUp: (_) => onInteractionEnd?.call(),
+          onPointerCancel: (_) => onInteractionEnd?.call(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => _handleInteraction(d.localPosition, width),
+            onPanStart: (d) => _handleInteraction(d.localPosition, width),
+            onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
+            child: CustomPaint(
+              painter: _HuePainter(),
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: (hue / 360.0) * width - 6,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 12,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 3),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 水平灰度滑块，渲染白色~黑色渐变，用于开关圆点颜色调节。
+class _GraySlider extends StatelessWidget {
+  final double value;
+  final ValueChanged<double> onChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+
+  const _GraySlider({
+    required this.value,
+    required this.onChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+  });
+
+  void _handleInteraction(Offset localPosition, double width) {
+    final normalized = (localPosition.dx / width).clamp(0.0, 1.0);
+    onChanged(normalized);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return Listener(
+          onPointerDown: (_) => onInteractionStart?.call(),
+          onPointerUp: (_) => onInteractionEnd?.call(),
+          onPointerCancel: (_) => onInteractionEnd?.call(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => _handleInteraction(d.localPosition, width),
+            onPanStart: (d) => _handleInteraction(d.localPosition, width),
+            onPanUpdate: (d) => _handleInteraction(d.localPosition, width),
+            child: CustomPaint(
+              painter: _GrayPainter(),
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: value.clamp(0.0, 1.0) * width - 6,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 12,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 3),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 色相条的 CustomPainter，绘制 0°~360° 彩虹渐变。
+class _HuePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+    canvas.clipRRect(rrect);
+
+    // 7 个关键色相点的颜色停靠（红→黄→绿→青→蓝→紫→红）
+    final colors = List.generate(
+      7,
+      (i) => HSVColor.fromAHSV(1, i * 60.0, 1, 1).toColor(),
+    );
+    final gradient = LinearGradient(colors: colors).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = gradient);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 灰度色条的 CustomPainter，绘制白~黑渐变。
+class _GrayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+    canvas.clipRRect(rrect);
+
+    final gradient = const LinearGradient(
+      colors: [Colors.white, Colors.black],
+    ).createShader(rect);
+    canvas.drawRect(rect, Paint()..shader = gradient);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 紧凑型文本输入框（用于 Hex/RGB 值显示与编辑）
+class _CompactTextField extends StatefulWidget {
+  final String label;
+  final String value;
+  final ValueChanged<String> onSubmitted;
+
+  const _CompactTextField({
+    required this.label,
+    required this.value,
+    required this.onSubmitted,
+  });
+
+  @override
+  State<_CompactTextField> createState() => _CompactTextFieldState();
+}
+
+class _CompactTextFieldState extends State<_CompactTextField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CompactTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 外部值变化时同步更新（避免用户正在编辑时被覆盖）
+    if (widget.value != oldWidget.value && widget.value != _controller.text) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 36,
+          child: TextField(
+            controller: _controller,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            inputFormatters: [
+              if (widget.label == 'Hex')
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]'))
+              else
+                FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(widget.label == 'Hex' ? 6 : 3),
+            ],
+            onSubmitted: widget.onSubmitted,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          widget.label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────── 预设色与自定义入口磁贴 ───────────────
+
+/// 预设色磁贴（正方形色块 + 底部标签），选中时勾选图标带 AnimatedSwitcher 过渡。
+class _ColorTile extends StatelessWidget {
+  final _PresetColor preset;
+  final bool isSelected;
+
+  /// 实际展示的颜色（Material 3 派生的 primary，由父级计算并传入）
+  final Color displayColor;
+  final Color selectedBorderColor;
+  final VoidCallback onTap;
+
+  const _ColorTile({
+    required this.preset,
+    required this.isSelected,
+    required this.displayColor,
+    required this.selectedBorderColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 深色模式下白色预设展示为"乌黑"
+    final bool isWhitePreset = preset.color == Colors.white;
+    final String displayLabel = (isDark && isWhitePreset) ? '乌黑' : preset.label;
+
+    final brightness = ThemeData.estimateBrightnessForColor(displayColor);
+    final foreground = brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
+    final needsBorder = isWhitePreset;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AspectRatio(
+            aspectRatio: 1.0,
+            // 不使用 AnimatedContainer 包裹颜色，避免其内部 250ms 动画
+            // 与 MaterialApp 500ms 主题过渡叠加导致速率不同步。
+            // displayColor 每帧由 Theme.of(context) 驱动更新，
+            // 与主按钮等主题组件的过渡保持完全一致。
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: displayColor,
+                border: isSelected
+                    ? Border.all(color: selectedBorderColor, width: 2.5)
+                    : needsBorder
+                    ? Border.all(color: Colors.grey.shade300, width: 0.5)
+                    : null,
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: displayColor.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                switchInCurve: Curves.easeOutBack,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, animation) {
+                  return ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(opacity: animation, child: child),
+                  );
+                },
+                child: isSelected
+                    ? Icon(
+                        Icons.check,
+                        key: const ValueKey('check'),
+                        color: foreground,
+                        size: 22,
+                      )
+                    : const SizedBox.shrink(key: ValueKey('empty')),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            transitionBuilder: (child, animation) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: Text(
+              displayLabel,
+              key: ValueKey(displayLabel),
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 彩虹渐变色的"自定义"颜色入口磁贴（点击弹出 HSB 色轮对话框）。
+class _CustomColorTile extends StatelessWidget {
+  final List<Color> rainbowColors;
+  final Color selectedColor;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _CustomColorTile({
+    required this.rainbowColors,
+    required this.selectedColor,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final foreground =
+        ThemeData.estimateBrightnessForColor(selectedColor) == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AspectRatio(
+            aspectRatio: 1.0,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: isSelected ? 1 : 0),
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeInOut,
+              builder: (context, t, child) {
+                return Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: isSelected
+                        ? Border.all(color: selectedColor, width: 2.5)
+                        : null,
+                    gradient: LinearGradient(
+                      // 彩虹基于9个预设主色按顺序组成
+                      colors: rainbowColors
+                          .map((c) => c.withValues(alpha: 0.68 - 0.2 * t))
+                          .toList(),
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(9),
+                      color: selectedColor.withValues(alpha: t),
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: isSelected
+                          ? Icon(
+                              Icons.check,
+                              key: const ValueKey('custom-check'),
+                              color: foreground,
+                              size: 22,
+                            )
+                          : const SizedBox.shrink(
+                              key: ValueKey('custom-empty'),
+                            ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '自定义',
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 导航目的地模型
+class _NavDestination {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final double iconScale;
+
+  const _NavDestination({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    this.iconScale = 1,
+  });
+}
+
+/// 预设颜色模型
+class _PresetColor {
+  final Color color;
+  final String label;
+
+  const _PresetColor({required this.color, required this.label});
+}
