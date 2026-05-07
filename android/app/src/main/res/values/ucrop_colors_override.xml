@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 轮盘指针和角度文本统一为黑灰色。 -->
+    <color name="ucrop_color_active_controls_color">#2E333A</color>
+    <color name="ucrop_color_widget_text">#2E333A</color>
+    <color name="ucrop_color_widget_rotate_mid_line">#2E333A</color>
+
+    <!-- 90° 按钮和未选中态使用稍浅灰阶。 -->
+    <color name="ucrop_color_widget_rotate_angle">#4B515A</color>
+    <color name="ucrop_color_inactive_controls_color">#8A909A</color>
+    <color name="ucrop_color_widget_active">#FFFFFF</color>
+
+    <!-- 轮盘区域高度翻倍，避免贴近屏幕底边。 -->
+    <dimen name="ucrop_height_wrapper_controls">128dp</dimen>
+
+    <!-- 恢复到默认按钮尺寸。 -->
+    <dimen name="ucrop_size_wrapper_rotate_button">50dp</dimen>
+</resources>

@@ -1,0 +1,373 @@
+import 'package:flutter/material.dart';
+import 'package:dormdevise/utils/course_utils.dart';
+import '../../../../models/course.dart';
+import '../../../../utils/color_extensions.dart';
+import '../course_edit_page.dart';
+
+/// 课程详情底部弹窗
+class CourseDetailSheet extends StatelessWidget {
+  /// 课程详情项列表 (items)
+  final List<CourseDetailItem> items;
+  final List<Course> allCourses;
+  final int maxWeek;
+  final bool isReadOnly;
+
+  const CourseDetailSheet({
+    super.key,
+    required this.items,
+    required this.allCourses,
+    this.maxWeek = 20,
+    this.isReadOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final List<CourseDetailItem> sortedItems = List<CourseDetailItem>.of(items)
+      ..sort(_compareCourseDetailItems);
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHeader(context),
+          Flexible(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              shrinkWrap: true,
+              itemCount: sortedItems.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                return _buildCourseCard(context, sortedItems[index]);
+              },
+            ),
+          ),
+          if (!isReadOnly) _buildAddButton(context),
+        ],
+      ),
+    );
+  }
+
+  static int _compareCourseDetailItems(CourseDetailItem a, CourseDetailItem b) {
+    final List<int> aWeeks = _resolveSortedWeeks(a.session);
+    final List<int> bWeeks = _resolveSortedWeeks(b.session);
+    final int sharedLength = aWeeks.length < bWeeks.length
+        ? aWeeks.length
+        : bWeeks.length;
+
+    for (int i = 0; i < sharedLength; i++) {
+      final int compare = aWeeks[i].compareTo(bWeeks[i]);
+      if (compare != 0) {
+        return compare;
+      }
+    }
+
+    final int lengthCompare = aWeeks.length.compareTo(bWeeks.length);
+    if (lengthCompare != 0) {
+      return lengthCompare;
+    }
+
+    final int weekdayCompare = a.session.weekday.compareTo(b.session.weekday);
+    if (weekdayCompare != 0) {
+      return weekdayCompare;
+    }
+
+    final int startSectionCompare = a.session.startSection.compareTo(
+      b.session.startSection,
+    );
+    if (startSectionCompare != 0) {
+      return startSectionCompare;
+    }
+
+    final int sectionCountCompare = a.session.sectionCount.compareTo(
+      b.session.sectionCount,
+    );
+    if (sectionCountCompare != 0) {
+      return sectionCountCompare;
+    }
+
+    final int nameCompare = a.course.name.compareTo(b.course.name);
+    if (nameCompare != 0) {
+      return nameCompare;
+    }
+
+    return a.session.location.compareTo(b.session.location);
+  }
+
+  static List<int> _resolveSortedWeeks(CourseSession session) {
+    if (session.customWeeks.isNotEmpty) {
+      final List<int> weeks = session.customWeeks.toSet().toList()..sort();
+      return weeks;
+    }
+
+    final List<int> weeks = <int>[];
+    for (int week = session.startWeek; week <= session.endWeek; week++) {
+      if (session.occursInWeek(week)) {
+        weeks.add(week);
+      }
+    }
+    return weeks;
+  }
+
+  Widget _buildAddButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextButton(
+        onPressed: () async {
+          final navigator = Navigator.of(context);
+          final result = await navigator.push(
+            MaterialPageRoute(
+              builder: (context) => CourseEditPage(
+                existingCourses: allCourses,
+                initialWeekday: items.isNotEmpty
+                    ? items.first.session.weekday
+                    : null,
+                initialSection: items.isNotEmpty
+                    ? items.first.session.startSection
+                    : null,
+                maxWeek: maxWeek,
+              ),
+              fullscreenDialog: true,
+            ),
+          );
+
+          if (result != null && result is Course) {
+            navigator.pop({'action': 'create', 'newCourse': result});
+          }
+        },
+        child: Text(
+          '新建课程',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建顶部标题栏
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Align(
+            alignment: Alignment.center,
+            child: Text(
+              '课程详情',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.of(context).pop(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建单个课程卡片
+  Widget _buildCourseCard(BuildContext context, CourseDetailItem item) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color ?? colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  // 暗色模式下降低课程颜色亮度以匹配深色界面
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? dimColorForDark(item.course.color)
+                      : item.course.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  item.course.name,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              if (!isReadOnly)
+                GestureDetector(
+                  onTap: () {
+                    final navigator = Navigator.of(context);
+                    navigator
+                        .push(
+                          MaterialPageRoute(
+                            builder: (context) => CourseEditPage(
+                              course: item.course,
+                              existingCourses: allCourses,
+                              maxWeek: maxWeek,
+                            ),
+                            fullscreenDialog: true,
+                          ),
+                        )
+                        .then((result) {
+                          if (result != null) {
+                            // 如果有修改或删除，返回结果给上层以刷新
+                            if (result == 'delete') {
+                              navigator.pop({
+                                'action': 'delete',
+                                'target': item.course,
+                              });
+                            } else if (result is Course) {
+                              navigator.pop({
+                                'action': 'update',
+                                'target': item.course,
+                                'newCourse': result,
+                              });
+                            }
+                          }
+                        });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      // 编辑按钮底色采用整体背景色（scaffoldBackgroundColor）
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '编辑',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildDetailRow(context, '教室', item.session.location),
+          const SizedBox(height: 4),
+          _buildDetailRow(context, '备注（如老师）', item.course.teacher),
+          const SizedBox(height: 4),
+          _buildDetailRow(
+            context,
+            '${_weekdayToString(item.session.weekday)} 第 ${item.session.startSection}${item.session.sectionCount > 1 ? '-${item.session.startSection + item.session.sectionCount - 1}' : ''} 节',
+            '(${_formatTime(item.startTime)} - ${_formatTime(item.endTime)})',
+            showColon: false,
+          ),
+          const SizedBox(height: 4),
+          _buildDetailRow(
+            context,
+            formatWeeks(item.session),
+            '',
+            showColon: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建详情行（标签 + 值）
+  Widget _buildDetailRow(
+    BuildContext context,
+    String label,
+    String value, {
+    bool showColon = true,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final List<InlineSpan> children = <InlineSpan>[];
+    if (value.trim().isEmpty) {
+      children.add(TextSpan(text: showColon ? '$label： ' : label));
+    } else {
+      children.add(TextSpan(text: showColon ? '$label： ' : '$label '));
+      children.add(
+        TextSpan(
+          text: value,
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(fontSize: 13, color: colorScheme.outline, height: 1.5),
+        children: children,
+      ),
+    );
+  }
+
+  /// 将星期数字转换为中文文本
+  String _weekdayToString(int weekday) {
+    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    if (weekday >= 1 && weekday <= 7) {
+      return weekdays[weekday - 1];
+    }
+    return '';
+  }
+
+  /// 格式化时间为 HH:mm
+  String _formatTime(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+}
+
+/// 课程详情项数据模型
+class CourseDetailItem {
+  /// 课程信息 (course)
+  final Course course;
+
+  /// 课节信息 (session)
+  final CourseSession session;
+
+  /// 开始时间 (startTime)
+  final TimeOfDay startTime;
+
+  /// 结束时间 (endTime)
+  final TimeOfDay endTime;
+
+  CourseDetailItem({
+    required this.course,
+    required this.session,
+    required this.startTime,
+    required this.endTime,
+  });
+}

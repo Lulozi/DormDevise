@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 允许向微信/QQ共享应用缓存目录中的图片文件 -->
+    <cache-path name="direct_share_images" path="direct_share_images/" />
+</paths>

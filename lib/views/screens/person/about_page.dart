@@ -1,0 +1,2089 @@
+// ignore_for_file: use_build_context_synchronously
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart' hide Icons;
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:dormdevise/utils/app_icons.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:pub_semver/pub_semver.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:dormdevise/utils/app_toast.dart';
+import 'package:dormdevise/services/update/update_check_service.dart';
+import 'package:dormdevise/utils/github_release_markdown_link_builder.dart';
+import 'package:dormdevise/services/update/update_download_service.dart';
+import 'package:dormdevise/views/widgets/bubble_popup.dart';
+
+/// 关于页面，汇总版本信息与更新逻辑。
+class AboutPage extends StatefulWidget {
+  const AboutPage({super.key});
+
+  /// 创建页面状态以处理更新检查与 UI 展示。
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
+  bool _checkingUpdate = false;
+  bool _hasNewerVersion = false;
+  String _currentVersion = '';
+  late final UpdateDownloadService _downloadService;
+  late final UpdateDownloadCoordinator _downloadCoordinator;
+  late final VoidCallback _downloadListener;
+  _VersionActionMode _versionActionMode = _VersionActionMode.checkUpdate;
+  UpdateTrackPreference _updateTrackPreference = UpdateTrackPreference.stable;
+
+  /// 初始化监听器并预加载版本与设备信息。
+  @override
+  void initState() {
+    super.initState();
+    _downloadService = UpdateDownloadService.instance;
+    _downloadCoordinator = _downloadService.coordinator;
+    _downloadListener = () {
+      if (!mounted) return;
+      setState(() {});
+    };
+    _downloadCoordinator.addListener(_downloadListener);
+    _downloadService.resultNotifier.addListener(_handleGlobalDownloadResult);
+    unawaited(_initPackageInfo());
+    unawaited(_loadUpdateTrackPreference());
+    unawaited(_primeLatestVersionStatus());
+  }
+
+  /// 移除下载监听，防止内存泄漏。
+  @override
+  void dispose() {
+    _downloadCoordinator.removeListener(_downloadListener);
+    _downloadService.resultNotifier.removeListener(_handleGlobalDownloadResult);
+    super.dispose();
+  }
+
+  /// 全局处理下载结果（无论弹窗是否显示）
+  void _handleGlobalDownloadResult() {
+    if (!mounted) return;
+    final result = _downloadService.resultNotifier.value;
+    if (result == null) return;
+
+    _handleDownloadResult(result);
+  }
+
+  /// 更新版本按钮的点击模式。
+  void _setVersionActionMode(_VersionActionMode mode) {
+    if (_versionActionMode == mode || !mounted) {
+      _versionActionMode = mode;
+      return;
+    }
+    setState(() => _versionActionMode = mode);
+  }
+
+  Future<void> _loadUpdateTrackPreference() async {
+    final UpdateTrackPreference preference = await UpdateCheckService.instance
+        .getUpdateTrackPreference();
+    if (!mounted || _updateTrackPreference == preference) {
+      return;
+    }
+    setState(() => _updateTrackPreference = preference);
+  }
+
+  Future<void> _handleUpdateTrackChanged(
+    UpdateTrackPreference preference,
+  ) async {
+    if (_updateTrackPreference == preference) {
+      return;
+    }
+    await UpdateCheckService.instance.setUpdateTrackPreference(preference);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _updateTrackPreference = preference);
+    await _primeLatestVersionStatus();
+    if (!mounted) {
+      return;
+    }
+    _showToastMessage('更新通道已切换为${preference.label}');
+  }
+
+  /// 读取当前应用版本并触发更新状态检查。
+  Future<void> _initPackageInfo() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      if (_currentVersion != info.version) {
+        setState(() => _currentVersion = info.version);
+        unawaited(_primeLatestVersionStatus());
+      }
+    } catch (error) {
+      debugPrint('获取应用版本失败：${_mapErrorMessage(error)}');
+    }
+  }
+
+  /// 预判远端是否存在更新版本。
+  Future<void> _primeLatestVersionStatus() async {
+    if (!mounted) return;
+    // 标记为正在检查以便 UI 显示忙碌转圈
+    setState(() => _checkingUpdate = true);
+    try {
+      final UpdateCheckResult? latest = await UpdateCheckService.instance
+          .fetchAvailableUpdate(allowNetwork: false);
+      if (!mounted) return;
+      final bool hasNewer = latest != null;
+      if (_hasNewerVersion != hasNewer) {
+        setState(() => _hasNewerVersion = hasNewer);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      if (_hasNewerVersion) {
+        setState(() => _hasNewerVersion = false);
+      }
+      debugPrint('预检查更新失败：${_mapErrorMessage(error)}');
+    } finally {
+      if (mounted) {
+        setState(() => _checkingUpdate = false);
+      }
+    }
+  }
+
+  /// 手动触发更新检查逻辑并提示用户。
+  Future<void> _handleCheckForUpdates() async {
+    if (_downloadCoordinator.isDownloading) {
+      await _presentDownloadDialog();
+      return;
+    }
+
+    if (_versionActionMode == _VersionActionMode.showDownload) {
+      _setVersionActionMode(_VersionActionMode.checkUpdate);
+    }
+
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+
+    try {
+      final UpdateReleaseInfo? latest = await UpdateCheckService.instance
+          .fetchLatestReleaseInfo(forceRefresh: true);
+      if (!mounted) return;
+
+      if (latest == null) {
+        _showToastMessage('暂未找到可用的发布信息', variant: AppToastVariant.warning);
+        return;
+      }
+
+      final latestVersion = latest.version;
+      final currentVersion = _safeParseVersion(_currentVersion);
+      final List<String> supportedAbis = await UpdateCheckService.instance
+          .ensureSupportedAbis();
+      UpdateReleaseAsset? asset = UpdateCheckService.instance
+          .selectAndroidAsset(latest.assets, supportedAbis);
+
+      final hasNewer = latestVersion != null && currentVersion != null
+          ? latestVersion > currentVersion
+          : latestVersion != null;
+
+      if (_hasNewerVersion != hasNewer) {
+        setState(() => _hasNewerVersion = hasNewer);
+      }
+
+      if (!hasNewer) {
+        _showToastMessage('当前已是最新版本');
+        return;
+      }
+
+      if (asset == null) {
+        _showToastMessage(
+          UpdateCheckService.instance.unsupportedAssetMessage(supportedAbis),
+          variant: AppToastVariant.warning,
+        );
+        return;
+      }
+
+      if (asset.size <= 0) {
+        final int size = await UpdateCheckService.instance.tryFetchAssetSize(
+          asset.browserDownloadUrl,
+        );
+        if (size > 0) {
+          asset = asset.copyWith(size: size);
+        }
+      }
+
+      final UpdateCheckResult updateInfo = UpdateCheckResult(
+        currentVersion: _currentVersion.isEmpty ? '未知版本' : _currentVersion,
+        latestRelease: latest,
+        latestVersion: latestVersion,
+        versionLabel: latest.readableLabel ?? 'v${latestVersion.toString()}',
+        body: latest.body,
+        highlights: extractReleaseHighlights(latest.body ?? ''),
+        supportedAbis: supportedAbis,
+        asset: asset,
+      );
+
+      final UpdateDialogAction action = await UpdateCheckService.instance
+          .showUpdateAvailableDialog(context, updateInfo);
+      if (!mounted) return;
+      if (action != UpdateDialogAction.confirm) {
+        return;
+      }
+
+      await UpdateCheckService.instance.clearHomePageUpdatePromptState();
+      final UpdateStartResult startResult = await UpdateCheckService.instance
+          .startBackgroundUpdate(asset: asset, releaseVersion: latestVersion);
+      if (!mounted) {
+        return;
+      }
+      switch (startResult.status) {
+        case UpdateStartStatus.startedDownload:
+          await _presentDownloadDialog();
+          break;
+        case UpdateStartStatus.alreadyDownloading:
+          await _presentDownloadDialog();
+          break;
+        case UpdateStartStatus.openedCachedInstaller:
+          _showToastMessage(
+            startResult.message,
+            variant: AppToastVariant.success,
+          );
+          break;
+        case UpdateStartStatus.noCompatibleAsset:
+          _showToastMessage(
+            startResult.message,
+            variant: AppToastVariant.warning,
+          );
+          break;
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      _showToastMessage(
+        '检查更新失败：${_mapErrorMessage(error)}',
+        variant: AppToastVariant.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _checkingUpdate = false);
+      }
+    }
+  }
+
+  /// 展示下载进度弹窗
+  Future<void> _presentDownloadDialog() async {
+    bool isManuallyClosed = false;
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: true,
+          child: ValueListenableBuilder<DownloadProgress?>(
+            valueListenable: _downloadService.progressNotifier,
+            builder: (context, progress, __) {
+              // 监听结果
+              return ValueListenableBuilder<DownloadResult?>(
+                valueListenable: _downloadService.resultNotifier,
+                builder: (context, result, __) {
+                  // 如果有结果了且非手动关闭，关闭弹窗（结果处理由页面级监听器负责）
+                  if (result != null && !isManuallyClosed) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    });
+                  }
+
+                  final currentProgress =
+                      progress ??
+                      const DownloadProgress(
+                        receivedBytes: 0,
+                        totalBytes: null,
+                      );
+
+                  return AlertDialog(
+                    title: const Text('下载更新'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LinearProgressIndicator(
+                          value: currentProgress.fraction,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(_describeProgress(currentProgress)),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          isManuallyClosed = true;
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop('cancel');
+                          }
+                        },
+                        child: const Text('取消'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    // 如果是点击取消按钮关闭的
+    if (result == 'cancel') {
+      _downloadService.cancelDownload();
+      _setVersionActionMode(_VersionActionMode.checkUpdate);
+      return;
+    }
+
+    // 弹窗关闭后（点击外部或返回键），如果仍在下载，提示转入后台
+    if (_downloadCoordinator.isDownloading && mounted) {
+      _setVersionActionMode(_VersionActionMode.showDownload);
+      _showToastMessage('已切换到后台下载');
+    }
+  }
+
+  /// 处理下载结果
+  Future<void> _handleDownloadResult(DownloadResult result) async {
+    if (result.isFailure) {
+      final Object? error = result.error;
+      final String message = error == null ? '未知错误' : _mapErrorMessage(error);
+      if (mounted) {
+        _showToastMessage('下载更新失败：$message', variant: AppToastVariant.error);
+      }
+      _setVersionActionMode(_VersionActionMode.checkUpdate);
+      return;
+    }
+
+    if (result.isCancelled) {
+      if (mounted) {
+        _showToastMessage('取消下载更新', variant: AppToastVariant.warning);
+      }
+      _setVersionActionMode(_VersionActionMode.checkUpdate);
+      return;
+    }
+
+    final File? file = result.file;
+    if (file == null) {
+      if (mounted) {
+        _showToastMessage('下载完成后未找到安装包。', variant: AppToastVariant.error);
+      }
+      _setVersionActionMode(_VersionActionMode.checkUpdate);
+      return;
+    }
+
+    if (mounted) {
+      _showToastMessage('下载完成，正在尝试安装...', variant: AppToastVariant.success);
+    }
+
+    _setVersionActionMode(_VersionActionMode.checkUpdate);
+  }
+
+  /// 统一封装的提示入口，便于变更样式。
+  void _showToastMessage(
+    String message, {
+    AppToastVariant variant = AppToastVariant.info,
+  }) {
+    if (!context.mounted) return;
+    AppToast.show(context, message, variant: variant);
+  }
+
+  /// 通用外部链接打开方法，传入目标URL字符串
+  Future<void> _openExternalUrl(String url) async {
+    await _launchExternalUrl(context, Uri.parse(url));
+  }
+
+  /// 打开GitHub仓库
+  Future<void> _openRepository() async {
+    await _openExternalUrl('https://github.com/Lulozi/DormDevise');
+  }
+
+  /// 打开版本发布页
+  Future<void> _openReleasePage() async {
+    await _openExternalUrl('https://github.com/Lulozi/DormDevise/releases');
+  }
+
+  /// 打开Issue反馈页
+  Future<void> _openIssuePage() async {
+    await _openExternalUrl('https://github.com/Lulozi/DormDevise/issues');
+  }
+
+  /// 打开Bilibili主页
+  Future<void> _openBilibiliPage() async {
+    await _openExternalUrl('https://space.bilibili.com/212994722');
+  }
+
+  /// 打开开发者GitHub主页
+  Future<void> _openGitHubPage() async {
+    await _openExternalUrl('https://github.com/Lulozi');
+  }
+
+  /// 展示开源许可列表的底部弹窗。
+  Future<void> _showLicenseDialog() async {
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    final versionLabel = _currentVersion.isEmpty ? '未知版本' : _currentVersion;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          top: false,
+          child: FractionallySizedBox(
+            heightFactor: 0.92,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    child: Theme(
+                      data: theme,
+                      child: LicensePage(
+                        applicationName: 'DormDevise',
+                        applicationVersion: versionLabel,
+                        applicationLegalese: '© 2025-26 DormDevise',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 构建关于页面主体列表。
+  @override
+  Widget build(BuildContext context) {
+    final padding = MediaQuery.of(context).padding;
+    final versionLabel = _currentVersion.isEmpty ? '未知版本' : _currentVersion;
+    final releaseNotesVersion = _currentVersion.isEmpty
+        ? null
+        : _currentVersion;
+    final bool downloadInProgress = _downloadCoordinator.isDownloading;
+    final bool tapDisabled = _checkingUpdate;
+    final bool showBusyIndicator = _checkingUpdate;
+    final String versionHint =
+        _versionActionMode == _VersionActionMode.showDownload
+        ? '点击版本查看下载进度，长按切换更新通道'
+        : '点击版本检查更新，长按切换更新通道';
+    final String versionTrackHint = '（当前通道：${_updateTrackPreference.label}）';
+    return Scaffold(
+      appBar: AppBar(title: const Text('关于')),
+      body: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + padding.bottom),
+          children: [
+            _AboutHeader(
+              version: versionLabel,
+              busyIndicator: showBusyIndicator,
+              hasNewerVersion: _hasNewerVersion,
+              versionHint: versionHint,
+              tapDisabled: tapDisabled,
+              downloadInProgress: downloadInProgress,
+              // 将下载进度的 ValueListenable 传入，供头部徽章显示动画进度
+              progressListenable: _downloadService.progressNotifier,
+              updateTrackPreference: _updateTrackPreference,
+              onCheckUpdate: _handleCheckForUpdates,
+              onUpdateTrackChanged: _handleUpdateTrackChanged,
+              versionTrackHint: versionTrackHint,
+              onOpenRepository: _openRepository,
+              onOpenReleasePage: _openReleasePage,
+              onOpenBilibiliPage: _openBilibiliPage,
+              onOpenGitHubPage: _openGitHubPage,
+            ),
+            const SizedBox(height: 16),
+            if (releaseNotesVersion != null)
+              ReleaseNotesCard(appVersion: releaseNotesVersion),
+            const SizedBox(height: 16),
+            _SectionCard(
+              icon: Icons.link_outlined,
+              title: '快速入口',
+              children: [
+                _InfoTile(
+                  icon: Icons.code,
+                  title: 'GitHub 仓库',
+                  subtitle: '查看源码、提交 Issue 或参与贡献',
+                  onTap: (_) => _openRepository(),
+                ),
+                _InfoTile(
+                  icon: Icons.new_releases_outlined,
+                  title: '版本发布页',
+                  subtitle: '浏览历史版本与更新说明',
+                  onTap: (_) => _openReleasePage(),
+                ),
+                _InfoTile(
+                  icon: Icons.support_agent_outlined,
+                  title: '反馈问题',
+                  subtitle: '给我们留言，帮助 DormDevise 做得更好',
+                  onTap: (_) => _openIssuePage(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              icon: Icons.verified_user_outlined,
+              title: '许可信息',
+              children: [
+                _InfoTile(
+                  icon: Icons.library_books_outlined,
+                  title: '开源许可',
+                  subtitle: '查看依赖与第三方组件授权',
+                  onTap: (_) => _showLicenseDialog(),
+                ),
+                Text('所有用户配置均存储在本地 SharedPreferences 内，除非主动授权，不会上传至云端。'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              icon: Icons.favorite_outline,
+              title: '开发者的话',
+              children: const [
+                _BulletTile(text: '感谢使用 DormDevise，欢迎向同学们分享。'),
+                _BulletTile(text: '项目遵循开源协议，期待你的建议或 PR。'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 关于页头部卡片，展示当前版本与快捷入口。
+class _AboutHeader extends StatelessWidget {
+  final String version;
+  final bool busyIndicator;
+  final bool hasNewerVersion;
+  final bool tapDisabled;
+  final bool downloadInProgress;
+  final ValueListenable<DownloadProgress?> progressListenable;
+  final String versionHint;
+  final String versionTrackHint;
+  final UpdateTrackPreference updateTrackPreference;
+  final Future<void> Function() onCheckUpdate;
+  final Future<void> Function(UpdateTrackPreference preference)
+  onUpdateTrackChanged;
+  final Future<void> Function() onOpenRepository;
+  final Future<void> Function() onOpenReleasePage;
+  final Future<void> Function() onOpenBilibiliPage;
+  final Future<void> Function() onOpenGitHubPage;
+
+  const _AboutHeader({
+    required this.version,
+    required this.busyIndicator,
+    required this.hasNewerVersion,
+    required this.tapDisabled,
+    required this.downloadInProgress,
+    required this.progressListenable,
+    required this.versionHint,
+    required this.versionTrackHint,
+    required this.updateTrackPreference,
+    required this.onCheckUpdate,
+    required this.onUpdateTrackChanged,
+    required this.onOpenRepository,
+    required this.onOpenReleasePage,
+    required this.onOpenBilibiliPage,
+    required this.onOpenGitHubPage,
+  });
+
+  /// 构建包含头像、版本状态与快捷按钮的卡片。
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            CircleAvatar(
+              radius: 36,
+              backgroundColor: colorScheme.primary.withValues(alpha: 0.12),
+              child: Icon(
+                Icons.meeting_room_outlined,
+                size: 36,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '设舍',
+              style: textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '服务于宿舍的一站式工具。',
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            _VersionStatusChip(
+              version: version,
+              showBusyIndicator: busyIndicator,
+              hasNewerVersion: hasNewerVersion,
+              disableTap: tapDisabled,
+              downloadInProgress: downloadInProgress,
+              progressListenable: progressListenable,
+              updateTrackPreference: updateTrackPreference,
+              onCheckUpdate: onCheckUpdate,
+              onUpdateTrackChanged: onUpdateTrackChanged,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                ActionChip(
+                  avatar: FaIcon(
+                    FontAwesomeIcons.github,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                  label: const Text('GitHub'),
+                  onPressed: () => unawaited(onOpenGitHubPage()),
+                ),
+                ActionChip(
+                  avatar: FaIcon(
+                    FontAwesomeIcons.bilibili,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                  label: const Text('Bilibili'),
+                  onPressed: () => unawaited(onOpenBilibiliPage()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              versionHint,
+              style: textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              versionTrackHint,
+              style: textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 显示版本状态并支持点击检查更新的徽章。
+class _VersionStatusChip extends StatefulWidget {
+  final String version;
+  final bool showBusyIndicator;
+  final bool hasNewerVersion;
+  final bool disableTap;
+  final bool downloadInProgress;
+  final ValueListenable<DownloadProgress?> progressListenable;
+  final UpdateTrackPreference updateTrackPreference;
+  final Future<void> Function() onCheckUpdate;
+  final Future<void> Function(UpdateTrackPreference preference)
+  onUpdateTrackChanged;
+
+  const _VersionStatusChip({
+    required this.version,
+    required this.showBusyIndicator,
+    required this.hasNewerVersion,
+    required this.disableTap,
+    required this.downloadInProgress,
+    required this.progressListenable,
+    required this.updateTrackPreference,
+    required this.onCheckUpdate,
+    required this.onUpdateTrackChanged,
+  });
+
+  @override
+  State<_VersionStatusChip> createState() => _VersionStatusChipState();
+}
+
+class _VersionStatusChipState extends State<_VersionStatusChip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  final GlobalKey _chipKey = GlobalKey();
+  BubblePopupController? _bubbleController;
+  bool _isBubbleOpen = false;
+
+  /// 初始化动画控制器，根据是否有新版本触发闪烁。
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    if (widget.hasNewerVersion) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  /// 在属性变更后更新动画启停状态。
+  @override
+  void didUpdateWidget(covariant _VersionStatusChip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.hasNewerVersion && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.hasNewerVersion && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
+
+  /// 销毁动画控制器资源。
+  @override
+  void dispose() {
+    _bubbleController?.dismiss();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _dismissTrackBubble() async {
+    if (!_isBubbleOpen) {
+      return;
+    }
+    await _bubbleController?.dismiss();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _bubbleController = null;
+      _isBubbleOpen = false;
+    });
+  }
+
+  Future<void> _showTrackBubble() async {
+    await _dismissTrackBubble();
+    if (!mounted) {
+      return;
+    }
+
+    final BubblePopupController controller = BubblePopupController();
+    setState(() {
+      _bubbleController = controller;
+      _isBubbleOpen = true;
+    });
+    final List<Widget> menuItems = <Widget>[];
+    for (int i = 0; i < UpdateTrackPreference.values.length; i++) {
+      final UpdateTrackPreference preference = UpdateTrackPreference.values[i];
+      menuItems.add(_buildTrackMenuItem(preference, controller));
+      if (i != UpdateTrackPreference.values.length - 1) {
+        menuItems.add(const Divider(height: 1, thickness: 0.5));
+      }
+    }
+
+    await showBubblePopup(
+      context: context,
+      anchorKey: _chipKey,
+      controller: controller,
+      content: SizedBox(
+        width: 176,
+        child: Column(mainAxisSize: MainAxisSize.min, children: menuItems),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+    if (identical(_bubbleController, controller)) {
+      setState(() {
+        _bubbleController = null;
+        _isBubbleOpen = false;
+      });
+    }
+  }
+
+  Widget _buildTrackMenuItem(
+    UpdateTrackPreference preference,
+    BubblePopupController controller,
+  ) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool selected = preference == widget.updateTrackPreference;
+    return InkWell(
+      onTap: () async {
+        await controller.dismiss();
+        if (!mounted) {
+          return;
+        }
+        await widget.onUpdateTrackChanged(preference);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                preference.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ),
+            if (selected)
+              Icon(
+                Icons.verified_outlined,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 绘制能够响应点击与动画的版本状态标签。
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final baseBackground = colorScheme.primary.withValues(alpha: 0.12);
+    final highlightBackground = colorScheme.primary.withValues(alpha: 0.32);
+    final baseBorder = colorScheme.primary.withValues(alpha: 0.3);
+    final highlightBorder = colorScheme.primary.withValues(alpha: 0.65);
+
+    /// 根据当前状态生成前缀图标部件。
+    Widget buildAvatar() {
+      // 优先级：检查/忙碌 -> 下载中 -> 有新版本 -> 默认已验证
+      // 优先级：下载中 -> 检查/忙碌 -> 有新版本 -> 默认已验证
+      // 1) 下载中时显示下载进度：使用传入的 `progressListenable` 来驱动动画/进度
+      if (widget.downloadInProgress) {
+        return ValueListenableBuilder<DownloadProgress?>(
+          valueListenable: widget.progressListenable,
+          builder: (context, progress, _) {
+            final double? fraction = progress?.fraction;
+            return SizedBox(
+              width: 18,
+              height: 18,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: CircularProgressIndicator(
+                  value: fraction,
+                  strokeWidth: 2,
+                  color: colorScheme.primary,
+                ),
+              ),
+            );
+          },
+        );
+      }
+
+      // 2) 正在检查更新或忙碌时显示圆形进度指示器
+      if (widget.showBusyIndicator) {
+        return const SizedBox(
+          width: 18,
+          height: 18,
+          child: Padding(
+            padding: EdgeInsets.all(2),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+
+      // 3) 若检测到有新版本，可用 new_releases 图标来提示用户
+      if (widget.hasNewerVersion) {
+        return Icon(Icons.new_releases, color: colorScheme.primary, size: 16);
+      }
+
+      // 4) 无特殊状态时显示已验证的对勾图标
+      return Icon(
+        Icons.verified_outlined,
+        color: colorScheme.primary,
+        size: 16,
+      );
+    }
+
+    return GestureDetector(
+      key: _chipKey,
+      onTap: widget.disableTap ? null : () => unawaited(widget.onCheckUpdate()),
+      onLongPress: () => unawaited(_showTrackBubble()),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final progress = widget.hasNewerVersion ? _controller.value : 0.0;
+          final backgroundColor = Color.lerp(
+            baseBackground,
+            highlightBackground,
+            progress,
+          );
+          final borderColor = Color.lerp(baseBorder, highlightBorder, progress);
+
+          return Chip(
+            label: Text('版本 ${widget.version}'),
+            avatar: buildAvatar(),
+            backgroundColor: backgroundColor ?? baseBackground,
+            side: BorderSide(color: borderColor ?? baseBorder),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 通用分区卡片，用于组织页面段落内容。
+class _SectionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
+
+  const _SectionCard({
+    required this.icon,
+    required this.title,
+    required this.children,
+  });
+
+  /// 构建带图标标题与子内容的卡片。
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final spacedChildren = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      spacedChildren.add(children[i]);
+      if (i != children.length - 1) {
+        spacedChildren.add(const SizedBox(height: 12));
+      }
+    }
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: colorScheme.primary),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...spacedChildren,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 简单的圆点列表项组件。
+class _BulletTile extends StatelessWidget {
+  final String text;
+
+  const _BulletTile({required this.text});
+
+  /// 绘制带圆点的说明文字。
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          margin: const EdgeInsets.only(top: 6),
+          decoration: BoxDecoration(
+            color: colorScheme.primary,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: MarkdownBody(
+            // 亮点文本使用 Markdown 渲染，支持 @用户名 与 #PR 链接点击。
+            data: text,
+            selectable: true,
+            onTapLink: (String linkText, String? href, String title) {
+              _handleTapLink(href);
+            },
+            builders: <String, MarkdownElementBuilder>{
+              'a': GitHubReleaseMarkdownLinkBuilder(
+                defaultLinkStyle: textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF0969DA),
+                  decoration: TextDecoration.underline,
+                  decorationColor: const Color(0xFF0969DA),
+                ),
+                mentionLinkStyle: textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF8250DF),
+                  decoration: TextDecoration.underline,
+                  decorationColor: const Color(0xFF8250DF),
+                ),
+                onTapLink: _handleTapLink,
+              ),
+            },
+            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
+                .copyWith(
+                  p: textTheme.bodyMedium,
+                  a: textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF0969DA),
+                    decoration: TextDecoration.underline,
+                    decorationColor: const Color(0xFF0969DA),
+                  ),
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _handleTapLink(String? href) {
+    // 仅处理可解析且带协议的外链，避免误触发无效地址。
+    final String raw = href?.trim() ?? '';
+    if (raw.isEmpty) {
+      return;
+    }
+    final Uri? uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme) {
+      return;
+    }
+    unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
+  }
+}
+
+/// 带图标的列表入口项。
+class _InfoTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Future<void> Function(BuildContext context)? onTap;
+
+  const _InfoTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+  });
+
+  /// 构建支持点击跳转的列表项。
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return ListTile(
+      contentPadding: const EdgeInsets.only(left: 10),
+      minLeadingWidth: 28,
+      leading: Icon(
+        icon,
+        size: 19.2,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      title: Text(
+        title,
+        style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(subtitle, style: textTheme.bodyMedium),
+      onTap: onTap == null ? null : () => onTap!(context),
+    );
+  }
+}
+
+/// 将异常信息转换为更易读的字符串。
+String _mapErrorMessage(Object error) {
+  final raw = error.toString();
+  if (raw.contains('SocketException') || raw.contains('Failed host lookup')) {
+    return '网络连接失败，无法访问服务器';
+  }
+  if (raw.contains('TimeoutException')) {
+    return '请求超时，请稍后重试';
+  }
+  if (raw.contains('HandshakeException')) {
+    return 'SSL 握手失败，请检查系统时间或网络环境';
+  }
+  if (raw.startsWith('Exception: ')) {
+    return raw.substring('Exception: '.length);
+  }
+  return raw;
+}
+
+/// 打开外部链接，必要时优先尝试内嵌浏览器。
+Future<void> _launchExternalUrl(BuildContext context, Uri uri) async {
+  if (!context.mounted) return;
+  // 如果是http/https，尝试用WebView弹窗，否则直接外部调起
+  if (uri.scheme == 'http' || uri.scheme == 'https') {
+    final openedInSheet = await _showInAppWebSheet(context, uri);
+    if (!context.mounted) {
+      return;
+    }
+    if (openedInSheet) {
+      return;
+    }
+  }
+  // 其它协议（如bilibili://）直接外部调起
+  final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  if (!context.mounted) {
+    return;
+  }
+  if (launched) {
+    return;
+  }
+  AppToast.show(context, '无法打开链接，请稍后再试', variant: AppToastVariant.error);
+}
+
+/// 使用底部弹窗展示内嵌 WebView。
+Future<bool> _showInAppWebSheet(BuildContext context, Uri uri) async {
+  if (!context.mounted) return false;
+  if (uri.scheme != 'https' && uri.scheme != 'http') return false;
+
+  late final WebViewController controller;
+
+  controller = WebViewController()
+    ..setJavaScriptMode(JavaScriptMode.unrestricted)
+    ..enableZoom(true)
+    ..setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (String _) {
+          // 修正 target=_blank 与 window.open，避免点击下载链接无响应。
+          unawaited(_patchWebViewNavigationForPopup(controller));
+        },
+        onNavigationRequest: (NavigationRequest request) async {
+          final reqUri = Uri.tryParse(request.url);
+          if (reqUri == null) {
+            return NavigationDecision.prevent;
+          }
+
+          // 下载链接与自定义协议统一交给系统外部处理。
+          if (_shouldOpenExternallyFromWebPopup(reqUri)) {
+            final bool launched = await launchUrl(
+              reqUri,
+              mode: LaunchMode.externalApplication,
+            );
+            if (!launched && context.mounted) {
+              AppToast.show(
+                context,
+                '无法打开链接，请稍后再试',
+                variant: AppToastVariant.error,
+              );
+            }
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
+        },
+      ),
+    )
+    ..loadRequest(uri);
+
+  bool sheetOpened = false;
+  final NavigatorState navigator = Navigator.of(context);
+  final MaterialLocalizations localizations = MaterialLocalizations.of(context);
+  await navigator.push<void>(
+    _WebSheetDirectBarrierRoute<void>(
+      builder: (sheetContext) {
+        sheetOpened = true;
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        // 返回键：先回退网页历史，再决定是否关闭弹窗。
+        // 遮罩点击：由自定义 route 的 onDismiss 直接 pop，不走 maybePop。
+        return _WebSheetBackPopScope(
+          controller: controller,
+          child: SafeArea(
+            top: false,
+            child: FractionallySizedBox(
+              heightFactor: 0.92,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, bottom: 8),
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                      child: WebViewWidget(
+                        controller: controller,
+                        gestureRecognizers: {
+                          Factory<OneSequenceGestureRecognizer>(
+                            () => EagerGestureRecognizer(),
+                          ),
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+      capturedThemes: InheritedTheme.capture(
+        from: context,
+        to: navigator.context,
+      ),
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      barrierLabel: localizations.scrimLabel,
+      barrierOnTapHint: localizations.scrimOnTapHint(
+        localizations.bottomSheetLabel,
+      ),
+      modalBarrierColor: Theme.of(context).bottomSheetTheme.modalBarrierColor,
+      isDismissible: true,
+      enableDrag: true,
+    ),
+  );
+
+  return sheetOpened;
+}
+
+/// 自定义底部弹窗路由：将遮罩点击改为 direct pop，避免进入 maybePop 入口。
+class _WebSheetDirectBarrierRoute<T> extends ModalBottomSheetRoute<T> {
+  _WebSheetDirectBarrierRoute({
+    required super.builder,
+    super.capturedThemes,
+    super.barrierLabel,
+    super.barrierOnTapHint,
+    super.backgroundColor,
+    super.elevation,
+    super.shape,
+    super.clipBehavior,
+    super.constraints,
+    super.modalBarrierColor,
+    super.isDismissible = true,
+    super.enableDrag = true,
+    super.showDragHandle,
+    required super.isScrollControlled,
+    super.scrollControlDisabledMaxHeightRatio,
+    super.settings,
+    super.requestFocus,
+    super.transitionAnimationController,
+    super.anchorPoint,
+    super.useSafeArea = false,
+    super.sheetAnimationStyle,
+  });
+
+  void _dismissDirectly() {
+    // 遮罩点击直接 pop 当前 route，不走 maybePop。
+    final NavigatorState? currentNavigator = navigator;
+    if (currentNavigator != null && currentNavigator.mounted) {
+      currentNavigator.pop();
+    }
+  }
+
+  @override
+  Widget buildModalBarrier() {
+    if (barrierColor.a != 0 && !offstage) {
+      final Animation<Color?> color = animation!.drive(
+        ColorTween(
+          begin: barrierColor.withValues(alpha: 0.0),
+          end: barrierColor,
+        ).chain(CurveTween(curve: barrierCurve)),
+      );
+      return AnimatedModalBarrier(
+        color: color,
+        dismissible: barrierDismissible,
+        semanticsLabel: barrierLabel,
+        barrierSemanticsDismissible: semanticsDismissible,
+        semanticsOnTapHint: barrierOnTapHint,
+        onDismiss: _dismissDirectly,
+      );
+    }
+    return ModalBarrier(
+      dismissible: barrierDismissible,
+      semanticsLabel: barrierLabel,
+      barrierSemanticsDismissible: semanticsDismissible,
+      semanticsOnTapHint: barrierOnTapHint,
+      onDismiss: _dismissDirectly,
+    );
+  }
+}
+
+/// 底部网页弹窗返回键拦截器。
+/// 仅对系统返回触发的 maybePop 生效：有历史先后退，无历史再关闭弹窗。
+class _WebSheetBackPopScope extends StatefulWidget {
+  final WebViewController controller;
+  final Widget child;
+
+  const _WebSheetBackPopScope({required this.controller, required this.child});
+
+  @override
+  State<_WebSheetBackPopScope> createState() => _WebSheetBackPopScopeState();
+}
+
+class _WebSheetBackPopScopeState extends State<_WebSheetBackPopScope> {
+  bool _canPopSheet = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _canPopSheet,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop || !mounted) {
+          return;
+        }
+
+        if (await widget.controller.canGoBack()) {
+          await widget.controller.goBack();
+          return;
+        }
+
+        setState(() => _canPopSheet = true);
+        Navigator.of(context).maybePop(result);
+      },
+      child: widget.child,
+    );
+  }
+}
+
+Future<void> _patchWebViewNavigationForPopup(
+  WebViewController controller,
+) async {
+  // 将 _blank 与 window.open 收敛到当前页，确保导航事件可被 Flutter 拦截。
+  const String patchScript = '''
+(() => {
+  try {
+    const anchors = document.querySelectorAll('a[target="_blank"]');
+    for (const anchor of anchors) {
+      anchor.setAttribute('target', '_self');
+    }
+    window.open = function(url) {
+      if (typeof url === 'string' && url.length > 0) {
+        window.location.href = url;
+      }
+      return null;
+    };
+  } catch (_) {}
+})();
+''';
+  try {
+    await controller.runJavaScript(patchScript);
+  } catch (_) {
+    // 注入失败时保持静默，避免影响正常浏览流程。
+  }
+}
+
+bool _shouldOpenExternallyFromWebPopup(Uri uri) {
+  final String scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'https') {
+    return true;
+  }
+
+  final String host = uri.host.toLowerCase();
+  final String path = uri.path.toLowerCase();
+
+  // GitHub 资源下载域名通常需要系统浏览器接管下载流程。
+  if (host == 'objects.githubusercontent.com' ||
+      host == 'github-releases.githubusercontent.com' ||
+      host.endsWith('.githubusercontent.com')) {
+    return true;
+  }
+
+  if (host == 'github.com' && path.contains('/releases/download/')) {
+    return true;
+  }
+
+  if (_looksLikeBinaryDownload(path)) {
+    return true;
+  }
+
+  final String? disposition =
+      uri.queryParameters['response-content-disposition'] ??
+      uri.queryParameters['content-disposition'];
+  if (disposition != null && disposition.isNotEmpty) {
+    return true;
+  }
+
+  return false;
+}
+
+bool _looksLikeBinaryDownload(String path) {
+  const List<String> suffixes = <String>[
+    '.apk',
+    '.ipa',
+    '.zip',
+    '.7z',
+    '.rar',
+    '.tar',
+    '.tar.gz',
+    '.tgz',
+    '.tar.xz',
+    '.dmg',
+    '.exe',
+    '.msi',
+    '.deb',
+    '.rpm',
+    '.pkg',
+  ];
+  for (final String suffix in suffixes) {
+    if (path.endsWith(suffix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// 展示指定版本更新亮点的卡片。
+class ReleaseNotesCard extends StatefulWidget {
+  final String appVersion;
+
+  const ReleaseNotesCard({super.key, required this.appVersion});
+
+  /// 创建用于加载与展示更新说明的状态对象。
+  @override
+  State<ReleaseNotesCard> createState() => _ReleaseNotesCardState();
+}
+
+class _ReleaseNotesCardState extends State<ReleaseNotesCard> {
+  late final Future<List<String>?> _notesFuture;
+
+  /// 初始化时立即触发更新说明的异步加载。
+  @override
+  void initState() {
+    super.initState();
+    _notesFuture = _fetchReleaseNotes(widget.appVersion);
+  }
+
+  /// 构建包含异步加载状态的说明卡片。
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<String>?>(
+      future: _notesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _SectionCard(
+            icon: Icons.auto_graph_outlined,
+            title: '本次更新亮点',
+            children: [
+              Row(
+                children: const [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('正在获取更新说明...')),
+                ],
+              ),
+            ],
+          );
+        }
+
+        // 如果 snapshot.data 为 null，说明获取失败（被限流或网络错误）
+        if (snapshot.hasError || snapshot.data == null) {
+          return _SectionCard(
+            icon: Icons.auto_graph_outlined,
+            title: '本次更新亮点',
+            children: const [_BulletTile(text: '获取失败，请等待片刻后再试。')],
+          );
+        }
+
+        final notes = snapshot.data!;
+        final displayNotes = notes.isEmpty ? ['暂无更新说明。'] : notes;
+
+        return _SectionCard(
+          icon: Icons.auto_graph_outlined,
+          title: '本次更新亮点',
+          children: displayNotes
+              .map((note) => _BulletTile(text: note))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  /// 拉取指定版本的更新记录，必要时回退至缓存。
+  /// 返回 null 表示获取失败（如被限流或网络错误），返回空列表表示无更新说明。
+  Future<List<String>?> _fetchReleaseNotes(String appVersionString) async {
+    final normalizedVersion = appVersionString.split('+').first;
+    final cacheKey = 'release_notes_$normalizedVersion';
+    final prefs = await SharedPreferences.getInstance();
+
+    List<String> cachedNotes = [];
+    final cachedValue = prefs.getString(cacheKey);
+    if (cachedValue != null) {
+      try {
+        cachedNotes = List<String>.from(jsonDecode(cachedValue) as List);
+        return cachedNotes;
+      } catch (_) {
+        cachedNotes = <String>[];
+      }
+    }
+
+    final appVersion = _safeParseVersion(appVersionString);
+    if (appVersion == null) return const [];
+
+    List<String>? tryFindNotes(List<_ReleaseInfo> sourceReleases) {
+      if (sourceReleases.isEmpty) return null;
+
+      final releases = sourceReleases
+          .where((info) => info.version != null && !info.isDraft)
+          .toList();
+      if (releases.isEmpty) return null;
+
+      releases.sort(_compareReleaseOrder);
+
+      _ReleaseInfo? matchedRelease;
+      // 1. 精确匹配
+      for (final info in releases) {
+        if (info.version == appVersion) {
+          matchedRelease = info;
+          break;
+        }
+      }
+
+      // 2. 模糊匹配（找最近的旧版本）
+      if (matchedRelease == null) {
+        for (final info in releases) {
+          if (info.version! <= appVersion) {
+            matchedRelease = info;
+            break;
+          }
+        }
+      }
+
+      // 3. 兜底（最新版本）
+      matchedRelease ??= releases.first;
+
+      final body = matchedRelease.body?.trim() ?? '';
+      if (body.isEmpty) return null;
+
+      // 统一关于页与更新弹窗的发布说明展示规则（如 PR 短链与 @用户名 链接）。
+      final normalizedBody = normalizeReleaseMarkdownForGitHubDisplay(body);
+      final notes = _extractReleaseHighlights(normalizedBody);
+      return notes.isNotEmpty ? notes : null;
+    }
+
+    try {
+      final List<_ReleaseInfo> releases = await _fetchAllReleasesBasedOnConfig(
+        allowNetwork: false,
+      );
+      final List<String> result = tryFindNotes(releases) ?? const <String>[];
+      await prefs.setString(cacheKey, jsonEncode(result));
+      return result;
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+}
+
+/// 安全解析版本号字符串，异常时返回 null。
+Version? _safeParseVersion(String raw) {
+  try {
+    final sanitized = raw.split('+').first;
+    return Version.parse(sanitized);
+  } catch (_) {
+    return null;
+  }
+}
+
+class _ReleaseInfo {
+  final Version? version;
+  final String? body;
+  final String? name;
+  final String? tagName;
+  final bool isDraft;
+  final bool isPrerelease;
+  final DateTime? publishedAt;
+  final List<_ReleaseAsset> assets;
+
+  _ReleaseInfo({
+    required this.version,
+    required this.body,
+    required this.name,
+    required this.tagName,
+    required this.isDraft,
+    required this.isPrerelease,
+    required this.publishedAt,
+    required this.assets,
+  });
+
+  /// 返回优先用于展示的发布标签。
+  String? get readableLabel {
+    if (tagName != null && tagName!.isNotEmpty) {
+      return tagName;
+    }
+    if (name != null && name!.isNotEmpty) {
+      return name;
+    }
+    if (version != null) {
+      return 'v${version.toString()}';
+    }
+    return null;
+  }
+
+  /// 使用 GitHub 返回的字典构造发布信息实例。
+  factory _ReleaseInfo.fromJson(Map<String, dynamic> json) {
+    final name = json['name'] as String? ?? '';
+    final tag = json['tag_name'] as String? ?? '';
+    final body = json['body'] as String?;
+    final draft = json['draft'] as bool? ?? false;
+    final prerelease = json['prerelease'] as bool? ?? false;
+    final publishedAtRaw = json['published_at'] as String?;
+    final publishedAt = publishedAtRaw == null
+        ? null
+        : DateTime.tryParse(publishedAtRaw)?.toLocal();
+
+    final assetsJson = json['assets'] as List<dynamic>? ?? const [];
+    final assets = assetsJson
+        .map((item) => _ReleaseAsset.fromJson(item as Map<String, dynamic>))
+        .where((asset) => asset.browserDownloadUrl.isNotEmpty)
+        .toList();
+
+    final version = _parseVersionFromMetadata(name, tag);
+    return _ReleaseInfo(
+      version: version,
+      body: body,
+      name: name.isEmpty ? null : name,
+      tagName: tag.isEmpty ? null : tag,
+      isDraft: draft,
+      isPrerelease: prerelease,
+      publishedAt: publishedAt,
+      assets: assets,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'tag_name': tagName,
+      'body': body,
+      'draft': isDraft,
+      'prerelease': isPrerelease,
+      'published_at': publishedAt?.toIso8601String(),
+      'assets': assets.map((e) => e.toJson()).toList(),
+    };
+  }
+}
+
+// 缓存变量，用于限制 API 请求频率
+DateTime? _lastFetchTime;
+List<_ReleaseInfo>? _cachedReleases;
+String? _lastSourceType;
+String? _lastCustomApiUrl;
+Future<List<_ReleaseInfo>>? _pendingFetch;
+const Duration _releaseFeedCacheDuration = Duration(hours: 2);
+
+/// 根据配置获取所有发布信息
+Future<List<_ReleaseInfo>> _fetchAllReleasesBasedOnConfig({
+  bool forceRefresh = false,
+  bool allowNetwork = true,
+}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final sourceType = prefs.getString('update_source_type') ?? 'auto';
+  final customApiUrl = prefs.getString('custom_update_api_url');
+  final lastAttemptKey = 'update_last_attempt_time';
+  final cacheDataKey = 'update_cached_releases_data';
+
+  List<_ReleaseInfo>? readCachedReleases() {
+    final String? cachedJson = prefs.getString(cacheDataKey);
+    if (cachedJson == null) {
+      return null;
+    }
+    try {
+      final List<dynamic> list = jsonDecode(cachedJson);
+      return list.map((dynamic item) => _ReleaseInfo.fromJson(item)).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 1. 检查内存缓存。
+  if (!forceRefresh &&
+      _cachedReleases != null &&
+      _lastFetchTime != null &&
+      _lastSourceType == sourceType &&
+      _lastCustomApiUrl == customApiUrl &&
+      DateTime.now().difference(_lastFetchTime!) < _releaseFeedCacheDuration) {
+    return _cachedReleases!;
+  }
+
+  // 2. 检查持久化缓存。
+  final now = DateTime.now().millisecondsSinceEpoch;
+  final lastAttempt = prefs.getInt(lastAttemptKey) ?? 0;
+
+  if (!forceRefresh &&
+      (now - lastAttempt) < _releaseFeedCacheDuration.inMilliseconds) {
+    final List<_ReleaseInfo>? releases = readCachedReleases();
+    if (releases != null && releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+      return releases;
+    }
+    return const <_ReleaseInfo>[];
+  }
+
+  if (!allowNetwork) {
+    final List<_ReleaseInfo>? releases = readCachedReleases();
+    if (releases != null && releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+      return releases;
+    }
+    return const <_ReleaseInfo>[];
+  }
+
+  // 3. 检查是否有正在进行的请求
+  if (_pendingFetch != null) {
+    return _pendingFetch!;
+  }
+
+  Future<List<_ReleaseInfo>> executeFetch() async {
+    // 定义单次获取逻辑
+    Future<List<_ReleaseInfo>> fetchOnce() async {
+      List<_ReleaseInfo> releases = [];
+      if (sourceType == 'auto') {
+        // 自动模式：同时请求 GitHub 和 Gitee
+        // 优先 GitHub，若失败则记录错误但不中断 Gitee
+        List<_ReleaseInfo> githubReleases = [];
+        List<_ReleaseInfo> giteeReleases = [];
+
+        await Future.wait([
+          _loadReleasesFromGitHub()
+              .then((v) => githubReleases = v)
+              .catchError((_) => <_ReleaseInfo>[]),
+          _loadReleasesFromGitee()
+              .then((v) => giteeReleases = v)
+              .catchError((_) => <_ReleaseInfo>[]),
+        ]);
+
+        // 合并逻辑：优先使用有内容的 GitHub 版本
+        // 1. 创建版本映射
+        final Map<String, _ReleaseInfo> mergedMap = {};
+
+        // 先放入 Gitee (优先级低)
+        for (var r in giteeReleases) {
+          if (r.version != null) {
+            mergedMap[r.version.toString()] = r;
+          }
+        }
+
+        // 再放入 GitHub (优先级高，或者根据内容决定)
+        for (var r in githubReleases) {
+          if (r.version != null) {
+            final key = r.version.toString();
+            final existing = mergedMap[key];
+
+            // 如果 Gitee 已存在该版本
+            if (existing != null) {
+              final existingBody = existing.body?.trim() ?? '';
+              final newBody = r.body?.trim() ?? '';
+
+              // 如果 GitHub 有内容，或者 Gitee 没内容，则覆盖 (即优先 GitHub，除非 GitHub 空且 Gitee 非空)
+              if (newBody.isNotEmpty || existingBody.isEmpty) {
+                mergedMap[key] = r;
+              }
+            } else {
+              mergedMap[key] = r;
+            }
+          }
+        }
+
+        releases = mergedMap.values.toList();
+
+        // 如果合并后为空，说明两个都失败了
+        if (releases.isEmpty) {
+          throw Exception('All sources failed in auto mode');
+        }
+      } else if (sourceType == 'github') {
+        releases = await _loadReleasesFromGitHub();
+      } else if (sourceType == 'gitee') {
+        releases = await _loadReleasesFromGitee();
+      } else if (sourceType == 'custom') {
+        if (customApiUrl != null && customApiUrl.isNotEmpty) {
+          releases = await _loadReleasesFromCustom(customApiUrl);
+        }
+      }
+      return releases;
+    }
+
+    List<_ReleaseInfo> releases = [];
+    try {
+      releases = await fetchOnce();
+    } catch (e) {
+      debugPrint('获取发布信息失败: $e');
+    }
+
+    if (releases.isEmpty) {
+      await prefs.setInt(lastAttemptKey, DateTime.now().millisecondsSinceEpoch);
+      final cachedJson = prefs.getString(cacheDataKey);
+      if (cachedJson != null) {
+        try {
+          final List<dynamic> list = jsonDecode(cachedJson);
+          return list.map((e) => _ReleaseInfo.fromJson(e)).toList();
+        } catch (_) {}
+      }
+      return [];
+    }
+
+    if (releases.isNotEmpty) {
+      _cachedReleases = releases;
+      _lastFetchTime = DateTime.now();
+      _lastSourceType = sourceType;
+      _lastCustomApiUrl = customApiUrl;
+
+      await prefs.setInt(lastAttemptKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setString(
+        cacheDataKey,
+        jsonEncode(releases.map((e) => e.toJson()).toList()),
+      );
+    }
+
+    return releases;
+  }
+
+  _pendingFetch = executeFetch();
+  try {
+    return await _pendingFetch!;
+  } finally {
+    _pendingFetch = null;
+  }
+}
+
+/// 从 GitHub API 拉取发布列表。
+Future<List<_ReleaseInfo>> _loadReleasesFromGitHub() async {
+  final uri = Uri.parse(
+    'https://api.github.com/repos/Lulozi/DormDevise/releases',
+  );
+  return _fetchReleases(uri);
+}
+
+/// 从 Gitee API 拉取发布列表。
+Future<List<_ReleaseInfo>> _loadReleasesFromGitee() async {
+  final uri = Uri.parse(
+    'https://gitee.com/api/v5/repos/lulo/DormDevise/releases',
+  );
+  return _fetchReleases(uri);
+}
+
+/// 从自定义 API 拉取发布列表。
+Future<List<_ReleaseInfo>> _loadReleasesFromCustom(String url) async {
+  final uri = Uri.parse(url);
+  return _fetchReleases(uri);
+}
+
+/// 通用 API 获取方法
+Future<List<_ReleaseInfo>> _fetchReleases(Uri uri) async {
+  final response = await http.get(
+    uri,
+    headers: {
+      'Accept': 'application/json', // Gitee 使用 application/json
+      'User-Agent': 'DormDevise-App',
+    },
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception('API 返回状态码 ${response.statusCode} ($uri)');
+  }
+
+  final List<dynamic> jsonList = jsonDecode(response.body) as List<dynamic>;
+  if (jsonList.isEmpty) return const [];
+
+  return jsonList
+      .map((item) => _ReleaseInfo.fromJson(item as Map<String, dynamic>))
+      .toList();
+}
+
+/// 比较两个发布信息的优先顺序。
+int _compareReleaseOrder(_ReleaseInfo a, _ReleaseInfo b) {
+  final Version? versionA = a.version;
+  final Version? versionB = b.version;
+  if (versionA != null && versionB != null) {
+    final versionOrder = versionB.compareTo(versionA);
+    if (versionOrder != 0) return versionOrder;
+  } else if (versionA != null) {
+    return -1;
+  } else if (versionB != null) {
+    return 1;
+  }
+
+  final DateTime? dateA = a.publishedAt;
+  final DateTime? dateB = b.publishedAt;
+  if (dateA != null && dateB != null) {
+    final dateOrder = dateB.compareTo(dateA);
+    if (dateOrder != 0) return dateOrder;
+  } else if (dateA != null) {
+    return -1;
+  } else if (dateB != null) {
+    return 1;
+  }
+
+  return 0;
+}
+
+/// 将字节大小转换为可读字符串。
+String _formatFileSize(int bytes) {
+  if (bytes <= 0) return '未知大小';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  double size = bytes.toDouble();
+  var unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  final precision = unitIndex == 0 ? 0 : 1;
+  return '${size.toStringAsFixed(precision)} ${units[unitIndex]}';
+}
+
+/// 指示版本按钮当前的点击动作。
+enum _VersionActionMode { checkUpdate, showDownload }
+
+/// 根据下载进度生成描述文本。
+String _describeProgress(DownloadProgress progress) {
+  if (progress.receivedBytes <= 0) {
+    return '正在准备下载...';
+  }
+
+  final downloadedLabel = _formatFileSize(progress.receivedBytes);
+  final total = progress.totalBytes;
+  if (total == null || total <= 0) {
+    return '已下载 $downloadedLabel';
+  }
+
+  final totalLabel = _formatFileSize(total);
+  final percent = ((progress.fraction ?? 0) * 100)
+      .clamp(0, 100)
+      .toStringAsFixed(0);
+  return '已下载 $percent% ($downloadedLabel / $totalLabel)';
+}
+
+/// 从发布说明文本中抽取项目符号高亮。
+List<String> _extractReleaseHighlights(String body) {
+  final lines = body.split(RegExp(r'\r?\n'));
+  final notes = <String>[];
+  for (final line in lines) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) {
+      continue;
+    }
+    if (trimmed.startsWith('•')) {
+      notes.add(trimmed.substring(1).trim());
+    } else if (trimmed.startsWith('- ')) {
+      notes.add(trimmed.substring(2).trim());
+    } else if (trimmed.startsWith('* ')) {
+      notes.add(trimmed.substring(2).trim());
+    }
+  }
+  return notes;
+}
+
+class _ReleaseAsset {
+  final String name;
+  final String browserDownloadUrl;
+  final String contentType;
+  final int size;
+
+  const _ReleaseAsset({
+    required this.name,
+    required this.browserDownloadUrl,
+    required this.contentType,
+    required this.size,
+  });
+
+  /// 判断当前资源是否为 Android 安装包。
+  bool get isAndroidApk {
+    final lowerName = name.toLowerCase();
+    final lowerType = contentType.toLowerCase();
+    return lowerName.endsWith('.apk') ||
+        lowerType.contains('application/vnd.android.package-archive');
+  }
+
+  /// 从 GitHub 返回的 JSON 实例化资源信息。
+  factory _ReleaseAsset.fromJson(Map<String, dynamic> json) {
+    return _ReleaseAsset(
+      name: json['name'] as String? ?? '',
+      browserDownloadUrl: json['browser_download_url'] as String? ?? '',
+      contentType: json['content_type'] as String? ?? '',
+      size: json['size'] as int? ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'browser_download_url': browserDownloadUrl,
+      'content_type': contentType,
+      'size': size,
+    };
+  }
+}
+
+/// 从发布名称或标签中推断语义化版本号。
+Version? _parseVersionFromMetadata(String name, String tag) {
+  final candidates = <String?>[
+    tag,
+    RegExp(r'v(\d+\.\d+\.\d+)').firstMatch(name)?.group(1),
+    RegExp(r'DormDevise-v(\d+\.\d+\.\d+)').firstMatch(name)?.group(1),
+  ];
+
+  for (final candidate in candidates) {
+    if (candidate == null || candidate.isEmpty) {
+      continue;
+    }
+
+    final normalized = candidate.startsWith('v')
+        ? candidate.substring(1)
+        : candidate;
+    try {
+      return Version.parse(normalized);
+    } catch (_) {
+      continue;
+    }
+  }
+
+  return null;
+}

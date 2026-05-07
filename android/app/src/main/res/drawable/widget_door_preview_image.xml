@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 完整版组件预览图：2x2 尺寸，紧凑设计 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 背景 -->
+    <item android:drawable="@drawable/widget_container_bg" />
+
+    <!-- 门锁图标背景 -->
+    <item
+        android:gravity="top|center_horizontal"
+        android:height="36dp"
+        android:top="8dp"
+        android:width="36dp"
+        android:drawable="@drawable/widget_icon_bg_small" />
+
+    <!-- 门锁图标 -->
+    <item
+        android:gravity="top|center_horizontal"
+        android:height="20dp"
+        android:top="16dp"
+        android:width="20dp"
+        android:drawable="@drawable/ic_lock_outline" />
+
+    <!-- 状态条1：待开门 -->
+    <item
+        android:gravity="top|center_horizontal"
+        android:height="12dp"
+        android:top="50dp"
+        android:width="60dp"
+        android:drawable="@drawable/widget_chip_gray" />
+
+    <!-- 状态条2：设备在线 -->
+    <item
+        android:gravity="top|center_horizontal"
+        android:height="12dp"
+        android:top="64dp"
+        android:width="60dp"
+        android:drawable="@drawable/widget_chip_green" />
+
+    <!-- 状态条3：WiFi状态 -->
+    <item
+        android:gravity="top|center_horizontal"
+        android:height="12dp"
+        android:top="78dp"
+        android:width="60dp"
+        android:drawable="@drawable/widget_chip_yellow" />
+
+    <!-- 状态条4：MQTT状态 -->
+    <item
+        android:gravity="top|center_horizontal"
+        android:height="12dp"
+        android:top="92dp"
+        android:width="60dp"
+        android:drawable="@drawable/widget_chip_gray" />
+</layer-list>

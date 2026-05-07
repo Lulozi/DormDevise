@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="door_widget_default_message">未开门</string>
+    <string name="door_widget_hint">轻点以打开滑动弹窗</string>
+    <string name="door_widget_refresh_description">刷新状态</string>
+    <string name="door_widget_name">门锁组件 · 完整版</string>
+    <string name="door_widget_action_label">轻点开门</string>
+    <string name="door_widget_full_description">完整版门锁组件，显示完整设备状态</string>
+    <string name="door_widget_simple_name">门锁组件 · 简洁版</string>
+    <string name="door_widget_simple_description">简洁版门锁组件，仅显示门锁图标与状态条</string>
+    <string name="course_widget_name">课表组件</string>
+    <string name="course_widget_description">显示今日课程安排的桌面组件</string>
+    <string name="course_widget_loading">正在加载课表...</string>
+    <string name="course_widget_empty">今日无课</string>
+    <string name="course_widget_not_configured">课表未配置</string>
+</resources>

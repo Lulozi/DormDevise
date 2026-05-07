@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<style name="SplashTheme" parent="@android:style/Theme.Light.NoTitleBar">
+		<item name="android:windowBackground">@android:color/white</item>
+		<item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_dormdevise_splash_placeholder</item>
+		<item name="android:windowSplashScreenBackground">@android:color/white</item>
+		<item name="android:windowSplashScreenBrandingImage">@null</item>
+	</style>
+
+	<!-- Android 12 及以上的 Flutter 入口主题，保留完整 logo 背景但不触发二次系统裁切 -->
+	<style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+		<item name="android:windowBackground">@drawable/launch_background</item>
+	</style>
+
+	<!-- 正常运行态主题配置，与低版本保持一致 -->
+	<style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+		<item name="android:windowBackground">?android:colorBackground</item>
+	</style>
+
+	<!-- 桌面微件浮层 Activity 在 Android 12+ 的透明主题 -->
+	<style name="DoorWidgetPromptTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+		<item name="android:windowIsTranslucent">true</item>
+		<item name="android:windowBackground">@android:color/transparent</item>
+		<item name="android:backgroundDimEnabled">false</item>
+		<item name="android:statusBarColor">@android:color/transparent</item>
+		<item name="android:navigationBarColor">@android:color/transparent</item>
+	</style>
+
+	<!-- Widget 动态主题色 -->
+	<color name="widget_dynamic_bg">@android:color/system_accent1_100</color>
+	<color name="widget_dynamic_bg_dark">@android:color/system_accent1_800</color>
+</resources>

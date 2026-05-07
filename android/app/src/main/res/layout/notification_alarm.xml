@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:gravity="center_vertical"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <!-- 行1：标题（马上开始/xx分钟后） + 课程（课程 - 教室），关闭按钮居中于两行间 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/alarm_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#111111"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="马上开始上课" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/alarm_course_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#202020"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text="课程" />
+
+                <TextView
+                    android:id="@+id/alarm_course_extra"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:textColor="#202020"
+                    android:textSize="15sp"
+                    android:textStyle="normal"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text=" - 教室：301" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/alarm_close"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:minHeight="32dp"
+            android:text="关闭"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/bg_alarm_close" />
+    </LinearLayout>
+
+    <!-- 行3 本体已嵌入到第一行内的左侧列中，如需展示更多信息可使用下方占位 -->
+
+    <!-- 行4：预留（不显示内容，只占位时留空） -->
+    <TextView
+        android:id="@+id/alarm_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="#555555"
+        android:textSize="13sp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:text="" />
+</LinearLayout>
