@@ -87,6 +87,21 @@ class _UserLoginDialogState extends State<UserLoginDialog>
     });
   }
 
+  /// 统一展示“业务校验类”错误（如账号不存在、账号密码错误），
+  /// 并复用震动+抖动反馈，保持与空值校验体验一致。
+  Future<void> _showCredentialBusinessError(
+    String message, {
+    bool highlightAccount = false,
+    bool highlightPassword = true,
+  }) async {
+    setState(() {
+      _credentialErrorText = message;
+      _showAccountError = highlightAccount;
+      _showPasswordError = highlightPassword;
+    });
+    await _playCredentialErrorFeedback();
+  }
+
   Future<void> _playCredentialErrorFeedback() async {
     await HapticFeedback.mediumImpact();
     if (!mounted) {
@@ -167,6 +182,20 @@ class _UserLoginDialogState extends State<UserLoginDialog>
       }
       AppToast.show(context, '登录成功', variant: AppToastVariant.success);
       Navigator.of(context).pop(true);
+    } on FormatException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final String message = error.message.trim().isEmpty
+          ? '登录失败，请稍后重试'
+          : error.message.trim();
+      // “账号不存在”更贴近账号输入错误，其它错误默认高亮密码输入框。
+      final bool highlightAccount = message.contains('账号不存在');
+      await _showCredentialBusinessError(
+        message,
+        highlightAccount: highlightAccount,
+        highlightPassword: !highlightAccount,
+      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -179,90 +208,352 @@ class _UserLoginDialogState extends State<UserLoginDialog>
     }
   }
 
+  /// 打开注册弹窗。
+  ///
+  /// 注册成功后会自动回填账号/密码到登录表单，降低二次输入成本。
+  Future<void> _openRegisterDialog() async {
+    if (_submitting) {
+      return;
+    }
+    final _RegisterCredentialResult? result = await _UserRegisterDialog.show(
+      context,
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+
+    _accountController.text = result.account;
+    _accountController.selection = TextSelection.collapsed(
+      offset: result.account.length,
+    );
+    _passwordController.text = result.password;
+    _passwordController.selection = TextSelection.collapsed(
+      offset: result.password.length,
+    );
+    _clearCredentialValidation();
+    AppToast.show(context, '注册成功，请点击登录', variant: AppToastVariant.success);
+  }
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final Widget? animatedCredentialError = _buildAnimatedCredentialError(
       context,
     );
+    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-        child: Form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                '登录',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '当前为离线模式，账号信息仅保存在本地设备。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _accountController,
-                textInputAction: TextInputAction.next,
-                onChanged: (_) {
-                  _clearCredentialValidation();
-                },
-                decoration: InputDecoration(
-                  labelText: '账号',
-                  hintText: '请输入账号',
-                  errorText: _showAccountError ? '' : null,
-                  errorStyle: const TextStyle(fontSize: 0, height: 0),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passwordController,
-                obscureText: true,
-                onChanged: (_) {
-                  _clearCredentialValidation();
-                },
-                onFieldSubmitted: (_) => _submit(),
-                decoration: InputDecoration(
-                  labelText: '密码',
-                  hintText: '请输入密码',
-                  errorText: _showPasswordError ? '' : null,
-                  errorStyle: const TextStyle(fontSize: 0, height: 0),
-                ),
-              ),
-              if (animatedCredentialError != null) animatedCredentialError,
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      // 软键盘弹出时抬升弹窗，避免密码输入框和按钮被覆盖。
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Form(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  TextButton(
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('取消'),
+                  Text(
+                    '登录',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _submitting ? null : _submit,
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('登录'),
+                  const SizedBox(height: 6),
+                  Text(
+                    '当前为离线模式，账号信息仅保存在本地设备。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _accountController,
+                    textInputAction: TextInputAction.next,
+                    onChanged: (_) {
+                      _clearCredentialValidation();
+                    },
+                    decoration: InputDecoration(
+                      labelText: '账号',
+                      hintText: '请输入账号',
+                      errorText: _showAccountError ? '' : null,
+                      errorStyle: const TextStyle(fontSize: 0, height: 0),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    onChanged: (_) {
+                      _clearCredentialValidation();
+                    },
+                    onFieldSubmitted: (_) => _submit(),
+                    decoration: InputDecoration(
+                      labelText: '密码',
+                      hintText: '请输入密码',
+                      errorText: _showPasswordError ? '' : null,
+                      errorStyle: const TextStyle(fontSize: 0, height: 0),
+                    ),
+                  ),
+                  if (animatedCredentialError != null) animatedCredentialError,
+                  const SizedBox(height: 18),
+                  Row(
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: _submitting ? null : _openRegisterDialog,
+                        style: ButtonStyle(
+                          // 固定蓝色，不跟随主题变化
+                          foregroundColor: WidgetStateProperty.all(Colors.blue),
+                        ),
+                        child: const Text('立即注册'),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: _submitting
+                            ? null
+                            : () => Navigator.of(context).pop(false),
+                        child: const Text('取消'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _submitting ? null : _submit,
+                        child: _submitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('登录'),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 注册成功后返回给登录弹窗的账号信息，用于自动回填输入框。
+class _RegisterCredentialResult {
+  const _RegisterCredentialResult({
+    required this.account,
+    required this.password,
+  });
+
+  final String account;
+  final String password;
+}
+
+/// 注册弹窗：当前采用本地注册，并与登录弹窗保持一致的视觉与输入体验。
+class _UserRegisterDialog extends StatefulWidget {
+  const _UserRegisterDialog();
+
+  static Future<_RegisterCredentialResult?> show(BuildContext context) async {
+    return showDialog<_RegisterCredentialResult>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const _UserRegisterDialog(),
+    );
+  }
+
+  @override
+  State<_UserRegisterDialog> createState() => _UserRegisterDialogState();
+}
+
+class _UserRegisterDialogState extends State<_UserRegisterDialog> {
+  final TextEditingController _accountController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmController = TextEditingController();
+  String? _errorText;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _accountController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) {
+      return;
+    }
+
+    final String account = _accountController.text.trim();
+    final String password = _passwordController.text.trim();
+    final String confirmPassword = _confirmController.text.trim();
+    if (account.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+      setState(() {
+        _errorText = '请完整填写账号与密码';
+      });
+      return;
+    }
+    if (password != confirmPassword) {
+      setState(() {
+        _errorText = '两次输入的密码不一致';
+      });
+      return;
+    }
+
+    setState(() {
+      _errorText = null;
+      _submitting = true;
+    });
+    try {
+      await PersonIdentityService.instance.register(
+        account: account,
+        password: password,
+      );
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(
+        context,
+      ).pop(_RegisterCredentialResult(account: account, password: password));
+    } on FormatException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorText = error.message.trim().isEmpty
+            ? '注册失败，请稍后重试'
+            : error.message.trim();
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorText = '注册失败：$error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final TextStyle? errorStyle = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(color: colorScheme.error);
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      // 注册弹窗也同步处理软键盘顶起，防止确认密码输入框被遮挡。
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '立即注册',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '当前为离线模式，注册信息仅保存在本地设备。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _accountController,
+                  textInputAction: TextInputAction.next,
+                  onChanged: (_) {
+                    if (_errorText != null) {
+                      setState(() => _errorText = null);
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    labelText: '账号',
+                    hintText: '请输入账号',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  textInputAction: TextInputAction.next,
+                  onChanged: (_) {
+                    if (_errorText != null) {
+                      setState(() => _errorText = null);
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    labelText: '密码',
+                    hintText: '请输入密码',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmController,
+                  obscureText: true,
+                  onChanged: (_) {
+                    if (_errorText != null) {
+                      setState(() => _errorText = null);
+                    }
+                  },
+                  onSubmitted: (_) => _submit(),
+                  decoration: const InputDecoration(
+                    labelText: '确认密码',
+                    hintText: '请再次输入密码',
+                  ),
+                ),
+                if (_errorText != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(_errorText!, style: errorStyle),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: <Widget>[
+                    TextButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: const Text('取消'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _submitting ? null : _submit,
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('注册'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
