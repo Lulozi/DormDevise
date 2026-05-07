@@ -248,7 +248,7 @@ flutter build ios --release
 
 <div align="center">
 
-**Made with ❤️ by Lulo**
+**Made with ❤️ by [Lulo](https://github.com/Lulozi)**
 
 *让宿舍生活更智能*
 
