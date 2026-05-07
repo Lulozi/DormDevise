@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 外层圆角背景填满整个预览区域 -->
+    <item android:drawable="@drawable/widget_container_bg" />
+
+    <!-- 中心圆形图标背景 -->
+    <item
+        android:gravity="center"
+        android:height="36dp"
+        android:width="36dp"
+        android:drawable="@drawable/widget_icon_bg_small" />
+
+    <!-- 门锁图标 -->
+    <item
+        android:gravity="center"
+        android:height="20dp"
+        android:width="20dp"
+        android:drawable="@drawable/ic_lock_outline" />
+</layer-list>

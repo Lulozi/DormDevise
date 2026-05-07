@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_door"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="40dp"
+    android:minResizeHeight="40dp"
+    android:maxResizeWidth="800dp"
+    android:maxResizeHeight="800dp"
+    android:updatePeriodMillis="0"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:previewImage="@drawable/widget_door_preview_art"
+    android:previewLayout="@layout/widget_door_preview"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:description="@string/door_widget_full_description"
+    android:label="@string/door_widget_name" />

@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    tools:ignore="DuplicateIds">
+
+    <FrameLayout
+        android:id="@+id/wrapper_controls"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/ucrop_height_wrapper_controls"
+        android:layout_alignParentTop="true"
+        android:layout_marginBottom="0dp">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/ucrop_wrapper_controls_shape" />
+
+        <!-- 自定义旋转控制条：常驻显示，避免依赖底部状态切换。 -->
+        <RelativeLayout
+            android:id="@+id/layout_rotate_controls_always_on"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/text_view_rotate"
+                style="@style/ucrop_TextViewWidgetText"
+                android:layout_alignParentTop="true"
+                android:text="0°" />
+
+            <com.yalantis.ucrop.view.widget.HorizontalProgressWheelView
+                android:id="@+id/rotate_scroll_wheel"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_centerVertical="true"
+                android:layout_toStartOf="@+id/wrapper_reset_rotate"
+                android:layout_toEndOf="@+id/wrapper_rotate_by_angle"
+                android:paddingStart="0dp"
+                android:paddingEnd="0dp" />
+
+            <!-- 90° 按钮移到左侧，并向内留出边距。 -->
+            <FrameLayout
+                android:id="@+id/wrapper_rotate_by_angle"
+                style="@style/ucrop_WrapperRotateButton"
+                android:layout_alignParentStart="true"
+                android:layout_alignParentLeft="true"
+                android:layout_centerVertical="true"
+                android:layout_marginStart="12dp"
+                android:layout_marginLeft="12dp"
+                android:background="?attr/selectableItemBackground">
+
+                <ImageView
+                    style="@style/ucrop_ImageViewWidgetIcon"
+                    android:src="@drawable/ucrop_ic_angle"
+                    android:tint="@color/ucrop_color_widget_rotate_angle" />
+
+            </FrameLayout>
+
+            <!-- 撤销按钮移到右侧：复用自定义容器，点击时同时回正角度和缩放。 -->
+            <com.lulo.dormdevise.crop.UCropResetAllButtonLayout
+                android:id="@+id/wrapper_reset_rotate"
+                style="@style/ucrop_WrapperRotateButton"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:layout_centerVertical="true"
+                android:layout_marginEnd="12dp"
+                android:layout_marginRight="12dp"
+                android:background="?attr/selectableItemBackground">
+
+                <ImageView
+                    style="@style/ucrop_ImageViewWidgetIcon"
+                    app:srcCompat="@drawable/ucrop_ic_reset" />
+
+            </com.lulo.dormdevise.crop.UCropResetAllButtonLayout>
+        </RelativeLayout>
+
+        <!-- 占位容器：保留 uCrop 需要的 ID，避免状态切换逻辑空指针。 -->
+        <LinearLayout
+            android:id="@+id/layout_aspect_ratio"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:orientation="horizontal"
+            android:visibility="invisible" />
+
+        <FrameLayout
+            android:id="@+id/layout_rotate_wheel"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone" />
+
+        <include
+            android:id="@+id/layout_scale_wheel"
+            android:visibility="gone"
+            layout="@layout/ucrop_layout_scale_wheel" />
+
+    </FrameLayout>
+
+    <ImageView
+        android:id="@+id/controls_shadow"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:layout_alignBottom="@+id/wrapper_controls"
+        android:src="@drawable/ucrop_shadow_upside" />
+
+    <!-- 隐藏底部状态栏（裁剪/旋转/缩放三个图标区域）。 -->
+    <LinearLayout
+        android:id="@+id/wrapper_states"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_below="@+id/controls_shadow"
+        android:background="@color/ucrop_color_widget_background"
+        android:baselineAligned="false"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/state_aspect_ratio"
+            style="@style/ucrop_WrapperIconState">
+
+            <ImageView
+                android:id="@+id/image_view_state_aspect_ratio"
+                style="@style/ucrop_ImageViewWidgetIcon"
+                android:gravity="center"
+                android:orientation="vertical"
+                app:srcCompat="@drawable/ucrop_crop" />
+
+            <TextView
+                android:id="@+id/text_view_crop"
+                style="@style/ucrop_TextViewWidget"
+                android:text="@string/ucrop_crop" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/state_rotate"
+            style="@style/ucrop_WrapperIconState">
+
+            <ImageView
+                android:id="@+id/image_view_state_rotate"
+                style="@style/ucrop_ImageViewWidgetIcon"
+                app:srcCompat="@drawable/ucrop_rotate" />
+
+            <TextView
+                android:id="@+id/text_view_rotate"
+                style="@style/ucrop_TextViewWidget"
+                android:text="@string/ucrop_rotate" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/state_scale"
+            style="@style/ucrop_WrapperIconState">
+
+            <ImageView
+                android:id="@+id/image_view_state_scale"
+                style="@style/ucrop_ImageViewWidgetIcon"
+                app:srcCompat="@drawable/ucrop_scale" />
+
+            <TextView
+                android:id="@+id/text_view_scale"
+                style="@style/ucrop_TextViewWidget"
+                android:text="@string/ucrop_scale" />
+
+        </LinearLayout>
+    </LinearLayout>
+</RelativeLayout>
