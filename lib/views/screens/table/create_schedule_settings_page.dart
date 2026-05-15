@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import 'package:dormdevise/utils/text_length_counter.dart';
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
 import '../../../services/course_service.dart';
@@ -51,6 +52,9 @@ class CreateScheduleSettingsPage extends StatefulWidget {
 
 class _CreateScheduleSettingsPageState
     extends State<CreateScheduleSettingsPage> {
+  // 新建课程表名称上限：30 个半角单位（中文按 2 计算）。
+  static const int _tableNameMaxLengthUnits = 30;
+
   final TextEditingController _nameController = TextEditingController();
 
   // 初始设置
@@ -105,6 +109,11 @@ class _CreateScheduleSettingsPageState
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       AppToast.show(context, '请输入课程表名称');
+      return;
+    }
+    if (TextLengthCounter.computeHalfWidthUnits(name) >
+        _tableNameMaxLengthUnits) {
+      AppToast.show(context, '课程表名称超出字数限制');
       return;
     }
 

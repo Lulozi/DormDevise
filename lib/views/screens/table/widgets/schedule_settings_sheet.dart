@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'dart:math';
 import 'package:dormdevise/utils/index.dart';
 import 'package:dormdevise/utils/app_toast.dart';
+import 'package:dormdevise/utils/text_length_counter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../models/course_schedule_config.dart';
@@ -123,6 +124,9 @@ class ScheduleSettingsPage extends StatefulWidget {
 }
 
 class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
+  // 课程表名称最大长度：30 个半角单位（中文按 2 计算）。
+  static const int _tableNameMaxLengthUnits = 30;
+
   // 展开状态
   bool _isStartDateExpanded = false;
   bool _isMaxWeekExpanded = false;
@@ -373,17 +377,14 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
         _buildGroup(
           children: [
             if (!widget.isEmbedded) ...[
-              _buildTile(
-                title: '课程表名称',
-                trailing: _buildTrailingText(_tableName),
-                onTap: () => _showEditNameDialog(context),
-              ),
+              _buildTableNameTile(context),
               _buildDivider(),
             ],
             ExpandableItem(
               title: '学期开始时间',
               value: Text(
                 DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(_semesterStart),
+                textAlign: TextAlign.right,
                 style: TextStyle(
                   fontSize: 14,
                   color: colorScheme.onSurfaceVariant,
@@ -416,6 +417,7 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
               title: '学期总周数',
               value: Text(
                 '$_maxWeek 周',
+                textAlign: TextAlign.right,
                 style: TextStyle(
                   fontSize: 14,
                   color: colorScheme.onSurfaceVariant,
@@ -1041,6 +1043,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
                 children: [
                   Text(
                     title,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 16,
                       color: colorScheme.onSurface,
@@ -1073,23 +1078,97 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
     );
   }
 
-  /// 构建列表行尾部的文本和箭头
-  Widget _buildTrailingText(String text) {
+  /// 将连续英文/数字长串插入零宽断点，避免无法自然换行。
+  String _injectSoftBreakForAlphaNumeric(String text) {
+    return text.replaceAllMapped(RegExp(r'[A-Za-z0-9_]{8,}'), (Match match) {
+      final String token = match.group(0)!;
+      return token.split('').join('\u200B');
+    });
+  }
+
+  /// 按可用宽度和字符长度动态缩小字号，保证右侧课程表名尽量完整显示。
+  double _resolveAdaptiveNameFontSize({
+    required int charCount,
+    required double maxWidth,
+  }) {
+    double size = 14;
+    if (maxWidth < 220 || charCount > 12) {
+      size = 13;
+    }
+    if (maxWidth < 180 || charCount > 18) {
+      size = 12;
+    }
+    if (maxWidth < 150 || charCount > 24) {
+      size = 11;
+    }
+    return size;
+  }
+
+  /// 专用课程表名称行：左侧标签不换行，右侧名称自适应换行与字号。
+  Widget _buildTableNameTile(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          text,
-          style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+    final String rawText = _tableName.trim().isEmpty
+        ? '课程表名称'
+        : _tableName.trim();
+    final String displayText = _injectSoftBreakForAlphaNumeric(rawText);
+    final int nameChars = rawText.runes.length;
+
+    return GestureDetector(
+      onTap: () => _showEditNameDialog(context),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Row(
+          children: <Widget>[
+            SizedBox(
+              width: 88,
+              child: Text(
+                '课程表名称',
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.visible,
+                style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder:
+                          (BuildContext context, BoxConstraints constraints) {
+                            final double fontSize =
+                                _resolveAdaptiveNameFontSize(
+                                  charCount: nameChars,
+                                  maxWidth: constraints.maxWidth,
+                                );
+                            return Text(
+                              displayText,
+                              textAlign: TextAlign.right,
+                              softWrap: true,
+                              overflow: TextOverflow.visible,
+                              style: TextStyle(
+                                fontSize: fontSize,
+                                height: 1.2,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            );
+                          },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: colorScheme.onSurface.withValues(alpha: 0.26),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Icon(
-          Icons.arrow_forward_ios,
-          size: 16,
-          color: colorScheme.onSurface.withValues(alpha: 0.26),
-        ),
-      ],
+      ),
     );
   }
 
@@ -1195,101 +1274,30 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
   }
 
   /// 显示修改课程表名称的对话框
-  void _showEditNameDialog(BuildContext context) {
-    final TextEditingController controller = TextEditingController(
-      text: _tableName,
-    );
-    showDialog(
+  Future<void> _showEditNameDialog(BuildContext context) async {
+    // 保留原名称为可编辑初始值，便于直接增删改。
+    final String? name = await showDialog<String>(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final bool isEnabled = controller.text.trim().isNotEmpty;
-            return AlertDialog(
-              backgroundColor:
-                  Theme.of(context).cardTheme.color ??
-                  Theme.of(context).colorScheme.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-              ),
-              title: const Text('', style: TextStyle(fontSize: 10)),
-              content: Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: TextField(
-                  controller: controller,
-                  autofocus: true,
-                  style: const TextStyle(fontSize: 16),
-                  onChanged: (value) {
-                    setDialogState(() {});
-                  },
-                  decoration: InputDecoration(
-                    labelText: '课程表名称',
-                    prefixIcon: const Icon(Icons.edit_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).primaryColor,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).primaryColor,
-                        width: 2,
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  child: const Text('取消'),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                TextButton(
-                  onPressed: isEnabled
-                      ? () async {
-                          final name = controller.text.trim();
-                          if (widget.nameValidator != null) {
-                            final error = await widget.nameValidator!(name);
-                            if (error != null) {
-                              if (context.mounted) {
-                                AppToast.show(context, error);
-                              }
-                              return;
-                            }
-                          }
-                          widget.onTableNameChanged(name);
-                          setState(() {
-                            _tableName = name;
-                          });
-                          if (context.mounted) {
-                            Navigator.pop(context);
-                          }
-                        }
-                      : null,
-                  child: Text(
-                    '确定',
-                    style: TextStyle(
-                      color: isEnabled
-                          ? Theme.of(context).primaryColor
-                          : Colors.grey,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+      builder: (_) {
+        return _ScheduleTableNameEditorDialog(
+          initialValue: _tableName,
+          hintText: _tableName.trim().isEmpty ? '课程表名称' : _tableName,
+          maxLengthUnits: _tableNameMaxLengthUnits,
+          duplicateValue: _tableName,
+          nameValidator: widget.nameValidator,
         );
       },
     );
+    if (name == null) {
+      return;
+    }
+    widget.onTableNameChanged(name);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _tableName = name;
+    });
   }
 
   /// 构建自定义的日期选择器（年/月/日）
@@ -1507,5 +1515,266 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
       '12月',
     ];
     return months[month - 1];
+  }
+}
+
+/// 课程表名称编辑弹窗。
+///
+/// 交互对齐“修改昵称”：空输入提示、超限计数提示、校验失败文字抖动与震动反馈。
+class _ScheduleTableNameEditorDialog extends StatefulWidget {
+  const _ScheduleTableNameEditorDialog({
+    required this.initialValue,
+    required this.hintText,
+    required this.maxLengthUnits,
+    required this.duplicateValue,
+    this.nameValidator,
+  });
+
+  final String initialValue;
+  final String hintText;
+  final int maxLengthUnits;
+  final String duplicateValue;
+  final Future<String?> Function(String)? nameValidator;
+
+  @override
+  State<_ScheduleTableNameEditorDialog> createState() =>
+      _ScheduleTableNameEditorDialogState();
+}
+
+class _ScheduleTableNameEditorDialogState
+    extends State<_ScheduleTableNameEditorDialog>
+    with TickerProviderStateMixin {
+  late final TextEditingController _controller;
+  late final AnimationController _errorShakeController;
+  late final Animation<double> _errorShakeOffset;
+
+  String? _errorText;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+    _errorShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _errorShakeOffset = _buildShakeOffset(_errorShakeController);
+  }
+
+  @override
+  void dispose() {
+    _errorShakeController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Animation<double> _buildShakeOffset(AnimationController controller) {
+    return TweenSequence<double>(<TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 0, end: -7),
+        weight: 1,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: -7, end: 7),
+        weight: 1,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 7, end: -5),
+        weight: 1,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: -5, end: 5),
+        weight: 1,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 5, end: 0),
+        weight: 1,
+      ),
+    ]).animate(CurvedAnimation(parent: controller, curve: Curves.easeOut));
+  }
+
+  int _currentLengthUnits() {
+    return TextLengthCounter.computeHalfWidthUnits(_controller.text);
+  }
+
+  bool _isLengthExceeded() {
+    return _currentLengthUnits() > widget.maxLengthUnits;
+  }
+
+  String _counterText() {
+    return '${_currentLengthUnits()}/${widget.maxLengthUnits}';
+  }
+
+  Widget _buildCounter(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final Color counterColor = _isLengthExceeded()
+        ? theme.colorScheme.error
+        : theme.colorScheme.onSurfaceVariant;
+    return Text(
+      _counterText(),
+      style: theme.textTheme.bodySmall?.copyWith(color: counterColor),
+    );
+  }
+
+  Widget? _buildAnimatedErrorText(BuildContext context) {
+    if (_errorText == null) {
+      return null;
+    }
+    final Color errorColor = Theme.of(context).colorScheme.error;
+    return AnimatedBuilder(
+      animation: _errorShakeController,
+      builder: (_, Widget? child) {
+        return Transform.translate(
+          offset: Offset(_errorShakeOffset.value, 0),
+          child: child,
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          _errorText!,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: errorColor),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _playValidationErrorFeedback({bool withHaptic = true}) async {
+    // 空值/重名/重名校验失败时抖动错误文本并震动。
+    if (withHaptic) {
+      await HapticFeedback.mediumImpact();
+    }
+    if (!mounted) {
+      return;
+    }
+    _errorShakeController.forward(from: 0);
+  }
+
+  Future<void> _onSubmit() async {
+    if (_isSaving) {
+      return;
+    }
+    final String value = _controller.text.trim();
+    if (value.isEmpty) {
+      setState(() {
+        _errorText = '课程表名称不能为空！';
+      });
+      await _playValidationErrorFeedback();
+      return;
+    }
+    if (value.toLowerCase() == widget.duplicateValue.trim().toLowerCase()) {
+      setState(() {
+        _errorText = '与原课程表名称相同！';
+      });
+      await _playValidationErrorFeedback();
+      return;
+    }
+    if (_isLengthExceeded()) {
+      setState(() {
+        _errorText = '课程表名称超出字数限制！';
+      });
+      // 超限错误与重名错误一致：错误文案抖动 + 手机震动。
+      await _playValidationErrorFeedback();
+      return;
+    }
+    if (widget.nameValidator != null) {
+      setState(() {
+        _isSaving = true;
+      });
+      final String? error = await widget.nameValidator!(value);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSaving = false;
+      });
+      if (error != null) {
+        setState(() {
+          _errorText = error;
+        });
+        await _playValidationErrorFeedback();
+        return;
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final Widget? animatedErrorText = _buildAnimatedErrorText(context);
+    return AlertDialog(
+      backgroundColor: theme.cardTheme.color ?? theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      title: const Text('修改课程表名称'),
+      content: SizedBox(
+        // 放宽输入区宽度，减少中文课程名在小屏设备的换行概率。
+        width: min(MediaQuery.sizeOf(context).width * 0.82, 380),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              maxLines: 1,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _onSubmit(),
+              onChanged: (_) {
+                if (_errorText != null) {
+                  setState(() {
+                    _errorText = null;
+                  });
+                } else {
+                  setState(() {});
+                }
+              },
+              decoration: InputDecoration(
+                // 输入框为空时显示旧课程表名，便于用户参考后修改。
+                hintText: widget.hintText,
+                hintMaxLines: 1,
+                hintStyle: const TextStyle(color: Color(0xFF8A8E99)),
+                counterText: '',
+                counter: _buildCounter(context),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: theme.primaryColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: theme.primaryColor, width: 2),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+              ),
+            ),
+            if (animatedErrorText != null) animatedErrorText,
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _isSaving ? null : _onSubmit,
+          child: Text(_isSaving ? '校验中...' : '保存'),
+        ),
+      ],
+    );
   }
 }
