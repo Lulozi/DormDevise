@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:dormdevise/utils/app_toast.dart';
+import 'package:flutter/services.dart';
 import 'package:dormdevise/utils/text_length_counter.dart';
 import '../../../models/course.dart';
 import '../../../models/course_schedule_config.dart';
@@ -50,12 +50,16 @@ class CreateScheduleSettingsPage extends StatefulWidget {
       _CreateScheduleSettingsPageState();
 }
 
-class _CreateScheduleSettingsPageState
-    extends State<CreateScheduleSettingsPage> {
+class _CreateScheduleSettingsPageState extends State<CreateScheduleSettingsPage>
+    with TickerProviderStateMixin {
   // 新建课程表名称上限：30 个半角单位（中文按 2 计算）。
   static const int _tableNameMaxLengthUnits = 30;
 
   final TextEditingController _nameController = TextEditingController();
+  late final AnimationController _nameErrorShakeController;
+  late final Animation<double> _nameErrorShakeOffset;
+  String? _nameErrorText;
+  bool _isCheckingName = false;
 
   // 初始设置
   CourseScheduleConfig _scheduleConfig = CourseScheduleConfig.njuDefaults();
@@ -76,6 +80,39 @@ class _CreateScheduleSettingsPageState
   @override
   void initState() {
     super.initState();
+    _nameErrorShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _nameErrorShakeOffset =
+        TweenSequence<double>(<TweenSequenceItem<double>>[
+          TweenSequenceItem<double>(
+            tween: Tween<double>(begin: 0, end: -7),
+            weight: 1,
+          ),
+          TweenSequenceItem<double>(
+            tween: Tween<double>(begin: -7, end: 7),
+            weight: 1,
+          ),
+          TweenSequenceItem<double>(
+            tween: Tween<double>(begin: 7, end: -5),
+            weight: 1,
+          ),
+          TweenSequenceItem<double>(
+            tween: Tween<double>(begin: -5, end: 5),
+            weight: 1,
+          ),
+          TweenSequenceItem<double>(
+            tween: Tween<double>(begin: 5, end: 0),
+            weight: 1,
+          ),
+        ]).animate(
+          CurvedAnimation(
+            parent: _nameErrorShakeController,
+            curve: Curves.easeOut,
+          ),
+        );
+
     // 使用外部传入的初始值预填充（如网页爬取导入场景）
     if (widget.initialScheduleName != null) {
       _nameController.text = widget.initialScheduleName!;
@@ -101,35 +138,72 @@ class _CreateScheduleSettingsPageState
 
   @override
   void dispose() {
+    _nameErrorShakeController.dispose();
     _nameController.dispose();
     super.dispose();
   }
 
+  int _currentNameUnits() {
+    return TextLengthCounter.computeHalfWidthUnits(_nameController.text);
+  }
+
+  bool _isNameLengthExceeded() {
+    return _currentNameUnits() > _tableNameMaxLengthUnits;
+  }
+
+  Future<void> _showNameValidationError(String message) async {
+    setState(() {
+      _nameErrorText = message;
+    });
+    await HapticFeedback.mediumImpact();
+    if (!mounted) {
+      return;
+    }
+    // 通过抖动红色错误文本强调失败原因，和昵称弹窗反馈保持一致。
+    _nameErrorShakeController.forward(from: 0);
+  }
+
   void _onNext() async {
+    if (_isCheckingName) {
+      return;
+    }
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      AppToast.show(context, '请输入课程表名称');
+      await _showNameValidationError('课程表名称不能为空！');
       return;
     }
-    if (TextLengthCounter.computeHalfWidthUnits(name) >
-        _tableNameMaxLengthUnits) {
-      AppToast.show(context, '课程表名称超出字数限制');
+    if (_isNameLengthExceeded()) {
+      await _showNameValidationError('课程表名称超出字数限制！');
       return;
     }
+
+    setState(() {
+      _isCheckingName = true;
+    });
 
     // 校验是否名称重复
     try {
       final schedules = await CourseService.instance.loadSchedules();
       if (schedules.any((s) => s.name == name)) {
-        if (!mounted) return;
-        AppToast.show(context, '课程表名称已存在');
+        if (!mounted) {
+          return;
+        }
+        await _showNameValidationError('课程表名称已存在！');
         return;
       }
     } catch (e) {
       // 忽略错误（或在需要时处理），不阻塞流程
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingName = false;
+        });
+      }
     }
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
@@ -177,6 +251,8 @@ class _CreateScheduleSettingsPageState
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final int currentNameUnits = _currentNameUnits();
+    final bool isNameLengthExceeded = _isNameLengthExceeded();
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -204,11 +280,12 @@ class _CreateScheduleSettingsPageState
         centerTitle: true,
         actions: [
           TextButton(
-            onPressed: _nameController.text.isNotEmpty ? _onNext : null,
+            // 名称空时也允许点击，由 _onNext 统一触发震动+抖动验证反馈
+            onPressed: !_isCheckingName ? _onNext : null,
             child: Text(
-              '下一步',
+              _isCheckingName ? '校验中' : '下一步',
               style: TextStyle(
-                color: _nameController.text.isNotEmpty
+                color: _nameController.text.isNotEmpty && !_isCheckingName
                     ? colorScheme.primary
                     : colorScheme.onSurfaceVariant,
                 fontSize: 16,
@@ -242,12 +319,45 @@ class _CreateScheduleSettingsPageState
                   hintText: '课程表名称 (必填)',
                   border: InputBorder.none,
                   hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+                  counterText: '',
+                  counter: Text(
+                    '$currentNameUnits/$_tableNameMaxLengthUnits',
+                    style: TextStyle(
+                      color: isNameLengthExceeded
+                          ? colorScheme.error
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
                 onChanged: (value) => setState(() {
                   _tableName = value;
+                  _nameErrorText = null;
                 }),
               ),
             ),
+            if (_nameErrorText != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+                child: AnimatedBuilder(
+                  animation: _nameErrorShakeController,
+                  builder: (_, Widget? child) {
+                    return Transform.translate(
+                      offset: Offset(_nameErrorShakeOffset.value, 0),
+                      child: child,
+                    );
+                  },
+                  child: Text(
+                    _nameErrorText!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colorScheme.error,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
         scheduleConfig: _scheduleConfig,
