@@ -628,8 +628,17 @@ class _CourseEditPageState extends State<CourseEditPage> {
   }
 
   void _incrementSessions() {
+    final next = _findNextAvailableSlot();
+    // 所有时段已排满，禁止重复添加并提示用户
+    if (next == null) {
+      AppToast.show(
+        context,
+        '当前所有教学时段均已排满，无法继续添加新时段！',
+        variant: AppToastVariant.warning,
+      );
+      return;
+    }
     setState(() {
-      final next = _findNextAvailableSlot();
       final added = CourseSession(
         weekday: next.weekday,
         startSection: next.startSection,
@@ -667,7 +676,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
   /// 根据已有时段自动计算下一个可用槽位，避免重复。
   /// 优先在同一天的下一个时段，天满则顺延到下一天。
   /// 每个教学时段按 2 节一组分配，奇数时段最后一组为 3 节（如 3→3，5→2+3，7→2+2+3）。
-  ({int weekday, int startSection, int sectionCount}) _findNextAvailableSlot() {
+  /// 所有时段均已排满时返回 null，调用方应禁止继续添加。
+  ({int weekday, int startSection, int sectionCount})?
+  _findNextAvailableSlot() {
     // 收集各天已占用的节次区间
     final Map<int, List<({int start, int end})>> occupied =
         <int, List<({int start, int end})>>{};
@@ -776,8 +787,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
       }
     }
 
-    // 全部占满时回退默认值
-    return (weekday: 1, startSection: 1, sectionCount: 2);
+    // 全部占满时返回 null，由调用方提示用户禁止继续添加
+    return null;
   }
 
   /// 将时段按规则切分为槽位：每组 2 节，奇数时段最后一组为 3 节。
