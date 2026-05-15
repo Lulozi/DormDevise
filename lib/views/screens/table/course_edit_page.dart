@@ -1775,73 +1775,52 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
     });
   }
 
+  Set<int> _buildExpectedWeeksByType(CourseWeekType type) {
+    final Set<int> weeks = <int>{};
+    for (int i = 1; i <= widget.maxWeek; i++) {
+      if (type == CourseWeekType.all) {
+        weeks.add(i);
+      } else if (type == CourseWeekType.single) {
+        if (i.isOdd) {
+          weeks.add(i);
+        }
+      } else if (type == CourseWeekType.double) {
+        if (i.isEven) {
+          weeks.add(i);
+        }
+      }
+    }
+    return weeks;
+  }
+
+  bool _isExactlySelectedType(CourseWeekType type) {
+    final Set<int> expected = _buildExpectedWeeksByType(type);
+    if (expected.length != _selectedWeeks.length) {
+      return false;
+    }
+    return _selectedWeeks.containsAll(expected);
+  }
+
   void _updateCurrentTypeFromSelection() {
     if (_selectedWeeks.isEmpty) {
       _currentType = null;
       return;
     }
 
-    final sortedWeeks = _selectedWeeks.toList()..sort();
-    final start = sortedWeeks.first;
-    final end = sortedWeeks.last;
-
-    bool isAllOdd = true;
-    bool isAllEven = true;
-
-    for (final w in sortedWeeks) {
-      if (w % 2 == 0) isAllOdd = false;
-      if (w % 2 != 0) isAllEven = false;
-    }
-
-    CourseWeekType? candidateType;
-    if (isAllOdd) {
-      candidateType = CourseWeekType.single;
-    } else if (isAllEven) {
-      candidateType = CourseWeekType.double;
-    } else {
-      // 检查是否连续
-      bool isContiguous = true;
-      for (int i = 0; i < sortedWeeks.length - 1; i++) {
-        if (sortedWeeks[i + 1] - sortedWeeks[i] != 1) {
-          isContiguous = false;
-          break;
-        }
-      }
-      if (isContiguous) {
-        candidateType = CourseWeekType.all;
-      }
-    }
-
-    if (candidateType == null) {
-      _currentType = null;
+    // 仅当“整学期全选/全单周/全双周”时点亮类型按钮，其余均视为自定义。
+    if (_isExactlySelectedType(CourseWeekType.all)) {
+      _currentType = CourseWeekType.all;
       return;
     }
-
-    // 验证完整性：检查 start 到 end 之间是否包含了所有该类型应有的周次
-    bool match = true;
-    for (int i = start; i <= end; i++) {
-      bool shouldHave = false;
-      if (candidateType == CourseWeekType.all) {
-        shouldHave = true;
-      } else if (candidateType == CourseWeekType.single) {
-        if (i % 2 != 0) shouldHave = true;
-      } else if (candidateType == CourseWeekType.double) {
-        if (i % 2 == 0) shouldHave = true;
-      }
-
-      if (shouldHave) {
-        if (!_selectedWeeks.contains(i)) {
-          match = false;
-          break;
-        }
-      }
+    if (_isExactlySelectedType(CourseWeekType.single)) {
+      _currentType = CourseWeekType.single;
+      return;
     }
-
-    if (match) {
-      _currentType = candidateType;
-    } else {
-      _currentType = null;
+    if (_isExactlySelectedType(CourseWeekType.double)) {
+      _currentType = CourseWeekType.double;
+      return;
     }
+    _currentType = null;
   }
 
   @override
@@ -2042,50 +2021,17 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
     final start = sortedWeeks.first;
     final end = sortedWeeks.last;
 
-    // 根据选择确定类型
     CourseWeekType type = CourseWeekType.all;
-    bool isAllOdd = true;
-    bool isAllEven = true;
-
-    for (final week in sortedWeeks) {
-      if (week % 2 == 0) isAllOdd = false;
-      if (week % 2 != 0) isAllEven = false;
-    }
-
-    if (isAllOdd) {
+    List<int> customWeeks = <int>[];
+    // 仅把整学期全量选择映射为固定类型，其余都落为 customWeeks。
+    if (_isExactlySelectedType(CourseWeekType.single)) {
       type = CourseWeekType.single;
-    } else if (isAllEven) {
+    } else if (_isExactlySelectedType(CourseWeekType.double)) {
       type = CourseWeekType.double;
+    } else if (_isExactlySelectedType(CourseWeekType.all)) {
+      type = CourseWeekType.all;
     } else {
       type = CourseWeekType.all;
-    }
-
-    // 检查推断的类型是否完全匹配选中的周次
-    Set<int> inferredWeeks = {};
-    for (int i = start; i <= end; i++) {
-      if (type == CourseWeekType.all) {
-        inferredWeeks.add(i);
-      } else if (type == CourseWeekType.single) {
-        if (i % 2 != 0) inferredWeeks.add(i);
-      } else if (type == CourseWeekType.double) {
-        if (i % 2 == 0) inferredWeeks.add(i);
-      }
-    }
-
-    List<int> customWeeks = [];
-    bool match = true;
-    if (inferredWeeks.length != sortedWeeks.length) {
-      match = false;
-    } else {
-      for (int w in sortedWeeks) {
-        if (!inferredWeeks.contains(w)) {
-          match = false;
-          break;
-        }
-      }
-    }
-
-    if (!match) {
       customWeeks = sortedWeeks;
     }
 
