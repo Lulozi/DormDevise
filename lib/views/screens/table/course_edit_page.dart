@@ -1991,24 +1991,31 @@ class _WeekRangePickerState extends State<_WeekRangePicker> {
     final Color activeColor = ThemeService.instance.isWhiteMode
         ? Colors.grey.shade700
         : Theme.of(context).colorScheme.primary;
-    return Container(
+    // 深色模式下打勾采用黑色以在亮色 primary 背景上清晰可见
+    final Color checkColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.black
+        : Colors.white;
+    // 未选中边框颜色
+    const Color uncheckedBorder = Color(0xFFC4C4C6);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
       width: 18,
       height: 18,
       decoration: BoxDecoration(
         color: isSelected ? activeColor : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
         border: isSelected
-            ? null
-            : Border.all(color: const Color(0xFFC4C4C6), width: 1.5),
+            ? Border.all(color: activeColor, width: 1.5)
+            : Border.all(color: uncheckedBorder, width: 1.5),
       ),
       child: isSelected
-          ? Icon(
-              Icons.check,
-              size: 14,
-              // 深色模式下打勾采用黑色以在亮色 primary 背景上清晰可见
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.black
-                  : Colors.white,
+          ? AnimatedOpacity(
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeInOut,
+              opacity: isSelected ? 1.0 : 0.0,
+              child: Icon(Icons.check, size: 14, color: checkColor),
             )
           : null,
     );
