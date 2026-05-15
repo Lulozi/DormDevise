@@ -1023,10 +1023,11 @@ class TablePageState extends State<TablePage>
   Widget _buildToolbar(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final TextStyle titleStyle = theme.textTheme.headlineSmall!.copyWith(
+    final TextStyle baseTitleStyle = theme.textTheme.headlineSmall!.copyWith(
       fontWeight: FontWeight.w800,
       letterSpacing: 0.4,
     );
+    final String toolbarTitleText = _isEditing ? '编辑模式' : _tableName;
     final TextStyle subtitleStyle = theme.textTheme.bodySmall!.copyWith(
       color: colorScheme.onSurfaceVariant,
       letterSpacing: 0.2,
@@ -1064,12 +1065,42 @@ class TablePageState extends State<TablePage>
                     ),
                   );
                 },
-                child: Text(
-                  _isEditing ? '编辑模式' : _tableName,
+                child: LayoutBuilder(
                   key: ValueKey<bool>(_isEditing),
-                  style: titleStyle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final bool allowWrap = !_isEditing;
+                    final int charCount = toolbarTitleText.trim().runes.length;
+                    double titleFontSize = baseTitleStyle.fontSize ?? 24;
+                    if (allowWrap &&
+                        (constraints.maxWidth < 240 || charCount > 10)) {
+                      titleFontSize = 18;
+                    }
+                    if (allowWrap &&
+                        (constraints.maxWidth < 200 || charCount > 16)) {
+                      titleFontSize = 16;
+                    }
+                    if (allowWrap &&
+                        (constraints.maxWidth < 165 || charCount > 22)) {
+                      titleFontSize = 14;
+                    }
+
+                    return Text(
+                      toolbarTitleText,
+                      // 课表页标题支持窄屏自适应缩小并换行，尽量完整展示课程表名。
+                      style: baseTitleStyle.copyWith(
+                        fontSize: titleFontSize,
+                        height: allowWrap ? 1.2 : baseTitleStyle.height,
+                        letterSpacing: allowWrap
+                            ? 0.1
+                            : baseTitleStyle.letterSpacing,
+                      ),
+                      maxLines: allowWrap ? null : 1,
+                      softWrap: allowWrap,
+                      overflow: allowWrap
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                    );
+                  },
                 ),
               ),
               AnimatedSwitcher(

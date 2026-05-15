@@ -1286,6 +1286,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         ),
       Text(
         block.course.name,
+        softWrap: true,
+        overflow: TextOverflow.visible,
         style: titleStyle.copyWith(
           fontSize: typography.titleFontSize,
           height: 1.16,
