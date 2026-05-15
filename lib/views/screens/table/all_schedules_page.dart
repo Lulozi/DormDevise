@@ -66,6 +66,36 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
 
   String? _initialScheduleId;
 
+  String _formatScheduleNameForDisplay(String name) {
+    final String normalized = name.trim();
+    if (normalized.isEmpty) {
+      return '未命名课程表';
+    }
+    // 为连续英文/数字注入零宽断行点，避免长串导致右侧按钮被挤出。
+    return normalized.replaceAllMapped(RegExp(r'[A-Za-z0-9_]{8,}'), (Match m) {
+      final String token = m.group(0)!;
+      return token.split('').join('\u200B');
+    });
+  }
+
+  /// 根据可用宽度和名称长度自适应字号，优先完整显示课程表名。
+  double _resolveScheduleNameFontSize({
+    required int charCount,
+    required double maxWidth,
+  }) {
+    double size = 16;
+    if (maxWidth < 220 || charCount > 12) {
+      size = 15;
+    }
+    if (maxWidth < 180 || charCount > 18) {
+      size = 14;
+    }
+    if (maxWidth < 150 || charCount > 24) {
+      size = 13;
+    }
+    return size;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -657,36 +687,65 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
                         )
                       : const SizedBox.shrink(),
                 ),
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: colorScheme.onSurface,
+                Expanded(
+                  child: Row(
+                    children: [
+                      // 课程表名称在窄屏下自动缩小字号并换行，避免被“当前/设置”区域截断。
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder:
+                              (
+                                BuildContext context,
+                                BoxConstraints constraints,
+                              ) {
+                                final String normalizedName = name.trim();
+                                final int nameChars = normalizedName.isEmpty
+                                    ? 5
+                                    : normalizedName.runes.length;
+                                final double fontSize =
+                                    _resolveScheduleNameFontSize(
+                                      charCount: nameChars,
+                                      maxWidth: constraints.maxWidth,
+                                    );
+                                return Text(
+                                  _formatScheduleNameForDisplay(name),
+                                  softWrap: true,
+                                  overflow: TextOverflow.visible,
+                                  style: TextStyle(
+                                    fontSize: fontSize,
+                                    height: 1.25,
+                                    fontWeight: FontWeight.w500,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                );
+                              },
+                        ),
+                      ),
+                      if (isCurrent) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '当前',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (isCurrent) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '当前',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-                const Spacer(),
+                const SizedBox(width: 12),
                 if (_isSelectionMode)
                   ReorderableDragStartListener(
                     index: index,
