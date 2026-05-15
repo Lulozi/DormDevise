@@ -382,13 +382,32 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             ],
             ExpandableItem(
               title: '学期开始时间',
-              value: Text(
-                DateFormat('yyyy年M月d日 EEEE', 'zh_CN').format(_semesterStart),
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              // 短标题减小 titleFlex，右侧内容更靠近标题
+              titleFlex: 3,
+              // 关闭右侧值自动缩放，使用 Wrap 让星期几整体换行
+              autoScaleValue: false,
+              // 标题保持固定字号不缩放，与课程表名称字体一致
+              titleAutoScale: false,
+              value: Wrap(
+                alignment: WrapAlignment.end,
+                children: [
+                  Text(
+                    DateFormat('yyyy年M月d日 ', 'zh_CN').format(_semesterStart),
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  Text(
+                    DateFormat(' EEEE', 'zh_CN').format(_semesterStart),
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
               isExpanded: _isStartDateExpanded,
               onTap: () {
@@ -415,6 +434,9 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
             _buildDivider(),
             ExpandableItem(
               title: '学期总周数',
+              titleFlex: 3,
+              // 标题保持固定字号不缩放，与课程表名称字体一致
+              titleAutoScale: false,
               value: Text(
                 '$_maxWeek 周',
                 textAlign: TextAlign.right,
@@ -1324,174 +1346,156 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
           Theme.of(context).colorScheme.surface,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // 以月份居中，左右间隔固定，且保证文字完整显示
-          final double gap = 0.0; // 列间间距
+          // 年/月、月/日保持一致间距；整体作为一个组水平居中。
+          double gap = kPickerDefaultGap;
+          double yearWidth = kMinYearWidth;
+          // 月日列按两位数宽度设计，并保持右对齐。
+          double monthWidth = max(kMinMonthWidth, 72);
+          double dayWidth = max(kMinDayWidth, 72);
+          double groupWidth = yearWidth + monthWidth + dayWidth;
 
-          final double minYearWidth = kMinYearWidth; // 年份最小宽度
-          final double minMonthWidth = kMinMonthWidth; // 月份最小宽度
-          final double minDayWidth = kMinDayWidth; // 日期最小宽度
-
-          final double totalMin = minYearWidth + minMonthWidth + minDayWidth;
-          double yearWidth = minYearWidth;
-          double monthWidth = minMonthWidth;
-          double dayWidth = minDayWidth;
-
-          // 如果屏幕过窄，按比例缩放
-          if (constraints.maxWidth < totalMin) {
-            final double scale = constraints.maxWidth / totalMin;
-            yearWidth = max(24.0, minYearWidth * scale);
-            monthWidth = max(24.0, minMonthWidth * scale);
-            dayWidth = max(24.0, minDayWidth * scale);
+          if (constraints.maxWidth < groupWidth) {
+            final double scale = constraints.maxWidth / groupWidth;
+            yearWidth = max(kMinPickerColumnWidth, yearWidth * scale);
+            monthWidth = max(kMinPickerColumnWidth, monthWidth * scale);
+            dayWidth = max(kMinPickerColumnWidth, dayWidth * scale);
+            gap = max(4, gap * scale);
+            groupWidth = yearWidth + monthWidth + dayWidth;
           }
 
-          // 计算左边距，使 Month 列的中心对齐屏幕中心
-          // 屏幕中心 = 左边距 + 年宽 + 间距 + 月宽 / 2
-          double leftPadding =
-              (constraints.maxWidth / 2) - yearWidth - gap - (monthWidth / 2);
-          if (leftPadding < 0) leftPadding = 0;
-
-          final double innerGap = gap / 2;
-          // 构建行布局
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              SizedBox(width: leftPadding),
-              // 给每列内部也加左右 padding，使文字不贴边
-              SizedBox(
-                width: yearWidth,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: innerGap),
-                  child: CupertinoPicker(
-                    selectionOverlay: Container(),
-                    itemExtent: kPickerItemExtent,
-                    looping: true,
-                    scrollController: FixedExtentScrollController(
-                      initialItem: (() {
-                        final idx = years.indexWhere(
-                          (y) => y == initialDate.year,
+          return Center(
+            child: SizedBox(
+              width: groupWidth,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: yearWidth,
+                    child: CupertinoPicker(
+                      selectionOverlay: Container(),
+                      itemExtent: kPickerItemExtent,
+                      looping: true,
+                      scrollController: FixedExtentScrollController(
+                        initialItem: (() {
+                          final int idx = years.indexWhere(
+                            (int y) => y == initialDate.year,
+                          );
+                          return idx != -1 ? idx : 0;
+                        })(),
+                      ),
+                      onSelectedItemChanged: (int index) {
+                        final int newYear = years[index % years.length];
+                        final int daysInNewMonth = DateTime(
+                          newYear,
+                          initialDate.month + 1,
+                          0,
+                        ).day;
+                        final int newDay = initialDate.day > daysInNewMonth
+                            ? daysInNewMonth
+                            : initialDate.day;
+                        onChanged(DateTime(newYear, initialDate.month, newDay));
+                      },
+                      children: years
+                          .map(
+                            (int y) => Center(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '$y年',
+                                  style: const TextStyle(
+                                    fontSize: kPickerFontSizeDefault,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox(
+                    width: monthWidth,
+                    child: CupertinoPicker(
+                      selectionOverlay: Container(),
+                      itemExtent: kPickerItemExtent,
+                      looping: true,
+                      scrollController: FixedExtentScrollController(
+                        initialItem: initialDate.month - 1,
+                      ),
+                      onSelectedItemChanged: (int index) {
+                        final int newMonth = (index % 12) + 1;
+                        final int daysInNewMonth = DateTime(
+                          initialDate.year,
+                          newMonth + 1,
+                          0,
+                        ).day;
+                        final int newDay = initialDate.day > daysInNewMonth
+                            ? daysInNewMonth
+                            : initialDate.day;
+                        onChanged(DateTime(initialDate.year, newMonth, newDay));
+                      },
+                      children: months
+                          .map(
+                            (int m) => SizedBox(
+                              width: double.infinity,
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    _getMonthString(m),
+                                    textAlign: TextAlign.right,
+                                    style: const TextStyle(
+                                      fontSize: kPickerFontSizeDefault,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox(
+                    width: dayWidth,
+                    child: CupertinoPicker(
+                      selectionOverlay: Container(),
+                      itemExtent: kPickerItemExtent,
+                      looping: true,
+                      scrollController: FixedExtentScrollController(
+                        initialItem: initialDate.day - 1,
+                      ),
+                      onSelectedItemChanged: (int index) {
+                        final int newDay = (index % daysInMonth) + 1;
+                        onChanged(
+                          DateTime(initialDate.year, initialDate.month, newDay),
                         );
-                        return idx != -1 ? idx : 0;
-                      })(),
-                    ),
-                    onSelectedItemChanged: (index) {
-                      final newYear = years[index % years.length];
-                      final daysInNewMonth = DateTime(
-                        newYear,
-                        initialDate.month + 1,
-                        0,
-                      ).day;
-                      final newDay = initialDate.day > daysInNewMonth
-                          ? daysInNewMonth
-                          : initialDate.day;
-                      onChanged(DateTime(newYear, initialDate.month, newDay));
-                    },
-                    children: years
-                        .map(
-                          (y) => Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '$y年',
-                                style: const TextStyle(
-                                  fontSize: kPickerFontSizeDefault,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ),
-              SizedBox(width: gap),
-              SizedBox(
-                width: monthWidth,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: innerGap),
-                  child: CupertinoPicker(
-                    selectionOverlay: Container(),
-                    itemExtent: kPickerItemExtent,
-                    looping: true,
-                    scrollController: FixedExtentScrollController(
-                      initialItem: initialDate.month - 1,
-                    ),
-                    onSelectedItemChanged: (index) {
-                      final newMonth = (index % 12) + 1;
-                      final daysInNewMonth = DateTime(
-                        initialDate.year,
-                        newMonth + 1,
-                        0,
-                      ).day;
-                      final newDay = initialDate.day > daysInNewMonth
-                          ? daysInNewMonth
-                          : initialDate.day;
-                      onChanged(DateTime(initialDate.year, newMonth, newDay));
-                    },
-                    children: months
-                        .map(
-                          (m) => SizedBox(
-                            width: double.infinity,
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  _getMonthString(m),
-                                  textAlign: TextAlign.right,
-                                  style: const TextStyle(
-                                    fontSize: kPickerFontSizeDefault,
+                      },
+                      children: days
+                          .map(
+                            (int d) => SizedBox(
+                              width: double.infinity,
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '$d日',
+                                    textAlign: TextAlign.right,
+                                    style: const TextStyle(
+                                      fontSize: kPickerFontSizeDefault,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ),
-              SizedBox(width: gap),
-              SizedBox(
-                width: dayWidth,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: innerGap),
-                  child: CupertinoPicker(
-                    selectionOverlay: Container(),
-                    itemExtent: kPickerItemExtent,
-                    looping: true,
-                    scrollController: FixedExtentScrollController(
-                      initialItem: initialDate.day - 1,
+                          )
+                          .toList(),
                     ),
-                    onSelectedItemChanged: (index) {
-                      final newDay = (index % daysInMonth) + 1;
-                      onChanged(
-                        DateTime(initialDate.year, initialDate.month, newDay),
-                      );
-                    },
-                    children: days
-                        .map(
-                          (d) => SizedBox(
-                            width: double.infinity,
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '$d日',
-                                  textAlign: TextAlign.right,
-                                  style: const TextStyle(
-                                    fontSize: kPickerFontSizeDefault,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
@@ -1500,21 +1504,8 @@ class _ScheduleSettingsPageState extends State<ScheduleSettingsPage> {
 
   /// 获取月份的中文显示字符串
   String _getMonthString(int month) {
-    const months = [
-      '1月',
-      '2月',
-      '3月',
-      '4月',
-      '5月',
-      '6月',
-      '7月',
-      '8月',
-      '9月',
-      '10月',
-      '11月',
-      '12月',
-    ];
-    return months[month - 1];
+    // 月份不补零，但通过固定列宽 + 右对齐保持月日视觉对齐。
+    return '$month月';
   }
 }
 
