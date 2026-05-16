@@ -6,7 +6,7 @@ const double kPickerFontScale = 2.0;
 const double kPickerFontSizeDefault = 24.0; // 在无法获取主题基础大小时使用
 const double kTimePickerFontSize = 40.0; // 时间选择器（小时/分钟）
 
-const double kPickerDefaultGap = 12.0;
+const double kPickerDefaultGap = 0.0;
 const double kPickerOuterGapScale = 3.0; // 外部间距 = 间距 * 比例
 
 const double kMinYearWidth = 80.0;

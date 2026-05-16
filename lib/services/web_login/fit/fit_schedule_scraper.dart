@@ -105,10 +105,17 @@ class FitScheduleScraper {
           for (const div of courseDivs) {
             try {
               // --- 2a. 课程名称 ---
-              const titleSpan = div.querySelector('span.title');
-              const courseName = titleSpan
-                ? titleSpan.textContent.trim()
-                : '';
+              // 兼容 <span class="title"> / <u class="title"> 等不同标签结构
+              const titleNode = div.querySelector('.title');
+              const courseNameRaw = titleNode ? titleNode.textContent : '';
+              const courseName = (courseNameRaw || '')
+                // 合并空白并去掉调课前缀，避免课程名解析失败或不一致
+                .replace(/\u00a0/g, ' ')
+                .replace(/\s+/g, ' ')
+                .replace(/^【[^】]*】\s*/g, '')
+                // 去掉中文字符之间被插入的空格（如“云平 台”）
+                .replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2')
+                .trim();
               if (!courseName) continue;
 
               // --- 2b. 节次/周次 ---

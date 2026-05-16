@@ -432,16 +432,17 @@ class CourseScheduleTable extends StatefulWidget {
       required int startSection,
       required int endSection,
     }) {
-      int count = 0;
+      // 统计不重复的课程数量（同一课程不同教室视为同一门课）
+      final Set<String> distinctCourses = {};
       for (final _CourseBlock other in rawBlocks) {
         if (other.columnIndex != columnIndex) continue;
         final int otherStart = other.session.startSection;
         final int otherEnd = otherStart + other.session.sectionCount - 1;
         if (startSection <= otherEnd && endSection >= otherStart) {
-          count++;
+          distinctCourses.add(other.course.name);
         }
       }
-      return count;
+      return distinctCourses.length;
     }
 
     // 将原始区块根据上层遮盖范围拆分为不被遮盖的片段，
@@ -1286,6 +1287,8 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
         ),
       Text(
         block.course.name,
+        softWrap: true,
+        overflow: TextOverflow.visible,
         style: titleStyle.copyWith(
           fontSize: typography.titleFontSize,
           height: 1.16,

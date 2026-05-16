@@ -624,6 +624,37 @@ class _QrSharePreviewCard extends StatelessWidget {
   final String displayName;
   final String avatarPath;
 
+  /// 为连续英文/数字注入零宽断行点，避免无法自然换行导致文本被裁切。
+  String _injectSoftBreakForAlphaNumeric(String text) {
+    return text.replaceAllMapped(RegExp(r'[A-Za-z0-9_]{8,}'), (Match match) {
+      final String token = match.group(0)!;
+      return token.split('').join('\u200B');
+    });
+  }
+
+  /// 按宽度与字符长度动态缩小字号，优先保证两行内可读且无省略号。
+  double _resolveAdaptiveFontSize({
+    required double baseSize,
+    required int charCount,
+    required double maxWidth,
+    required double minSize,
+  }) {
+    double size = baseSize;
+    if (maxWidth < 150 || charCount > 10) {
+      size = baseSize - 1;
+    }
+    if (maxWidth < 120 || charCount > 16) {
+      size = baseSize - 2;
+    }
+    if (maxWidth < 96 || charCount > 24) {
+      size = baseSize - 3;
+    }
+    if (size < minSize) {
+      size = minSize;
+    }
+    return size;
+  }
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
@@ -725,8 +756,10 @@ class _QrSharePreviewCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
                   Expanded(
+                    flex: 6,
                     child: Row(
                       children: <Widget>[
                         ClipRRect(
@@ -735,25 +768,65 @@ class _QrSharePreviewCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
-                            displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: nicknameStyle,
+                          child: LayoutBuilder(
+                            builder: (
+                              BuildContext context,
+                              BoxConstraints constraints,
+                            ) {
+                              final String safeDisplayName =
+                                  _injectSoftBreakForAlphaNumeric(displayName);
+                              final double adaptiveNicknameFontSize =
+                                  _resolveAdaptiveFontSize(
+                                    baseSize: nicknameStyle.fontSize ?? 16,
+                                    charCount: displayName.runes.length,
+                                    maxWidth: constraints.maxWidth,
+                                    minSize: 11,
+                                  );
+                              return Text(
+                                safeDisplayName,
+                                maxLines: 2,
+                                softWrap: true,
+                                overflow: TextOverflow.visible,
+                                style: nicknameStyle.copyWith(
+                                  fontSize: adaptiveNicknameFontSize,
+                                  height: 1.15,
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 12),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 160),
-                    child: Text(
-                      rightInfo,
-                      textAlign: TextAlign.right,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: shareInfoStyle,
+                  Expanded(
+                    flex: 5,
+                    child: LayoutBuilder(
+                      builder: (
+                        BuildContext context,
+                        BoxConstraints constraints,
+                      ) {
+                        final String safeRightInfo =
+                            _injectSoftBreakForAlphaNumeric(rightInfo);
+                        final double adaptiveShareInfoFontSize =
+                            _resolveAdaptiveFontSize(
+                              baseSize: shareInfoStyle.fontSize ?? 14,
+                              charCount: rightInfo.runes.length,
+                              maxWidth: constraints.maxWidth,
+                              minSize: 10,
+                            );
+                        return Text(
+                          safeRightInfo,
+                          textAlign: TextAlign.right,
+                          maxLines: 2,
+                          softWrap: true,
+                          overflow: TextOverflow.visible,
+                          style: shareInfoStyle.copyWith(
+                            fontSize: adaptiveShareInfoFontSize,
+                            height: 1.15,
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
