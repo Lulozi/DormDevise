@@ -144,6 +144,7 @@ class _PersonPageState extends State<PersonPage> {
               scrolledUnderElevation: 0,
               surfaceTintColor: Colors.transparent,
               backgroundColor: Colors.transparent,
+              automaticallyImplyLeading: false,
               flexibleSpace: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
