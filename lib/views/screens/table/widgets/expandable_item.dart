@@ -54,10 +54,7 @@ class ExpandableItem extends StatelessWidget {
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.visible,
-      style: TextStyle(
-        fontSize: 16,
-        color: colorScheme.onSurface,
-      ),
+      style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
     );
   }
 
@@ -125,7 +122,12 @@ class ExpandableItem extends StatelessWidget {
           duration: const Duration(milliseconds: 300),
         ),
         if (showDivider)
-          Divider(height: 1, indent: 16, color: colorScheme.outlineVariant),
+          Divider(
+            height: 1,
+            indent: 16,
+            endIndent: 16,
+            color: colorScheme.outlineVariant,
+          ),
       ],
     );
   }
