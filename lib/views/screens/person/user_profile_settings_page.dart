@@ -45,6 +45,12 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
   /// 出生年月选择器当前暂存日期，展开时初始化，收起时持久化
   DateTime? _pendingPickerDate;
 
+  /// 出生年月选择器展开时的初始日期，用于判断用户是否实际调整过滚轮
+  DateTime? _initialPickerDate;
+
+  /// 用户是否已手动调整出生年月滚轮（排除初始化自动就位事件）
+  bool _birthDatePickerInteracted = false;
+
   /// 滚动停止后延迟保存的定时器
   Timer? _birthDateSaveTimer;
 
@@ -166,15 +172,20 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
         _isGenderExpanded = false;
         // 展开时初始化暂存日期，并递增 Key 强制全新 picker 实例
         _pendingPickerDate = _resolveBirthDateForPicker();
+        _initialPickerDate = _pendingPickerDate;
+        _birthDatePickerInteracted = false;
         _birthDatePickerKey++;
       } else {
-        // 收起时取消延迟定时器并立即持久化当前日期
+        // 收起时取消延迟定时器并持久化（仅在用户实际调整过滚轮时保存）
         _birthDateSaveTimer?.cancel();
         _birthDateSaveTimer = null;
-        if (_pendingPickerDate != null && _pendingPickerDate!.year >= 1950) {
+        if (_pendingPickerDate != null &&
+            _pendingPickerDate!.year >= 1950 &&
+            _birthDatePickerInteracted) {
           _updateBirthDate(_pendingPickerDate!);
-          _pendingPickerDate = null;
         }
+        _pendingPickerDate = null;
+        _initialPickerDate = null;
       }
     });
   }
@@ -960,11 +971,20 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
                               if (date.year < 1950) return;
                               // 滚动期间暂存并启动延迟保存定时器
                               _pendingPickerDate = date;
+                              // 仅当用户实际滚动了不同于展开初始值的日期时，标记为已交互
+                              if (_initialPickerDate != null &&
+                                  (date.year != _initialPickerDate!.year ||
+                                      date.month != _initialPickerDate!.month ||
+                                      date.day != _initialPickerDate!.day)) {
+                                _birthDatePickerInteracted = true;
+                              }
                               _birthDateSaveTimer?.cancel();
                               _birthDateSaveTimer = Timer(
                                 const Duration(milliseconds: 500),
                                 () {
-                                  if (_pendingPickerDate != null) {
+                                  // 延迟保存仅在用户已交互时生效，避免初始化就位自动保存
+                                  if (_pendingPickerDate != null &&
+                                      _birthDatePickerInteracted) {
                                     _updateBirthDate(_pendingPickerDate!);
                                   }
                                 },
