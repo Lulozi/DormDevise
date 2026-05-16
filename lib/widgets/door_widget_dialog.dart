@@ -7,20 +7,6 @@ import 'package:dormdevise/services/door_widget_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// 桌面微件唤起的弹窗对话框，展示门锁状态并支持双击开门。
-class DoorWidgetDialog extends StatelessWidget {
-  const DoorWidgetDialog({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: DoorWidgetPanel(onClose: () => Navigator.of(context).maybePop()),
-    );
-  }
-}
-
 /// 门锁状态面板，可嵌入弹窗或底部浮层，支持双击静默开门。
 class DoorWidgetPanel extends StatefulWidget {
   const DoorWidgetPanel({super.key, this.onClose});

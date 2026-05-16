@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:dormdevise/views/screens/open_door/open_door_page.dart';
 import 'package:dormdevise/views/screens/open_door/door_lock_config_page.dart';
 import 'package:dormdevise/views/screens/open_door/door_widget_prompt_page.dart';
-import 'package:dormdevise/widgets/door_widget_dialog.dart';
 import 'package:dormdevise/views/screens/person/person_page.dart';
 import 'package:dormdevise/views/screens/table/table_page.dart';
 import 'package:dormdevise/services/course_service.dart';
@@ -171,9 +170,12 @@ class ManagementScreenState extends State<ManagementScreen>
   late double _page;
   bool _navLocked = false;
   StreamSubscription<Uri?>? _widgetLaunchSubscription;
-  bool _widgetDialogVisible = false;
-  bool _updatePromptVisible = false;
-  bool _updateCheckInProgress = false;
+
+  /// 全局静态标志：确保跨页面实例的更新弹窗只出现一次，
+  /// 不会因路由栈中多个 ManagementScreen 实例而重复弹出。
+  static bool _updatePromptVisible = false;
+  static bool _updateCheckInProgress = false;
+
   bool _shouldCheckUpdatesOnNextResume = false;
   DateTime _lastReminderRefreshAt = DateTime.now();
   int? _tableFocusWeek;
@@ -457,7 +459,8 @@ class ManagementScreenState extends State<ManagementScreen>
     final String action = uri.pathSegments.first;
     switch (action) {
       case 'prompt':
-        // 使用导航顺序查找"开门"页面的实际显示位置
+        // 桌面组件点击后静默开门，不再弹出对话框。
+        // 使用导航顺序查找"开门"页面的实际显示位置并切换。
         final doorDisplayIndex = ThemeService.instance.navOrder
             .indexOf(1)
             .clamp(0, 2);
@@ -472,7 +475,8 @@ class ManagementScreenState extends State<ManagementScreen>
         } else if (_pageController.hasClients) {
           _pageController.jumpToPage(doorDisplayIndex);
         }
-        _showDoorWidgetDialog();
+        // 静默执行开门操作，无需弹窗。
+        unawaited(DoorWidgetService.instance.handleWidgetInteraction(uri));
         break;
       case 'open':
       case 'refresh':
@@ -485,15 +489,13 @@ class ManagementScreenState extends State<ManagementScreen>
   }
 
   Future<void> _checkForUpdatesOnLaunch() async {
-    if (_updateCheckInProgress ||
-        _widgetDialogVisible ||
-        _updatePromptVisible) {
+    if (_updateCheckInProgress || _updatePromptVisible) {
       return;
     }
-    _updateCheckInProgress = true;
     final UpdateDownloadService downloadService =
         UpdateDownloadService.instance;
     try {
+      _updateCheckInProgress = true;
       if (await downloadService.shouldSuppressHomePageUpdatePrompt()) {
         return;
       }
@@ -507,8 +509,7 @@ class ManagementScreenState extends State<ManagementScreen>
       if (!mounted ||
           promptPlan == null ||
           result == null ||
-          !result.hasCompatibleAsset ||
-          _widgetDialogVisible) {
+          !result.hasCompatibleAsset) {
         return;
       }
 
@@ -554,27 +555,6 @@ class ManagementScreenState extends State<ManagementScreen>
       _updatePromptVisible = false;
       _updateCheckInProgress = false;
     }
-  }
-
-  /// 展示滑动开门弹窗，防止重复打开。
-  Future<void> _showDoorWidgetDialog() async {
-    if (!mounted || _widgetDialogVisible) {
-      return;
-    }
-    setState(() {
-      _widgetDialogVisible = true;
-    });
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => const DoorWidgetDialog(),
-    );
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _widgetDialogVisible = false;
-    });
   }
 
   /// 构建包含底部导航与分页内容的界面结构。
