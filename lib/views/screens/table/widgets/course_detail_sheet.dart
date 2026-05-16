@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:dormdevise/utils/course_utils.dart';
 import '../../../../models/course.dart';
 import '../../../../utils/color_extensions.dart';
 import '../course_edit_page.dart';
@@ -23,8 +22,8 @@ class CourseDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final List<CourseDetailItem> sortedItems = List<CourseDetailItem>.of(items)
-      ..sort(_compareCourseDetailItems);
+    // 合并同一课程、同一时段、不同教室的项为同一卡片
+    final List<_MergedCourseCard> mergedCards = _mergeCards(items);
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.7,
@@ -41,10 +40,10 @@ class CourseDetailSheet extends StatelessWidget {
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               shrinkWrap: true,
-              itemCount: sortedItems.length,
+              itemCount: mergedCards.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                return _buildCourseCard(context, sortedItems[index]);
+                return _buildMergedCourseCard(context, mergedCards[index]);
               },
             ),
           ),
@@ -54,58 +53,149 @@ class CourseDetailSheet extends StatelessWidget {
     );
   }
 
-  static int _compareCourseDetailItems(CourseDetailItem a, CourseDetailItem b) {
-    final List<int> aWeeks = _resolveSortedWeeks(a.session);
-    final List<int> bWeeks = _resolveSortedWeeks(b.session);
-    final int sharedLength = aWeeks.length < bWeeks.length
-        ? aWeeks.length
-        : bWeeks.length;
+  /// 将课程详情项按"同一课程名 + 同一时段"合并。
+  ///
+  /// 同一课程、同一 weekday、同一 startSection、同一 sectionCount
+  /// 但不同教室的项合并为同一张卡片，卡片内按教室分组展示各自的周次。
+  static List<_MergedCourseCard> _mergeCards(List<CourseDetailItem> items) {
+    // 按 (课程名, weekday, startSection, sectionCount) 分组
+    final Map<String, List<CourseDetailItem>> grouped = {};
+    for (final item in items) {
+      final key =
+          '${item.course.name}|${item.session.weekday}|${item.session.startSection}|${item.session.sectionCount}';
+      grouped.putIfAbsent(key, () => []);
+      grouped[key]!.add(item);
+    }
 
-    for (int i = 0; i < sharedLength; i++) {
-      final int compare = aWeeks[i].compareTo(bWeeks[i]);
-      if (compare != 0) {
-        return compare;
+    final List<_MergedCourseCard> cards = [];
+    for (final entry in grouped.entries) {
+      final groupItems = entry.value;
+      if (groupItems.isEmpty) continue;
+
+      // 取第一项作为课程参考
+      final firstItem = groupItems.first;
+      final course = firstItem.course;
+      final session = firstItem.session;
+
+      // 构建时段标签
+      final weekdayStr = _staticWeekdayToString(session.weekday);
+      final String timeLabel;
+      if (session.sectionCount == 1) {
+        timeLabel = '$weekdayStr 第 ${session.startSection} 节';
+      } else {
+        timeLabel =
+            '$weekdayStr 第 ${session.startSection}-${session.startSection + session.sectionCount - 1} 节';
       }
+      final String timeRange =
+          '(${_staticFormatTime(firstItem.startTime)} - ${_staticFormatTime(firstItem.endTime)})';
+
+      // 收集各教室及其周次信息（去重同教室名，合并周次）
+      final Map<String, Set<int>> classroomWeeks = {};
+      for (final item in groupItems) {
+        final loc = item.session.location.trim().isEmpty
+            ? '未命名教室'
+            : item.session.location.trim();
+        classroomWeeks.putIfAbsent(loc, () => {});
+        classroomWeeks[loc]!.addAll(_staticResolveSortedWeeks(item.session));
+      }
+
+      // 构建教室周次信息列表
+      final List<_ClassroomWeekInfo> classrooms = [];
+      final Set<int> allWeeksUnion = {};
+      for (final entry2 in classroomWeeks.entries) {
+        final weeks = entry2.value;
+        allWeeksUnion.addAll(weeks);
+        classrooms.add(
+          _ClassroomWeekInfo(
+            location: entry2.key,
+            weekLabel: _staticFormatWeeksSet(weeks),
+          ),
+        );
+      }
+
+      // 排序：按教室名（空教室排前面，有名字按字母序）
+      classrooms.sort((a, b) {
+        final aEmpty = a.location.isEmpty || a.location == '未命名教室';
+        final bEmpty = b.location.isEmpty || b.location == '未命名教室';
+        if (aEmpty && !bEmpty) return -1;
+        if (!aEmpty && bEmpty) return 1;
+        return a.location.compareTo(b.location);
+      });
+
+      // 计算总上课周数（所有教室周次的并集）
+      final String totalWeeksLabel = _staticFormatWeeksSet(allWeeksUnion);
+
+      cards.add(
+        _MergedCourseCard(
+          course: course,
+          classrooms: classrooms,
+          timeLabel: timeLabel,
+          timeRange: timeRange,
+          totalWeeksLabel: totalWeeksLabel,
+        ),
+      );
     }
 
-    final int lengthCompare = aWeeks.length.compareTo(bWeeks.length);
-    if (lengthCompare != 0) {
-      return lengthCompare;
-    }
+    // 对合并卡片排序：先按最早周次，再按课程名
+    cards.sort((a, b) {
+      // 计算各自的最早周次
+      int aEarliest = 999;
+      for (final cr in a.classrooms) {
+        final w = _parseEarliestWeek(cr.weekLabel);
+        if (w < aEarliest) aEarliest = w;
+      }
+      int bEarliest = 999;
+      for (final cr in b.classrooms) {
+        final w = _parseEarliestWeek(cr.weekLabel);
+        if (w < bEarliest) bEarliest = w;
+      }
+      final weekCompare = aEarliest.compareTo(bEarliest);
+      if (weekCompare != 0) return weekCompare;
+      return a.course.name.compareTo(b.course.name);
+    });
 
-    final int weekdayCompare = a.session.weekday.compareTo(b.session.weekday);
-    if (weekdayCompare != 0) {
-      return weekdayCompare;
-    }
-
-    final int startSectionCompare = a.session.startSection.compareTo(
-      b.session.startSection,
-    );
-    if (startSectionCompare != 0) {
-      return startSectionCompare;
-    }
-
-    final int sectionCountCompare = a.session.sectionCount.compareTo(
-      b.session.sectionCount,
-    );
-    if (sectionCountCompare != 0) {
-      return sectionCountCompare;
-    }
-
-    final int nameCompare = a.course.name.compareTo(b.course.name);
-    if (nameCompare != 0) {
-      return nameCompare;
-    }
-
-    return a.session.location.compareTo(b.session.location);
+    return cards;
   }
 
-  static List<int> _resolveSortedWeeks(CourseSession session) {
+  /// 静态周次格式化（避免实例方法调用限制）。
+  static String _staticFormatWeeksSet(Set<int> weeks) {
+    if (weeks.isEmpty) return '未配置';
+    final sorted = weeks.toList()..sort();
+    if (sorted.length == 1) return '第${sorted.first}周';
+
+    final buffer = StringBuffer();
+    int rangeStart = sorted.first;
+    int rangeEnd = sorted.first;
+
+    for (int i = 1; i < sorted.length; i++) {
+      if (sorted[i] == rangeEnd + 1) {
+        rangeEnd = sorted[i];
+      } else {
+        if (buffer.isNotEmpty) buffer.write('、');
+        if (rangeStart == rangeEnd) {
+          buffer.write('$rangeStart');
+        } else {
+          buffer.write('$rangeStart-$rangeEnd');
+        }
+        rangeStart = sorted[i];
+        rangeEnd = sorted[i];
+      }
+    }
+    if (buffer.isNotEmpty) buffer.write('、');
+    if (rangeStart == rangeEnd) {
+      buffer.write('$rangeStart');
+    } else {
+      buffer.write('$rangeStart-$rangeEnd');
+    }
+    return '第${buffer.toString()}周';
+  }
+
+  /// 静态解析周次列表。
+  static List<int> _staticResolveSortedWeeks(CourseSession session) {
     if (session.customWeeks.isNotEmpty) {
       final List<int> weeks = session.customWeeks.toSet().toList()..sort();
       return weeks;
     }
-
     final List<int> weeks = <int>[];
     for (int week = session.startWeek; week <= session.endWeek; week++) {
       if (session.occursInWeek(week)) {
@@ -113,6 +203,31 @@ class CourseDetailSheet extends StatelessWidget {
       }
     }
     return weeks;
+  }
+
+  /// 静态星期转换。
+  static String _staticWeekdayToString(int weekday) {
+    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    if (weekday >= 1 && weekday <= 7) return weekdays[weekday - 1];
+    return '';
+  }
+
+  /// 从周次标签中解析最早周次数字（如 "第1-10周" → 1, "未配置" → 999）。
+  static int _parseEarliestWeek(String weekLabel) {
+    if (weekLabel == '未配置') return 999;
+    // 提取第一个连续数字
+    final match = RegExp(r'\d+').firstMatch(weekLabel);
+    if (match != null) {
+      return int.tryParse(match.group(0)!) ?? 999;
+    }
+    return 999;
+  }
+
+  /// 静态时间格式化。
+  static String _staticFormatTime(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   Widget _buildAddButton(BuildContext context) {
@@ -183,8 +298,8 @@ class CourseDetailSheet extends StatelessWidget {
     );
   }
 
-  /// 构建单个课程卡片
-  Widget _buildCourseCard(BuildContext context, CourseDetailItem item) {
+  /// 构建合并后的课程卡片（同一课程、同一时段、不同教室合并为单卡片）。
+  Widget _buildMergedCourseCard(BuildContext context, _MergedCourseCard card) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
@@ -202,23 +317,23 @@ class CourseDetailSheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 第一行：课程名 + 编辑按钮
           Row(
             children: [
               Container(
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
-                  // 暗色模式下降低课程颜色亮度以匹配深色界面
                   color: Theme.of(context).brightness == Brightness.dark
-                      ? dimColorForDark(item.course.color)
-                      : item.course.color,
+                      ? dimColorForDark(card.course.color)
+                      : card.course.color,
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  item.course.name,
+                  card.course.name,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -234,7 +349,7 @@ class CourseDetailSheet extends StatelessWidget {
                         .push(
                           MaterialPageRoute(
                             builder: (context) => CourseEditPage(
-                              course: item.course,
+                              course: card.course,
                               existingCourses: allCourses,
                               maxWeek: maxWeek,
                             ),
@@ -243,16 +358,15 @@ class CourseDetailSheet extends StatelessWidget {
                         )
                         .then((result) {
                           if (result != null) {
-                            // 如果有修改或删除，返回结果给上层以刷新
                             if (result == 'delete') {
                               navigator.pop({
                                 'action': 'delete',
-                                'target': item.course,
+                                'target': card.course,
                               });
                             } else if (result is Course) {
                               navigator.pop({
                                 'action': 'update',
-                                'target': item.course,
+                                'target': card.course,
                                 'newCourse': result,
                               });
                             }
@@ -265,7 +379,6 @@ class CourseDetailSheet extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      // 编辑按钮底色采用整体背景色（scaffoldBackgroundColor）
                       color: Theme.of(context).scaffoldBackgroundColor,
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -282,23 +395,61 @@ class CourseDetailSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _buildDetailRow(context, '教室', item.session.location),
+          // 教室区域：多教室与单教室采用不同格式
+          if (card.classrooms.length > 1)
+            // 多教室格式：教室1：教室名1 缩进 · 周次
+            ...card.classrooms.asMap().entries.map((entry) {
+              final idx = entry.key + 1;
+              final cr = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildDetailRow(context, '教室$idx', cr.location),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: RichText(
+                        text: TextSpan(
+                          style: TextStyle(
+                            fontSize: 13,
+                            // 与「教室1」标签颜色一致
+                            color: colorScheme.outline,
+                            height: 1.5,
+                          ),
+                          children: [
+                            const TextSpan(
+                              text: '· ',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            TextSpan(
+                              text: cr.weekLabel,
+                              // 周数文字与 · 同色
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            })
+          else if (card.classrooms.length == 1)
+            // 单教室格式：教室：教室名
+            _buildDetailRow(context, '教室', card.classrooms.first.location),
+          // 备注（如老师）
+          _buildDetailRow(context, '备注（如老师）', card.course.teacher),
           const SizedBox(height: 4),
-          _buildDetailRow(context, '备注（如老师）', item.course.teacher),
-          const SizedBox(height: 4),
+          // 时段
           _buildDetailRow(
             context,
-            '${_weekdayToString(item.session.weekday)} 第 ${item.session.startSection}${item.session.sectionCount > 1 ? '-${item.session.startSection + item.session.sectionCount - 1}' : ''} 节',
-            '(${_formatTime(item.startTime)} - ${_formatTime(item.endTime)})',
+            card.timeLabel,
+            card.timeRange,
             showColon: false,
           ),
           const SizedBox(height: 4),
-          _buildDetailRow(
-            context,
-            formatWeeks(item.session),
-            '',
-            showColon: false,
-          ),
+          // 总上课周数
+          _buildDetailRow(context, card.totalWeeksLabel, '', showColon: false),
         ],
       ),
     );
@@ -332,22 +483,6 @@ class CourseDetailSheet extends StatelessWidget {
       ),
     );
   }
-
-  /// 将星期数字转换为中文文本
-  String _weekdayToString(int weekday) {
-    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    if (weekday >= 1 && weekday <= 7) {
-      return weekdays[weekday - 1];
-    }
-    return '';
-  }
-
-  /// 格式化时间为 HH:mm
-  String _formatTime(TimeOfDay time) {
-    final hour = time.hour.toString().padLeft(2, '0');
-    final minute = time.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
 }
 
 /// 课程详情项数据模型
@@ -370,4 +505,43 @@ class CourseDetailItem {
     required this.startTime,
     required this.endTime,
   });
+}
+
+// 合并卡片数据模型
+
+/// 合并后的课程卡片数据（同一课程、同一时段、不同教室合并）。
+class _MergedCourseCard {
+  /// 课程信息。
+  final Course course;
+
+  /// 各教室及其周次信息列表。
+  final List<_ClassroomWeekInfo> classrooms;
+
+  /// 时段标签，如 "周一 第1-2节"。
+  final String timeLabel;
+
+  /// 时间范围，如 "(08:00-09:40)"。
+  final String timeRange;
+
+  /// 所有教室周次的并集标签。
+  final String totalWeeksLabel;
+
+  const _MergedCourseCard({
+    required this.course,
+    required this.classrooms,
+    required this.timeLabel,
+    required this.timeRange,
+    required this.totalWeeksLabel,
+  });
+}
+
+/// 教室周次信息（单个教室的周次显示）。
+class _ClassroomWeekInfo {
+  /// 教室名称。
+  final String location;
+
+  /// 周次显示文本，如 "第1-10周"。
+  final String weekLabel;
+
+  const _ClassroomWeekInfo({required this.location, required this.weekLabel});
 }
