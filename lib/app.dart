@@ -172,8 +172,12 @@ class ManagementScreenState extends State<ManagementScreen>
   bool _navLocked = false;
   StreamSubscription<Uri?>? _widgetLaunchSubscription;
   bool _widgetDialogVisible = false;
-  bool _updatePromptVisible = false;
-  bool _updateCheckInProgress = false;
+
+  /// 全局静态标志：确保跨页面实例的更新弹窗只出现一次，
+  /// 不会因路由栈中多个 ManagementScreen 实例而重复弹出。
+  static bool _updatePromptVisible = false;
+  static bool _updateCheckInProgress = false;
+
   bool _shouldCheckUpdatesOnNextResume = false;
   DateTime _lastReminderRefreshAt = DateTime.now();
   int? _tableFocusWeek;
@@ -490,10 +494,10 @@ class ManagementScreenState extends State<ManagementScreen>
         _updatePromptVisible) {
       return;
     }
-    _updateCheckInProgress = true;
     final UpdateDownloadService downloadService =
         UpdateDownloadService.instance;
     try {
+      _updateCheckInProgress = true;
       if (await downloadService.shouldSuppressHomePageUpdatePrompt()) {
         return;
       }
