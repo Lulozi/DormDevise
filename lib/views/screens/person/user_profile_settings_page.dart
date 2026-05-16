@@ -12,6 +12,7 @@ import 'package:dormdevise/utils/constants.dart';
 import 'package:dormdevise/utils/person_identity.dart';
 import 'package:dormdevise/utils/person_signature_layout.dart';
 import 'package:dormdevise/utils/qr_image_export_service.dart';
+import 'package:dormdevise/utils/text_length_counter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
   final PersonIdentityService _service = PersonIdentityService.instance;
   final ImagePicker _imagePicker = ImagePicker();
   static const int _signatureMaxLengthUnits = 50;
+  // 昵称按半角单位计数：英文 1，中文 2；上限 20。
   static const int _nicknameMaxLengthUnits = 20;
   PersonIdentityProfile _profile = PersonIdentityProfile.defaults();
   bool _loading = true;
@@ -42,6 +44,12 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
 
   /// 出生年月选择器当前暂存日期，展开时初始化，收起时持久化
   DateTime? _pendingPickerDate;
+
+  /// 出生年月选择器展开时的初始日期，用于判断用户是否实际调整过滚轮
+  DateTime? _initialPickerDate;
+
+  /// 用户是否已手动调整出生年月滚轮（排除初始化自动就位事件）
+  bool _birthDatePickerInteracted = false;
 
   /// 滚动停止后延迟保存的定时器
   Timer? _birthDateSaveTimer;
@@ -103,18 +111,16 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
 
   /// 编辑昵称。
   Future<void> _editNickname() async {
-    // hint 使用当前昵称，打开弹窗时输入框保持空值。
-    final String nicknameHint = _profile.displayName.trim().isEmpty
-        ? '昵称'
-        : _profile.displayName;
+    // 打开弹窗时直接显示原昵称，便于在原文基础上编辑。
     final String? result = await _showTextEditorDialog(
       title: '修改昵称',
-      initialValue: '',
-      hintText: nicknameHint,
+      initialValue: _profile.displayName,
+      hintText: '昵称',
       maxLines: 1,
       maxLengthUnits: _nicknameMaxLengthUnits,
       duplicateValue: _profile.displayName,
       emptyErrorText: '昵称不能为空！',
+      exceededErrorText: '昵称超出字数限制！',
     );
     if (result == null) {
       return;
@@ -138,6 +144,7 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
       maxLines: 3,
       maxLengthUnits: _signatureMaxLengthUnits,
       helperText: '写点什么介绍自己吧！',
+      exceededErrorText: '个性签名超出字数限制！',
       allowEmptySubmit: true,
       emptyValueOnSave: kDefaultSignatureText,
     );
@@ -165,15 +172,20 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
         _isGenderExpanded = false;
         // 展开时初始化暂存日期，并递增 Key 强制全新 picker 实例
         _pendingPickerDate = _resolveBirthDateForPicker();
+        _initialPickerDate = _pendingPickerDate;
+        _birthDatePickerInteracted = false;
         _birthDatePickerKey++;
       } else {
-        // 收起时取消延迟定时器并立即持久化当前日期
+        // 收起时取消延迟定时器并持久化（仅在用户实际调整过滚轮时保存）
         _birthDateSaveTimer?.cancel();
         _birthDateSaveTimer = null;
-        if (_pendingPickerDate != null && _pendingPickerDate!.year >= 1950) {
+        if (_pendingPickerDate != null &&
+            _pendingPickerDate!.year >= 1950 &&
+            _birthDatePickerInteracted) {
           _updateBirthDate(_pendingPickerDate!);
-          _pendingPickerDate = null;
         }
+        _pendingPickerDate = null;
+        _initialPickerDate = null;
       }
     });
   }
@@ -543,12 +555,12 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
     required String hintText,
     required int maxLines,
     int? maxLengthUnits,
-    int? maxLengthChars,
     String? helperText,
     String? duplicateValue,
     bool allowEmptySubmit = false,
     String? emptyValueOnSave,
     String? emptyErrorText,
+    String? exceededErrorText,
   }) async {
     return showDialog<String>(
       context: context,
@@ -559,12 +571,12 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
           hintText: hintText,
           maxLines: maxLines,
           maxLengthUnits: maxLengthUnits,
-          maxLengthChars: maxLengthChars,
           helperText: helperText,
           duplicateValue: duplicateValue,
           allowEmptySubmit: allowEmptySubmit,
           emptyValueOnSave: emptyValueOnSave,
           emptyErrorText: emptyErrorText,
+          exceededErrorText: exceededErrorText,
         );
       },
     );
@@ -959,11 +971,20 @@ class _UserProfileSettingsPageState extends State<UserProfileSettingsPage> {
                               if (date.year < 1950) return;
                               // 滚动期间暂存并启动延迟保存定时器
                               _pendingPickerDate = date;
+                              // 仅当用户实际滚动了不同于展开初始值的日期时，标记为已交互
+                              if (_initialPickerDate != null &&
+                                  (date.year != _initialPickerDate!.year ||
+                                      date.month != _initialPickerDate!.month ||
+                                      date.day != _initialPickerDate!.day)) {
+                                _birthDatePickerInteracted = true;
+                              }
                               _birthDateSaveTimer?.cancel();
                               _birthDateSaveTimer = Timer(
                                 const Duration(milliseconds: 500),
                                 () {
-                                  if (_pendingPickerDate != null) {
+                                  // 延迟保存仅在用户已交互时生效，避免初始化就位自动保存
+                                  if (_pendingPickerDate != null &&
+                                      _birthDatePickerInteracted) {
                                     _updateBirthDate(_pendingPickerDate!);
                                   }
                                 },
@@ -1423,12 +1444,12 @@ class _ProfileTextEditorDialog extends StatefulWidget {
     required this.hintText,
     required this.maxLines,
     this.maxLengthUnits,
-    this.maxLengthChars,
     this.helperText,
     this.duplicateValue,
     this.allowEmptySubmit = false,
     this.emptyValueOnSave,
     this.emptyErrorText,
+    this.exceededErrorText,
   });
 
   final String title;
@@ -1436,12 +1457,12 @@ class _ProfileTextEditorDialog extends StatefulWidget {
   final String hintText;
   final int maxLines;
   final int? maxLengthUnits;
-  final int? maxLengthChars;
   final String? helperText;
   final String? duplicateValue;
   final bool allowEmptySubmit;
   final String? emptyValueOnSave;
   final String? emptyErrorText;
+  final String? exceededErrorText;
 
   @override
   State<_ProfileTextEditorDialog> createState() =>
@@ -1451,24 +1472,14 @@ class _ProfileTextEditorDialog extends StatefulWidget {
 class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
     with TickerProviderStateMixin {
   late final TextEditingController _controller;
-  late final AnimationController _counterShakeController;
-  late final Animation<double> _counterShakeOffset;
   late final AnimationController _errorShakeController;
   late final Animation<double> _errorShakeOffset;
 
-  double _currentLengthUnits() {
-    return _WeightedLengthCounter.computeUnits(_controller.text);
-  }
-
-  int _currentLengthChars() {
-    return _controller.text.runes.length;
+  int _currentLengthUnits() {
+    return TextLengthCounter.computeHalfWidthUnits(_controller.text);
   }
 
   bool _isLengthExceeded() {
-    final int? maxLengthChars = widget.maxLengthChars;
-    if (maxLengthChars != null) {
-      return _currentLengthChars() > maxLengthChars;
-    }
     final int? maxLengthUnits = widget.maxLengthUnits;
     if (maxLengthUnits == null) {
       return false;
@@ -1479,22 +1490,14 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
   String? _errorText;
 
   String? _buildCounterText() {
-    final int? maxLengthChars = widget.maxLengthChars;
-    if (maxLengthChars != null) {
-      return '${_currentLengthChars()}/$maxLengthChars';
-    }
     final int? maxLengthUnits = widget.maxLengthUnits;
     if (maxLengthUnits == null) {
       return null;
     }
-    final double currentUnits = _currentLengthUnits();
-    final String currentText = currentUnits % 1 == 0
-        ? currentUnits.toInt().toString()
-        : currentUnits.toStringAsFixed(1);
-    return '$currentText/$maxLengthUnits';
+    return '${_currentLengthUnits()}/$maxLengthUnits';
   }
 
-  Widget? _buildAnimatedCounter(BuildContext context) {
+  Widget? _buildCounter(BuildContext context) {
     final String? counterText = _buildCounterText();
     if (counterText == null) {
       return null;
@@ -1505,18 +1508,9 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
         ? theme.colorScheme.error
         : theme.colorScheme.onSurfaceVariant;
 
-    return AnimatedBuilder(
-      animation: _counterShakeController,
-      builder: (_, Widget? child) {
-        return Transform.translate(
-          offset: Offset(_counterShakeOffset.value, 0),
-          child: child,
-        );
-      },
-      child: Text(
-        counterText,
-        style: theme.textTheme.bodySmall?.copyWith(color: counterColor),
-      ),
+    return Text(
+      counterText,
+      style: theme.textTheme.bodySmall?.copyWith(color: counterColor),
     );
   }
 
@@ -1547,16 +1541,6 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
     );
   }
 
-  Future<void> _playLengthExceededFeedback() async {
-    // 超限时同时提供震动与计数器抖动反馈。
-    await HapticFeedback.mediumImpact();
-    if (!mounted) {
-      return;
-    }
-    _counterShakeController.forward(from: 0);
-    setState(() {});
-  }
-
   Future<void> _playValidationErrorFeedback() async {
     // 空值/重名校验失败时，仅抖动错误文字，不抖动右侧计数器。
     await HapticFeedback.mediumImpact();
@@ -1570,38 +1554,6 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue);
-    _counterShakeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    );
-    _counterShakeOffset =
-        TweenSequence<double>(<TweenSequenceItem<double>>[
-          TweenSequenceItem<double>(
-            tween: Tween<double>(begin: 0, end: -7),
-            weight: 1,
-          ),
-          TweenSequenceItem<double>(
-            tween: Tween<double>(begin: -7, end: 7),
-            weight: 1,
-          ),
-          TweenSequenceItem<double>(
-            tween: Tween<double>(begin: 7, end: -5),
-            weight: 1,
-          ),
-          TweenSequenceItem<double>(
-            tween: Tween<double>(begin: -5, end: 5),
-            weight: 1,
-          ),
-          TweenSequenceItem<double>(
-            tween: Tween<double>(begin: 5, end: 0),
-            weight: 1,
-          ),
-        ]).animate(
-          CurvedAnimation(
-            parent: _counterShakeController,
-            curve: Curves.easeOut,
-          ),
-        );
     _errorShakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 320),
@@ -1635,7 +1587,6 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
 
   @override
   void dispose() {
-    _counterShakeController.dispose();
     _errorShakeController.dispose();
     _controller.dispose();
     super.dispose();
@@ -1673,8 +1624,7 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
                   setState(() {
                     _errorText = null;
                   });
-                } else if (maxLengthUnits != null ||
-                    widget.maxLengthChars != null) {
+                } else if (maxLengthUnits != null) {
                   setState(() {});
                 }
               },
@@ -1686,7 +1636,7 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
                 helperText: widget.helperText,
                 helperMaxLines: 1,
                 counterText: '',
-                counter: _buildAnimatedCounter(context),
+                counter: _buildCounter(context),
               ),
             ),
             if (animatedErrorText != null) animatedErrorText,
@@ -1726,7 +1676,11 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
               return;
             }
             if (_isLengthExceeded()) {
-              _playLengthExceededFeedback();
+              setState(() {
+                _errorText = widget.exceededErrorText ?? '输入内容超出字数限制！';
+              });
+              // 超限错误与重名错误一致：错误文案抖动 + 手机震动。
+              _playValidationErrorFeedback();
               return;
             }
             Navigator.of(context).pop(value);
@@ -1735,24 +1689,6 @@ class _ProfileTextEditorDialogState extends State<_ProfileTextEditorDialog>
         ),
       ],
     );
-  }
-}
-
-/// 统计输入占用单位：中文/全角 2，英文/ASCII 半角 1。
-class _WeightedLengthCounter {
-  const _WeightedLengthCounter._();
-
-  /// 统计输入占用单位：中文/全角 2，英文/ASCII 半角 1。
-  static double computeUnits(String text) {
-    double units = 0;
-    for (final int rune in text.runes) {
-      units += _unitWeight(rune);
-    }
-    return units;
-  }
-
-  static double _unitWeight(int rune) {
-    return rune <= 0x7F ? 1.0 : 2.0;
   }
 }
 

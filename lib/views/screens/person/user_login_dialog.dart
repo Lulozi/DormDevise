@@ -240,16 +240,16 @@ class _UserLoginDialogState extends State<UserLoginDialog>
     final Widget? animatedCredentialError = _buildAnimatedCredentialError(
       context,
     );
-    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    // 获取当前可视区域高度：Android adjustResize 模式下键盘弹出时自动缩减，
+    // 无需再手动添加 keyboardInset 抬升，避免双重压缩导致弹窗仅剩输入框。
+    final double availableHeight = MediaQuery.sizeOf(context).height;
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      // 软键盘弹出时抬升弹窗，避免密码输入框和按钮被覆盖。
-      padding: EdgeInsets.only(bottom: keyboardInset),
-      child: Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        // 限制弹窗最大高度为可视区域的 85%，超出时通过 SingleChildScrollView 滚动。
+        constraints: BoxConstraints(maxHeight: availableHeight * 0.85),
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
@@ -378,6 +378,9 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
   String? _errorText;
   bool _submitting = false;
 
+  /// 标记当前错误是否为"账号已存在"，用于将注册按钮过渡为"返回"按钮。
+  bool _isAccountExists = false;
+
   @override
   void dispose() {
     _accountController.dispose();
@@ -426,10 +429,13 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
       if (!mounted) {
         return;
       }
+      final String message = error.message.trim().isEmpty
+          ? '注册失败，请稍后重试'
+          : error.message.trim();
       setState(() {
-        _errorText = error.message.trim().isEmpty
-            ? '注册失败，请稍后重试'
-            : error.message.trim();
+        _errorText = message;
+        // 检测账号已存在错误，将注册按钮动画过渡为返回按钮。
+        _isAccountExists = message.contains('账号已存在');
       });
     } catch (error) {
       if (!mounted) {
@@ -445,22 +451,31 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
     }
   }
 
+  /// 账号已存在时点击"返回"按钮：携带已填写的账号密码返回登录弹窗，自动填入。
+  void _returnToLogin() {
+    final String account = _accountController.text.trim();
+    final String password = _passwordController.text.trim();
+    Navigator.of(
+      context,
+    ).pop(_RegisterCredentialResult(account: account, password: password));
+  }
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    // 获取当前可视区域高度：Android adjustResize 模式下键盘弹出时自动缩减，
+    // 无需再手动添加 keyboardInset 抬升，避免双重压缩。
+    final double availableHeight = MediaQuery.sizeOf(context).height;
     final TextStyle? errorStyle = Theme.of(
       context,
     ).textTheme.bodySmall?.copyWith(color: colorScheme.error);
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      // 注册弹窗也同步处理软键盘顶起，防止确认密码输入框被遮挡。
-      padding: EdgeInsets.only(bottom: keyboardInset),
-      child: Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        // 限制弹窗最大高度为可视区域的 85%，超出时通过 SingleChildScrollView 滚动。
+        constraints: BoxConstraints(maxHeight: availableHeight * 0.85),
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
@@ -486,8 +501,12 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
                   controller: _accountController,
                   textInputAction: TextInputAction.next,
                   onChanged: (_) {
-                    if (_errorText != null) {
-                      setState(() => _errorText = null);
+                    if (_errorText != null || _isAccountExists) {
+                      setState(() {
+                        _errorText = null;
+                        // 账号字段发生变化时，恢复为注册按钮
+                        _isAccountExists = false;
+                      });
                     }
                   },
                   decoration: const InputDecoration(
@@ -501,8 +520,11 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
                   obscureText: true,
                   textInputAction: TextInputAction.next,
                   onChanged: (_) {
-                    if (_errorText != null) {
-                      setState(() => _errorText = null);
+                    if (_errorText != null || _isAccountExists) {
+                      setState(() {
+                        _errorText = null;
+                        _isAccountExists = false;
+                      });
                     }
                   },
                   decoration: const InputDecoration(
@@ -515,8 +537,11 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
                   controller: _confirmController,
                   obscureText: true,
                   onChanged: (_) {
-                    if (_errorText != null) {
-                      setState(() => _errorText = null);
+                    if (_errorText != null || _isAccountExists) {
+                      setState(() {
+                        _errorText = null;
+                        _isAccountExists = false;
+                      });
                     }
                   },
                   onSubmitted: (_) => _submit(),
@@ -540,15 +565,42 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
                       child: const Text('取消'),
                     ),
                     const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _submitting ? null : _submit,
+                    // 账号已存在时，注册按钮动画过渡为"返回"按钮，
+                    // 点击后携带已填账号密码回到登录弹窗并自动填入。
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder:
+                          (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.15),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            );
+                          },
                       child: _submitting
                           ? const SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('注册'),
+                          : _isAccountExists
+                          ? FilledButton(
+                              key: const ValueKey<String>('return_to_login'),
+                              onPressed: _returnToLogin,
+                              child: const Text('返回'),
+                            )
+                          : FilledButton(
+                              key: const ValueKey<String>('register'),
+                              onPressed: _submit,
+                              child: const Text('注册'),
+                            ),
                     ),
                   ],
                 ),
