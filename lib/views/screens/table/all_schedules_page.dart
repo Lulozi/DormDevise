@@ -836,7 +836,9 @@ class _AllSchedulesPageState extends State<AllSchedulesPage> {
         scheduleId: scheduleId,
       );
       draftConfig = CourseScheduleConfig.fromJson(snapshot.config.toJson());
-      draftSemesterStart = snapshot.semesterStart ?? DateTime(2025, 9, 1);
+      // 未设置开学日期时使用当前年份，而非固定 2025 年
+      draftSemesterStart =
+          snapshot.semesterStart ?? DateTime(DateTime.now().year, 9, 1);
       draftMaxWeek = snapshot.maxWeek;
       draftTableName = snapshot.tableName;
       draftShowWeekend = snapshot.showWeekend;
