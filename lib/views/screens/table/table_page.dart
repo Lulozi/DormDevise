@@ -396,8 +396,13 @@ class TablePageState extends State<TablePage>
         startSection: widget.initialFocusSection,
         courseName: widget.initialFocusCourseName,
       );
+      // 直接定位到目标周次所在页面，避免加载后二次跳转的闪烁
+      _currentWeek = widget.initialFocusWeek!;
     }
-    _pageController = PageController(initialPage: 0);
+    // 若已预知目标周次，PageView 直接初始化到对应页面
+    _pageController = PageController(
+      initialPage: (_currentWeek - 1).clamp(0, _maxWeek - 1),
+    );
     _scrollGroup = LinkedScrollControllerGroup();
     _timeColumnController = _scrollGroup.addAndGet();
     final Future<void> initialLoad = _loadData(
