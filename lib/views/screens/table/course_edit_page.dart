@@ -2644,13 +2644,19 @@ class _CourseEditPageState extends State<CourseEditPage> {
         setState(() {
           _selectedColor = course.color;
           _suggestions = [];
+          // 用选中课程的教室分组替换当前分组，实现"长出"完整课程信息
+          final newGroups = _groupSessionsByLocation(course.sessions);
+          if (newGroups.isNotEmpty) {
+            _classroomGroups = newGroups;
+            _sortClassroomGroups();
+            // 重建 AnimatedList 以丝滑刷新教室列表
+            _classroomListKey = GlobalKey<AnimatedListState>();
+            _pickerResetVersion++;
+          }
+          // 重置展开状态
+          _expandedClassroomIndex = null;
+          _expandedSessionIndex = null;
         });
-        // 如果当前教室为空且选中课程有教室信息，则自动填充到第一个教室组
-        if (_classroomGroups.isNotEmpty &&
-            _classroomGroups.first.name.isEmpty &&
-            course.sessions.isNotEmpty) {
-          _classroomGroups.first.name = course.sessions.first.location;
-        }
         FocusScope.of(context).unfocus();
       },
       child: Padding(
