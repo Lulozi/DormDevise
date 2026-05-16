@@ -240,16 +240,16 @@ class _UserLoginDialogState extends State<UserLoginDialog>
     final Widget? animatedCredentialError = _buildAnimatedCredentialError(
       context,
     );
-    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    // 获取当前可视区域高度：Android adjustResize 模式下键盘弹出时自动缩减，
+    // 无需再手动添加 keyboardInset 抬升，避免双重压缩导致弹窗仅剩输入框。
+    final double availableHeight = MediaQuery.sizeOf(context).height;
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      // 软键盘弹出时抬升弹窗，避免密码输入框和按钮被覆盖。
-      padding: EdgeInsets.only(bottom: keyboardInset),
-      child: Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        // 限制弹窗最大高度为可视区域的 85%，超出时通过 SingleChildScrollView 滚动。
+        constraints: BoxConstraints(maxHeight: availableHeight * 0.85),
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
@@ -448,19 +448,19 @@ class _UserRegisterDialogState extends State<_UserRegisterDialog> {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    // 获取当前可视区域高度：Android adjustResize 模式下键盘弹出时自动缩减，
+    // 无需再手动添加 keyboardInset 抬升，避免双重压缩。
+    final double availableHeight = MediaQuery.sizeOf(context).height;
     final TextStyle? errorStyle = Theme.of(
       context,
     ).textTheme.bodySmall?.copyWith(color: colorScheme.error);
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      // 注册弹窗也同步处理软键盘顶起，防止确认密码输入框被遮挡。
-      padding: EdgeInsets.only(bottom: keyboardInset),
-      child: Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        // 限制弹窗最大高度为可视区域的 85%，超出时通过 SingleChildScrollView 滚动。
+        constraints: BoxConstraints(maxHeight: availableHeight * 0.85),
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
