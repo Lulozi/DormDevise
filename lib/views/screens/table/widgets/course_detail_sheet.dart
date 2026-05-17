@@ -252,8 +252,8 @@ class CourseDetailSheet extends StatelessWidget {
             ),
           );
 
-          if (result != null && result is Course) {
-            navigator.pop({'action': 'create', 'newCourse': result});
+          if (result is CourseEditResult) {
+            navigator.pop(result);
           }
         },
         child: Text(
@@ -358,19 +358,8 @@ class CourseDetailSheet extends StatelessWidget {
                           ),
                         )
                         .then((result) {
-                          if (result != null) {
-                            if (result == 'delete') {
-                              navigator.pop({
-                                'action': 'delete',
-                                'target': card.course,
-                              });
-                            } else if (result is Course) {
-                              navigator.pop({
-                                'action': 'update',
-                                'target': card.course,
-                                'newCourse': result,
-                              });
-                            }
+                          if (result is CourseEditResult) {
+                            navigator.pop(result);
                           }
                         });
                   },

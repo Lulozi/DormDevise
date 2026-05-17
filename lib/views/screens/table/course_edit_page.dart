@@ -112,6 +112,43 @@ class CourseEditPage extends StatefulWidget {
   State<CourseEditPage> createState() => _CourseEditPageState();
 }
 
+/// 课程编辑页统一返回结果。
+enum CourseEditResultAction { save, delete }
+
+/// 课程编辑/新建的统一返回协议。
+class CourseEditResult {
+  final CourseEditResultAction action;
+  final Course course;
+  final Course? previousCourse;
+
+  const CourseEditResult._({
+    required this.action,
+    required this.course,
+    this.previousCourse,
+  });
+
+  factory CourseEditResult.save({
+    required Course course,
+    Course? previousCourse,
+  }) {
+    return CourseEditResult._(
+      action: CourseEditResultAction.save,
+      course: course,
+      previousCourse: previousCourse,
+    );
+  }
+
+  factory CourseEditResult.delete({required Course course}) {
+    return CourseEditResult._(
+      action: CourseEditResultAction.delete,
+      course: course,
+    );
+  }
+
+  bool get isSave => action == CourseEditResultAction.save;
+  bool get isDelete => action == CourseEditResultAction.delete;
+}
+
 class _CourseEditPageState extends State<CourseEditPage> {
   static final Set<Course> _openEditingCourses = <Course>{};
 
@@ -1580,11 +1617,6 @@ class _CourseEditPageState extends State<CourseEditPage> {
         builder: (ctx) => _buildOverlapDialog(ctx, overlaps),
       );
       if (result == null || !mounted) return;
-      if (result is Map) {
-        // 用户点击了跳转，将跳转信息传回父页面
-        Navigator.of(context).pop(result);
-        return;
-      }
       if (result is bool && !result) return;
     }
 
@@ -1593,7 +1625,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
     await _persistCurrentDraftIntoService();
     if (!mounted) return;
 
-    Navigator.of(context).pop(newCourse);
+    Navigator.of(context).pop(
+      CourseEditResult.save(course: newCourse, previousCourse: widget.course),
+    );
   }
 
   /// 检查新课程与已有课程的重叠，返回按冲突课程分组的列表。
@@ -1999,22 +2033,17 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
       if (!mounted) return;
 
-      if (editResult is Course) {
+      if (editResult is CourseEditResult && editResult.isSave) {
         // 子编辑页保存成功后，立即同步本地课程快照，确保当前页重新检查冲突时使用新数据。
         setState(() {
-          _syncExistingCourseSnapshot(targetCourse, editResult);
+          _syncExistingCourseSnapshot(targetCourse, editResult.course);
         });
         await _persistCurrentDraftIntoService();
-      } else if (editResult == 'delete') {
+      } else if (editResult is CourseEditResult && editResult.isDelete) {
         setState(() {
           _syncExistingCourseSnapshot(targetCourse, null);
         });
         await _persistCurrentDraftIntoService();
-      } else if (editResult is Map) {
-        // 子编辑页又跳转到了别的冲突课程，继续把结果向上层传递。
-        if (mounted) {
-          Navigator.of(context).pop(editResult);
-        }
       }
     }
   }
@@ -3593,7 +3622,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     );
 
     if (confirm == true && mounted) {
-      Navigator.pop(context, 'delete');
+      Navigator.pop(context, CourseEditResult.delete(course: widget.course!));
     }
   }
 

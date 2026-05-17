@@ -1451,7 +1451,7 @@ class TablePageState extends State<TablePage>
 
   /// 添加新课程。
   Future<void> _addCourse({int? weekday, int? section}) async {
-    final Course? newCourse = await Navigator.of(context).push(
+    final Object? result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CourseEditPage(
           initialWeekday: weekday,
@@ -1461,8 +1461,8 @@ class TablePageState extends State<TablePage>
         ),
       ),
     );
-    if (newCourse != null) {
-      await _handleCourseAdded(newCourse);
+    if (result is CourseEditResult && result.isSave) {
+      await _handleCourseAdded(result.course);
     }
   }
 
