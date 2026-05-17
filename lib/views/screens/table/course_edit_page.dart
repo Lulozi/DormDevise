@@ -1581,8 +1581,28 @@ class _CourseEditPageState extends State<CourseEditPage> {
   }
 
   Future<void> _save() async {
+    // 校验课程名称不能为空
     if (_nameController.text.isEmpty) {
       AppToast.show(context, '请输入「 课程名称 」', variant: AppToastVariant.warning);
+      return;
+    }
+
+    // 校验上课周数是否已配置：至少存在一个时段且所有时段的周次均已配置。
+    // 无时段或存在未配置周次（startWeek 为 0）时，阻止保存并提示用户。
+    final List<CourseSession> preCheckSessions = _buildResultSessions();
+    if (preCheckSessions.isEmpty) {
+      AppToast.show(
+        context,
+        '请添加课程时段并配置「 上课周数 」',
+        variant: AppToastVariant.warning,
+      );
+      return;
+    }
+    final bool hasUnconfiguredWeeks = preCheckSessions.any(
+      (s) => s.startWeek == 0 || s.endWeek == 0,
+    );
+    if (hasUnconfiguredWeeks) {
+      AppToast.show(context, '请配置「 上课周数 」', variant: AppToastVariant.warning);
       return;
     }
 
@@ -2142,30 +2162,23 @@ class _CourseEditPageState extends State<CourseEditPage> {
   }
 
   /// 基于当前页面状态生成待保存的课程时段列表。
+  /// 周次未配置时 startWeek/endWeek 保持为 0，由 _save() 统一校验拦截。
   List<CourseSession> _buildResultSessions() {
     final List<CourseSession> allSessions = <CourseSession>[];
-    final int defaultStartWeek = 1;
-    final int defaultEndWeek = widget.maxWeek;
 
     for (final group in _classroomGroups) {
       for (final wg in group.weekGroups) {
         for (final s in wg.sessions) {
-          final bool isUnconfigured =
-              wg.startWeek == 0 && wg.endWeek == 0 && wg.customWeeks.isEmpty;
-          final int startWeek = (widget.course == null && isUnconfigured)
-              ? defaultStartWeek
-              : wg.startWeek;
-          final int endWeek = (widget.course == null && isUnconfigured)
-              ? defaultEndWeek
-              : wg.endWeek;
+          // 直接使用已配置的周次信息，不再对新建课程自动填充默认值。
+          // 未配置的周次（startWeek=0, endWeek=0）将在 _save() 中被校验拦截。
           allSessions.add(
             CourseSession(
               weekday: s.weekday,
               startSection: s.startSection,
               sectionCount: s.sectionCount,
               location: group.name,
-              startWeek: startWeek,
-              endWeek: endWeek,
+              startWeek: wg.startWeek,
+              endWeek: wg.endWeek,
               weekType: wg.weekType,
               customWeeks: List<int>.of(wg.customWeeks),
             ),
