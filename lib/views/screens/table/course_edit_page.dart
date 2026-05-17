@@ -533,13 +533,13 @@ class _CourseEditPageState extends State<CourseEditPage> {
       return;
     }
     final removedIndex = _classroomGroups.length - 1;
-    // 捕获被删除的教室组数据用于动画
+    // 在 removeAt 前捕获数据快照，供删除动画使用（动画异步执行时数据已移除）
     final removedGroup = _classroomGroups[removedIndex];
     _classroomListKey.currentState?.removeItem(
       removedIndex,
       (context, animation) =>
           _buildRemovingClassroomBlock(removedGroup, animation),
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 250),
     );
     _classroomGroups.removeAt(removedIndex);
     setState(() {
@@ -895,12 +895,15 @@ class _CourseEditPageState extends State<CourseEditPage> {
       return;
     }
     if (weekGroupIndex < 0 || weekGroupIndex >= group.weekGroups.length) return;
+    // 在 removeAt 前捕获数据快照及按钮显示状态，供删除动画使用（动画异步执行时数据已移除）
     final removedGroup = group.weekGroups[weekGroupIndex];
+    final isOnly = group.weekGroups.length == 1;
+    final isLast = weekGroupIndex == group.weekGroups.length - 1;
     _getWeekGroupListKey(groupIndex).currentState?.removeItem(
       weekGroupIndex,
       (context, animation) =>
-          _buildRemovingWeekGroupBlock(removedGroup, animation),
-      duration: const Duration(milliseconds: 300),
+          _buildRemovingWeekGroupBlock(removedGroup, isOnly, isLast, animation),
+      duration: const Duration(milliseconds: 250),
     );
     group.weekGroups.removeAt(weekGroupIndex);
     setState(() {
@@ -920,7 +923,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
     });
   }
 
-  /// 为指定周次分组内的指定时段索引添加一个新时段。
+  /// 为指定周次分组内的指定时段索引添加一个新时段（由 AnimatedSize 提供过渡动画）。
+  ///
+  /// 新增时段后延迟短暂时间再自动展开，让 AnimatedSize 尺寸过渡先完成，
+  /// 再触发 ExpandableItem 的 AnimatedCrossFade 展开动画，避免两个动画冲突。
   void _addSessionToWeekGroup(int groupIndex, int weekGroupIndex) {
     final group = _classroomGroups[groupIndex];
     if (weekGroupIndex >= group.weekGroups.length) return;
@@ -934,43 +940,51 @@ class _CourseEditPageState extends State<CourseEditPage> {
       );
       return;
     }
+    final added = CourseSession(
+      weekday: next.weekday,
+      startSection: next.startSection,
+      sectionCount: next.sectionCount,
+      location: group.name,
+      startWeek: targetWeekGroup.startWeek,
+      endWeek: targetWeekGroup.endWeek,
+      weekType: targetWeekGroup.weekType,
+      customWeeks: List.of(targetWeekGroup.customWeeks),
+    );
+    final insertIndex = targetWeekGroup.sessions.length;
     setState(() {
-      final added = CourseSession(
-        weekday: next.weekday,
-        startSection: next.startSection,
-        sectionCount: next.sectionCount,
-        location: group.name,
-        startWeek: targetWeekGroup.startWeek,
-        endWeek: targetWeekGroup.endWeek,
-        weekType: targetWeekGroup.weekType,
-        customWeeks: List.of(targetWeekGroup.customWeeks),
-      );
       targetWeekGroup.sessions.add(added);
       _expandedClassroomIndex = groupIndex;
       _expandedWeekGroupIndex = weekGroupIndex;
-      _expandedSessionIndex = targetWeekGroup.sessions.length - 1;
       _pickerResetVersion++;
+      // 延迟展开，让 AnimatedSize 插入过渡先完成（250ms），再触发 ExpandableItem 展开动画
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() {
+            _expandedSessionIndex = insertIndex;
+            _pickerResetVersion++;
+          });
+        }
+      });
     });
   }
 
-  /// 删除指定周次分组内的最后一个时段。
+  /// 删除指定周次分组内的最后一个时段（由 AnimatedSize 提供过渡动画）。
   void _removeSessionFromWeekGroup(int groupIndex, int weekGroupIndex) {
     final group = _classroomGroups[groupIndex];
     if (weekGroupIndex >= group.weekGroups.length) return;
     final weekGroup = group.weekGroups[weekGroupIndex];
-    if (weekGroup.sessions.isNotEmpty) {
-      setState(() {
-        weekGroup.sessions.removeLast();
-        if (_expandedClassroomIndex == groupIndex &&
-            _expandedWeekGroupIndex == weekGroupIndex) {
-          if (_expandedSessionIndex != null &&
-              _expandedSessionIndex! >= weekGroup.sessions.length) {
-            _expandedSessionIndex = null;
-          }
+    if (weekGroup.sessions.isEmpty) return;
+    setState(() {
+      weekGroup.sessions.removeLast();
+      if (_expandedClassroomIndex == groupIndex &&
+          _expandedWeekGroupIndex == weekGroupIndex) {
+        if (_expandedSessionIndex != null &&
+            _expandedSessionIndex! >= weekGroup.sessions.length) {
+          _expandedSessionIndex = null;
         }
-        _pickerResetVersion++;
-      });
-    }
+      }
+      _pickerResetVersion++;
+    });
   }
 
   // 时段更新与智能拆分合并（per-group）
@@ -2383,30 +2397,42 @@ class _CourseEditPageState extends State<CourseEditPage> {
   /// 构建带动画的单个教室组块（用于正常显示）。
   Widget _buildAnimatedClassroomBlock(int index, Animation<double> animation) {
     return SizeTransition(
-      sizeFactor: animation,
+      sizeFactor: CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      ),
       child: FadeTransition(
-        opacity: animation,
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        ),
         child: _buildClassroomGroupBlock(index),
       ),
     );
   }
 
-  /// 构建正在被删除的教室组块（退出动画）。
+  /// 构建正在被删除的教室组块（退出动画，使用快照数据保证内容与显示一致）。
   Widget _buildRemovingClassroomBlock(
     _ClassroomGroup group,
     Animation<double> animation,
   ) {
     return SizeTransition(
-      sizeFactor: animation,
+      sizeFactor: CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      ),
       child: FadeTransition(
-        opacity: animation,
-        child: _buildClassroomGroupContent(group),
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        ),
+        child: _buildClassroomGroupSnapshot(group),
       ),
     );
   }
 
-  /// 构建教室组块内容（不含动画包裹，供退出动画复用）。
-  Widget _buildClassroomGroupContent(_ClassroomGroup group) {
+  /// 构建教室组静态快照（外观与 _buildClassroomGroupBlock 一致，但无交互元素）。
+  Widget _buildClassroomGroupSnapshot(_ClassroomGroup group) {
     return Container(
       decoration: BoxDecoration(
         color:
@@ -2415,64 +2441,42 @@ class _CourseEditPageState extends State<CourseEditPage> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 第一行：教室名
+          // 教室名（纯文本，非输入框）
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    group.name.isEmpty ? '未命名' : group.name,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              group.name.isEmpty ? '教室名' : group.name,
+              style: TextStyle(
+                fontSize: 16,
+                color: group.name.isEmpty
+                    ? const Color(0xFFC4C4C6)
+                    : Theme.of(context).colorScheme.onSurface,
+              ),
             ),
           ),
-          // 第二行：总周数概要
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
-              children: [
-                Flexible(
-                  child: Builder(
-                    builder: (ctx) {
-                      // 若为新建课程且所有周次分组均为自动默认的 1..max（未显式配置），视为未配置
-                      final bool allDefault =
-                          group.weekGroups.isNotEmpty &&
-                          group.weekGroups.every(
-                            (wg) =>
-                                wg.startWeek == 1 &&
-                                wg.endWeek == widget.maxWeek &&
-                                wg.weekType == CourseWeekType.all &&
-                                wg.customWeeks.isEmpty,
-                          );
-
-                      final displayText =
-                          (widget.course == null &&
-                              (group.weekGroups.isEmpty || allDefault))
-                          ? '未配置'
-                          : _formatWeeksSet(group.effectiveWeeks);
-
-                      return Text(
-                        displayText,
-                        maxLines: 2,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      );
-                    },
+          // 周次分组概览
+          if (group.weekGroups.isNotEmpty)
+            ...group.weekGroups.map((wg) => _buildWeekGroupSnapshot(wg)),
+          // 无周次分组时显示"未配置"
+          if (group.weekGroups.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.outline,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: _buildAutoWeekLabel('未配置'),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -2549,40 +2553,239 @@ class _CourseEditPageState extends State<CourseEditPage> {
     Animation<double> animation,
   ) {
     return SizeTransition(
-      sizeFactor: animation,
+      sizeFactor: CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      ),
       child: FadeTransition(
-        opacity: animation,
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        ),
         child: _buildWeekGroupBlock(groupIndex, weekGroupIndex),
       ),
     );
   }
 
-  /// 构建正在被删除的周次分组块（退出动画）。
+  /// 构建正在被删除的周次分组块（退出动画，使用快照数据保证内容与显示一致）。
   Widget _buildRemovingWeekGroupBlock(
     _WeekGroup weekGroup,
+    bool isOnly,
+    bool isLast,
     Animation<double> animation,
   ) {
-    final String weekText = _formatWeeksSet(weekGroup.effectiveWeeks);
+    // 按钮显示规则（与 _buildWeekGroupCounterButtons 一致）：
+    // - 仅一个周次分组：只显示 +（但此处不会发生，因为至少保留一个的检查会阻止）
+    // - 非最后一个：只显示 -   - 最后一个（且非唯一）：同时显示 - 和 +
+    final showMinus = !isOnly;
+    final showPlus = isLast;
     return SizeTransition(
-      sizeFactor: animation,
+      sizeFactor: CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      ),
       child: FadeTransition(
-        opacity: animation,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        ),
+        child: _buildWeekGroupSnapshot(weekGroup, showMinus: showMinus, showPlus: showPlus),
+      ),
+    );
+  }
+
+  /// 构建周次分组静态快照（外观与 _buildWeekGroupBlock 一致，含按钮占位但无交互）。
+  Widget _buildWeekGroupSnapshot(_WeekGroup weekGroup, {bool showMinus = true, bool showPlus = true}) {
+    final String weekText = _formatWeeksSet(weekGroup.effectiveWeeks);
+    final bool hasNoSessions = !weekGroup.hasAnySession;
+    final String displayText = weekText.isEmpty ? '未配置' : weekText;
+    final iconColor = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 周数标签行（含按钮占位，与正常显示布局一致）
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 3, 16, 4),
           child: Row(
             children: [
-              Icon(
-                Icons.chevron_right,
-                size: 18,
-                color: Theme.of(context).colorScheme.outline,
+              // 与正常显示一致：Expanded 包裹 chevron + 间距 + 标签整个左侧区域
+              Expanded(
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: hasNoSessions
+                          ? Theme.of(context).colorScheme.outlineVariant
+                              .withValues(alpha: 0.4)
+                          : Theme.of(context).colorScheme.outline,
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: _buildAutoWeekLabel(
+                        displayText,
+                        color: hasNoSessions
+                            ? Theme.of(context).colorScheme.outlineVariant
+                                .withValues(alpha: 0.4)
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: _buildAutoWeekLabel(weekText.isEmpty ? '未配置' : weekText),
+              const SizedBox(width: 12),
+              // 按钮占位容器（与 _buildWeekGroupCounterButtons 外观和显示规则一致）
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showMinus)
+                      _buildButtonPlaceholder(FontAwesomeIcons.minus, iconColor),
+                    if (showPlus)
+                      _buildButtonPlaceholder(FontAwesomeIcons.plus, iconColor),
+                  ],
+                ),
               ),
             ],
           ),
         ),
+        // 时段摘要行（含按钮占位，与正常显示布局一致）
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '时段',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildButtonPlaceholder(FontAwesomeIcons.minus, iconColor),
+                    SizedBox(
+                      width: 30,
+                      child: Text(
+                        '${weekGroup.sessions.length}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                    _buildButtonPlaceholder(FontAwesomeIcons.plus, iconColor),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 时段列表（只读标签）
+        if (weekGroup.sessions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (int i = 0; i < weekGroup.sessions.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 4),
+                  Text(
+                    '课程时间 ${i + 1}：周${_weekdayToString(weekGroup.sessions[i].weekday)} '
+                    '${weekGroup.sessions[i].sectionCount == 1
+                        ? '第 ${weekGroup.sessions[i].startSection} 节'
+                        : '第 ${weekGroup.sessions[i].startSection}-${weekGroup.sessions[i].startSection + weekGroup.sessions[i].sectionCount - 1} 节'}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 构建按钮占位图标（外观与 _buildCounterButton 一致，无交互）。
+  Widget _buildButtonPlaceholder(IconData icon, Color color) {
+    return Container(
+      width: 28,
+      height: 28,
+      color: Colors.transparent,
+      child: Icon(icon, size: 14, color: color),
+    );
+  }
+
+  /// 构建课程时段项（由父级 AnimatedSize 提供尺寸过渡动画）。
+  Widget _buildSessionItem(
+    int groupIndex,
+    int weekGroupIndex,
+    int sessionIndex,
+  ) {
+    final sessions =
+        _classroomGroups[groupIndex].weekGroups[weekGroupIndex].sessions;
+    // 安全检查：防止列表数据与渲染索引不同步时的越界访问
+    if (sessionIndex >= sessions.length) return const SizedBox.shrink();
+    final session = sessions[sessionIndex];
+    final isExpanded =
+        _expandedClassroomIndex == groupIndex &&
+        _expandedWeekGroupIndex == weekGroupIndex &&
+        _expandedSessionIndex == sessionIndex;
+
+    String timeText = '周${_weekdayToString(session.weekday)} ';
+    if (session.sectionCount == 1) {
+      timeText += '第 ${session.startSection} 节';
+    } else {
+      timeText +=
+          '第 ${session.startSection}-${session.startSection + session.sectionCount - 1} 节';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: ExpandableItem(
+        title: '课程时间 ${sessionIndex + 1}',
+        value: Text(
+          timeText,
+          style: TextStyle(
+            fontSize: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        isExpanded: isExpanded,
+        onTap: () {
+          setState(() {
+            if (_expandedClassroomIndex == groupIndex &&
+                _expandedWeekGroupIndex == weekGroupIndex &&
+                _expandedSessionIndex == sessionIndex) {
+              _expandedClassroomIndex = null;
+              _expandedWeekGroupIndex = null;
+              _expandedSessionIndex = null;
+            } else {
+              _expandedClassroomIndex = groupIndex;
+              _expandedWeekGroupIndex = weekGroupIndex;
+              _expandedSessionIndex = sessionIndex;
+            }
+          });
+        },
+        content: _buildInlineTimePicker(
+          groupIndex,
+          weekGroupIndex,
+          sessionIndex,
+        ),
+        showDivider: false,
       ),
     );
   }
@@ -2812,68 +3015,27 @@ class _CourseEditPageState extends State<CourseEditPage> {
             endIndent: 16,
             color: Theme.of(context).colorScheme.outlineVariant,
           ),
-        // 该周次分组下的课程时间列表
-        for (int si = 0; si < weekGroup.sessions.length; si++) ...[
-          if (si > 0)
-            Divider(
-              height: 1,
-              indent: 24,
-              endIndent: 16,
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          Builder(
-            builder: (context) {
-              final session = weekGroup.sessions[si];
-              final isExpanded =
-                  _expandedClassroomIndex == groupIndex &&
-                  _expandedWeekGroupIndex == weekGroupIndex &&
-                  _expandedSessionIndex == si;
-
-              String timeText = '周${_weekdayToString(session.weekday)} ';
-              if (session.sectionCount == 1) {
-                timeText += '第 ${session.startSection} 节';
-              } else {
-                timeText +=
-                    '第 ${session.startSection}-${session.startSection + session.sectionCount - 1} 节';
-              }
-              return Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: ExpandableItem(
-                  title: '课程时间 ${si + 1}',
-                  value: Text(
-                    timeText,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+        // 该周次分组下的课程时间列表（AnimatedSize 包裹实现平滑过渡）
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (int si = 0; si < weekGroup.sessions.length; si++) ...[
+                if (si > 0)
+                  Divider(
+                    height: 1,
+                    indent: 24,
+                    endIndent: 16,
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
-                  isExpanded: isExpanded,
-                  onTap: () {
-                    setState(() {
-                      if (_expandedClassroomIndex == groupIndex &&
-                          _expandedWeekGroupIndex == weekGroupIndex &&
-                          _expandedSessionIndex == si) {
-                        _expandedClassroomIndex = null;
-                        _expandedWeekGroupIndex = null;
-                        _expandedSessionIndex = null;
-                      } else {
-                        _expandedClassroomIndex = groupIndex;
-                        _expandedWeekGroupIndex = weekGroupIndex;
-                        _expandedSessionIndex = si;
-                      }
-                    });
-                  },
-                  content: _buildInlineTimePicker(
-                    groupIndex,
-                    weekGroupIndex,
-                    si,
-                  ),
-                  showDivider: false,
-                ),
-              );
-            },
+                _buildSessionItem(groupIndex, weekGroupIndex, si),
+              ],
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
