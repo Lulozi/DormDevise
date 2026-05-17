@@ -2402,10 +2402,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         curve: Curves.easeOutCubic,
       ),
       child: FadeTransition(
-        opacity: CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        ),
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
         child: _buildClassroomGroupBlock(index),
       ),
     );
@@ -2422,10 +2419,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         curve: Curves.easeOutCubic,
       ),
       child: FadeTransition(
-        opacity: CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        ),
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
         child: _buildClassroomGroupSnapshot(group),
       ),
     );
@@ -2471,9 +2465,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                     color: Theme.of(context).colorScheme.outline,
                   ),
                   const SizedBox(width: 4),
-                  Flexible(
-                    child: _buildAutoWeekLabel('未配置'),
-                  ),
+                  Flexible(child: _buildAutoWeekLabel('未配置')),
                 ],
               ),
             ),
@@ -2558,10 +2550,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         curve: Curves.easeOutCubic,
       ),
       child: FadeTransition(
-        opacity: CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        ),
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
         child: _buildWeekGroupBlock(groupIndex, weekGroupIndex),
       ),
     );
@@ -2585,17 +2574,22 @@ class _CourseEditPageState extends State<CourseEditPage> {
         curve: Curves.easeOutCubic,
       ),
       child: FadeTransition(
-        opacity: CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+        child: _buildWeekGroupSnapshot(
+          weekGroup,
+          showMinus: showMinus,
+          showPlus: showPlus,
         ),
-        child: _buildWeekGroupSnapshot(weekGroup, showMinus: showMinus, showPlus: showPlus),
       ),
     );
   }
 
   /// 构建周次分组静态快照（外观与 _buildWeekGroupBlock 一致，含按钮占位但无交互）。
-  Widget _buildWeekGroupSnapshot(_WeekGroup weekGroup, {bool showMinus = true, bool showPlus = true}) {
+  Widget _buildWeekGroupSnapshot(
+    _WeekGroup weekGroup, {
+    bool showMinus = true,
+    bool showPlus = true,
+  }) {
     final String weekText = _formatWeeksSet(weekGroup.effectiveWeeks);
     final bool hasNoSessions = !weekGroup.hasAnySession;
     final String displayText = weekText.isEmpty ? '未配置' : weekText;
@@ -2618,8 +2612,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
                       Icons.chevron_right,
                       size: 18,
                       color: hasNoSessions
-                          ? Theme.of(context).colorScheme.outlineVariant
-                              .withValues(alpha: 0.4)
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withValues(alpha: 0.4)
                           : Theme.of(context).colorScheme.outline,
                     ),
                     const SizedBox(width: 4),
@@ -2628,7 +2623,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                         displayText,
                         color: hasNoSessions
                             ? Theme.of(context).colorScheme.outlineVariant
-                                .withValues(alpha: 0.4)
+                                  .withValues(alpha: 0.4)
                             : null,
                       ),
                     ),
@@ -2646,7 +2641,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (showMinus)
-                      _buildButtonPlaceholder(FontAwesomeIcons.minus, iconColor),
+                      _buildButtonPlaceholder(
+                        FontAwesomeIcons.minus,
+                        iconColor,
+                      ),
                     if (showPlus)
                       _buildButtonPlaceholder(FontAwesomeIcons.plus, iconColor),
                   ],
@@ -2703,9 +2701,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                   if (i > 0) const SizedBox(height: 4),
                   Text(
                     '课程时间 ${i + 1}：周${_weekdayToString(weekGroup.sessions[i].weekday)} '
-                    '${weekGroup.sessions[i].sectionCount == 1
-                        ? '第 ${weekGroup.sessions[i].startSection} 节'
-                        : '第 ${weekGroup.sessions[i].startSection}-${weekGroup.sessions[i].startSection + weekGroup.sessions[i].sectionCount - 1} 节'}',
+                    '${weekGroup.sessions[i].sectionCount == 1 ? '第 ${weekGroup.sessions[i].startSection} 节' : '第 ${weekGroup.sessions[i].startSection}-${weekGroup.sessions[i].startSection + weekGroup.sessions[i].sectionCount - 1} 节'}',
                     style: TextStyle(
                       fontSize: 14,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -2887,7 +2883,14 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   /// 构建单个周次分组块的内容。
   Widget _buildWeekGroupBlock(int groupIndex, int weekGroupIndex) {
+    // 防御性检查：确保索引有效，防止 AnimatedList 与底层数据不同步时崩溃
+    if (groupIndex < 0 || groupIndex >= _classroomGroups.length) {
+      return const SizedBox.shrink();
+    }
     final group = _classroomGroups[groupIndex];
+    if (weekGroupIndex < 0 || weekGroupIndex >= group.weekGroups.length) {
+      return const SizedBox.shrink();
+    }
     final weekGroup = group.weekGroups[weekGroupIndex];
     String weekText = _formatWeeksSet(weekGroup.effectiveWeeks);
     final bool hasNoSessions = !weekGroup.hasAnySession;
