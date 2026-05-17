@@ -164,6 +164,10 @@ class _CourseEditPageState extends State<CourseEditPage> {
   int _pickerResetVersion = 0;
   List<Course> _suggestions = [];
 
+  /// 标记在冲突弹窗中跳转到其他课程编辑页后，是否发生了外部修改（保存或删除）。
+  /// 用于在用户取消当前编辑页时，通知父页面刷新数据。
+  bool _hasExternalChanges = false;
+
   // 教室分组列表
   /// 所有教室分组，每个分组包含教室名、周次和时段。
   List<_ClassroomGroup> _classroomGroups = [];
@@ -2034,16 +2038,20 @@ class _CourseEditPageState extends State<CourseEditPage> {
       if (!mounted) return;
 
       if (editResult is CourseEditResult && editResult.isSave) {
-        // 子编辑页保存成功后，立即同步本地课程快照，确保当前页重新检查冲突时使用新数据。
+        // 子编辑页保存成功后，同步本地课程快照并标记外部修改，
+        // 确保当前页重新检查冲突时使用新数据。
+        // 注意：不在此处调用 _persistCurrentDraftIntoService()，
+        // 因为子编辑页已自行持久化，再次调用会错误地用当前页的草稿覆盖课程1的原始数据。
         setState(() {
           _syncExistingCourseSnapshot(targetCourse, editResult.course);
+          _hasExternalChanges = true;
         });
-        await _persistCurrentDraftIntoService();
       } else if (editResult is CourseEditResult && editResult.isDelete) {
+        // 子编辑页删除课程后，同步本地快照并标记外部修改。
         setState(() {
           _syncExistingCourseSnapshot(targetCourse, null);
+          _hasExternalChanges = true;
         });
-        await _persistCurrentDraftIntoService();
       }
     }
   }
@@ -2241,7 +2249,18 @@ class _CourseEditPageState extends State<CourseEditPage> {
             if (hasKeyboard) {
               FocusScope.of(context).unfocus();
             } else {
-              Navigator.of(context).pop();
+              // 如果在冲突弹窗中跳转到其他课程并发生了外部修改（保存/删除），
+              // 则携带 save 结果返回，通知父页面刷新课程数据。
+              if (_hasExternalChanges && widget.course != null) {
+                Navigator.of(context).pop(
+                  CourseEditResult.save(
+                    course: widget.course!,
+                    previousCourse: widget.course!,
+                  ),
+                );
+              } else {
+                Navigator.of(context).pop();
+              }
             }
           },
           child: Text(
