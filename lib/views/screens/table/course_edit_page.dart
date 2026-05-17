@@ -1578,7 +1578,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   Future<void> _save() async {
     if (_nameController.text.isEmpty) {
-      AppToast.show(context, '请输入课程名称', variant: AppToastVariant.warning);
+      AppToast.show(context, '请输入「 课程名称 」', variant: AppToastVariant.warning);
       return;
     }
 
@@ -2956,7 +2956,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
                       // 未配置时段时点击提示需要先设置课程时间
                       AppToast.show(
                         context,
-                        '需要先设置「 课程时间 」',
+                        '需要先配置「 时段 」',
                         variant: AppToastVariant.info,
                       );
                     }
