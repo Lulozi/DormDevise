@@ -113,10 +113,13 @@ class CourseEditPage extends StatefulWidget {
 }
 
 class _CourseEditPageState extends State<CourseEditPage> {
+  static final Set<Course> _openEditingCourses = <Course>{};
+
   late TextEditingController _nameController;
   late TextEditingController _teacherController;
   late Color _selectedColor;
   late Color _initialSmartColor;
+  late List<Course> _existingCourses;
   List<Color> _customColors = [];
   Color? _temporaryAutoColor;
   CourseScheduleConfig? _scheduleConfig;
@@ -267,6 +270,11 @@ class _CourseEditPageState extends State<CourseEditPage> {
     _teacherController = TextEditingController(
       text: widget.course?.teacher ?? '',
     );
+    if (widget.course != null) {
+      _openEditingCourses.add(widget.course!);
+    }
+    // 维护一份可更新的课程快照，避免子编辑页保存后父编辑页仍使用旧数据。
+    _existingCourses = List<Course>.of(widget.existingCourses);
 
     // 初始化教室分组
     if (widget.course != null && widget.course!.sessions.isNotEmpty) {
@@ -280,7 +288,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
       // 新建模式：创建默认教室分组
       _classroomGroups = [_createDefaultGroup()];
       // 优先选择未使用的颜色
-      final Set<int> usedColorValues = widget.existingCourses
+      final Set<int> usedColorValues = _existingCourses
           .map((c) => c.color.toARGB32())
           .toSet();
       final List<Color> availableColors = _presetColors
@@ -305,7 +313,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         final int nextSection = widget.initialSection! + 1;
 
         // 检查下一个节次是否被已有课程占用
-        bool nextSectionOccupied = widget.existingCourses.any((course) {
+        bool nextSectionOccupied = _existingCourses.any((course) {
           return course.sessions.any((session) {
             if (session.weekday != widget.initialWeekday!) return false;
             final int sessionEnd =
@@ -436,7 +444,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     }
 
     // 若是已经输入的课程名已经已经导入（完全匹配且内容一致），则不需要再联想
-    final exactMatches = widget.existingCourses.where((c) => c.name == name);
+    final exactMatches = _existingCourses.where((c) => c.name == name);
     if (exactMatches.isNotEmpty) {
       final exactMatch = exactMatches.first;
       final bool isTeacherSame = exactMatch.teacher == _teacherController.text;
@@ -454,7 +462,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
     }
 
     final lowerName = name.toLowerCase();
-    final matches = widget.existingCourses.where((c) {
+    final matches = _existingCourses.where((c) {
       return c.name.toLowerCase().contains(lowerName);
     }).toList();
 
@@ -1451,6 +1459,9 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
   @override
   void dispose() {
+    if (widget.course != null) {
+      _openEditingCourses.remove(widget.course);
+    }
     for (var timer in _debounceTimers.values) {
       timer.cancel();
     }
@@ -1458,6 +1469,11 @@ class _CourseEditPageState extends State<CourseEditPage> {
     _nameController.dispose();
     _teacherController.dispose();
     super.dispose();
+  }
+
+  /// 判断某个课程编辑页是否已经打开。
+  static bool isEditingCourseOpen(Course course) {
+    return _openEditingCourses.contains(course);
   }
 
   Future<void> _loadCustomColors() async {
@@ -1549,45 +1565,11 @@ class _CourseEditPageState extends State<CourseEditPage> {
       }
     }
 
-    // 从所有教室分组中收集全部时段
-    final allSessions = <CourseSession>[];
-    // 当为新建课程时，若用户未配置周次 (startWeek == 0 且 customWeeks 为空)，
-    // 默认将其视为覆盖整个学期，避免创建后在课表中不可见。
-    final int defaultStartWeek = 1;
-    final int defaultEndWeek = widget.maxWeek;
-    for (final group in _classroomGroups) {
-      for (final wg in group.weekGroups) {
-        for (final s in wg.sessions) {
-          // 周次以周次分组为准，确保“编辑上课周数”能真正影响保存与冲突检测。
-          final bool isUnconfigured =
-              wg.startWeek == 0 && wg.endWeek == 0 && wg.customWeeks.isEmpty;
-          final int startWeek = (widget.course == null && isUnconfigured)
-              ? defaultStartWeek
-              : wg.startWeek;
-          final int endWeek = (widget.course == null && isUnconfigured)
-              ? defaultEndWeek
-              : wg.endWeek;
-          allSessions.add(
-            CourseSession(
-              weekday: s.weekday,
-              startSection: s.startSection,
-              sectionCount: s.sectionCount,
-              location: group.name, // 使用教室组名作为 location
-              startWeek: startWeek,
-              endWeek: endWeek,
-              weekType: wg.weekType,
-              customWeeks: List.of(wg.customWeeks),
-            ),
-          );
-        }
-      }
-    }
-
     final newCourse = Course(
       name: _nameController.text,
       teacher: _teacherController.text,
       color: _selectedColor,
-      sessions: allSessions,
+      sessions: _buildResultSessions(),
     );
 
     // 检查与已有课程的重叠
@@ -1606,14 +1588,19 @@ class _CourseEditPageState extends State<CourseEditPage> {
       if (result is bool && !result) return;
     }
 
+    // 直接写回课程服务，保证当前页面点击“完成”后课表立即同步，
+    // 不再完全依赖父页面继续处理返回结果。
+    await _persistCurrentDraftIntoService();
+    if (!mounted) return;
+
     Navigator.of(context).pop(newCourse);
   }
 
   /// 检查新课程与已有课程的重叠，返回按冲突课程分组的列表。
   List<_CourseOverlapGroup> _checkCourseOverlaps(Course newCourse) {
     final existing = widget.course != null
-        ? widget.existingCourses.where((c) => c != widget.course).toList()
-        : widget.existingCourses;
+        ? _existingCourses.where((c) => c != widget.course).toList()
+        : _existingCourses;
 
     // 按冲突课程分组
     final Map<String, _CourseOverlapGroup> groups = {};
@@ -1987,18 +1974,48 @@ class _CourseEditPageState extends State<CourseEditPage> {
       // 先关闭确认弹窗，再关闭冲突弹窗
       Navigator.pop(ctx, false); // 取消保存
       if (!mounted) return;
+      final NavigatorState navigator = Navigator.of(context);
+      if (_CourseEditPageState.isEditingCourseOpen(targetCourse)) {
+        navigator.popUntil(
+          (Route<dynamic> route) =>
+              identical(route.settings.arguments, targetCourse),
+        );
+        return;
+      }
+
       // 在当前编辑页之上弹出目标课程的编辑页
-      Navigator.of(context).push(
+      final Object? editResult = await navigator.push(
         MaterialPageRoute(
+          settings: RouteSettings(arguments: targetCourse),
           builder: (_) => CourseEditPage(
             course: targetCourse,
-            existingCourses: widget.existingCourses,
+            existingCourses: _existingCourses,
             maxWeek: widget.maxWeek,
             scheduleConfig: _scheduleConfig,
           ),
           fullscreenDialog: true,
         ),
       );
+
+      if (!mounted) return;
+
+      if (editResult is Course) {
+        // 子编辑页保存成功后，立即同步本地课程快照，确保当前页重新检查冲突时使用新数据。
+        setState(() {
+          _syncExistingCourseSnapshot(targetCourse, editResult);
+        });
+        await _persistCurrentDraftIntoService();
+      } else if (editResult == 'delete') {
+        setState(() {
+          _syncExistingCourseSnapshot(targetCourse, null);
+        });
+        await _persistCurrentDraftIntoService();
+      } else if (editResult is Map) {
+        // 子编辑页又跳转到了别的冲突课程，继续把结果向上层传递。
+        if (mounted) {
+          Navigator.of(context).pop(editResult);
+        }
+      }
     }
   }
 
@@ -2064,6 +2081,84 @@ class _CourseEditPageState extends State<CourseEditPage> {
     await _pickWeeksForWeekGroup(groupIndex, group.weekGroups.length - 1);
   }
 
+  /// 将已保存的课程同步回本地快照，供后续冲突检查使用。
+  void _syncExistingCourseSnapshot(Course oldCourse, Course? newCourse) {
+    final int index = _existingCourses.indexOf(oldCourse);
+    if (index == -1) {
+      return;
+    }
+    if (newCourse == null) {
+      _existingCourses.removeAt(index);
+      return;
+    }
+    _existingCourses[index] = newCourse;
+  }
+
+  /// 生成当前页面正在编辑的课程草稿。
+  Course _buildCurrentDraftCourse() {
+    return Course(
+      name: _nameController.text,
+      teacher: _teacherController.text,
+      color: _selectedColor,
+      sessions: _buildResultSessions(),
+    );
+  }
+
+  /// 基于当前页面状态生成待保存的课程时段列表。
+  List<CourseSession> _buildResultSessions() {
+    final List<CourseSession> allSessions = <CourseSession>[];
+    final int defaultStartWeek = 1;
+    final int defaultEndWeek = widget.maxWeek;
+
+    for (final group in _classroomGroups) {
+      for (final wg in group.weekGroups) {
+        for (final s in wg.sessions) {
+          final bool isUnconfigured =
+              wg.startWeek == 0 && wg.endWeek == 0 && wg.customWeeks.isEmpty;
+          final int startWeek = (widget.course == null && isUnconfigured)
+              ? defaultStartWeek
+              : wg.startWeek;
+          final int endWeek = (widget.course == null && isUnconfigured)
+              ? defaultEndWeek
+              : wg.endWeek;
+          allSessions.add(
+            CourseSession(
+              weekday: s.weekday,
+              startSection: s.startSection,
+              sectionCount: s.sectionCount,
+              location: group.name,
+              startWeek: startWeek,
+              endWeek: endWeek,
+              weekType: wg.weekType,
+              customWeeks: List<int>.of(wg.customWeeks),
+            ),
+          );
+        }
+      }
+    }
+
+    return allSessions;
+  }
+
+  /// 将当前草稿与本地课程快照合并并立即写回服务层。
+  Future<void> _persistCurrentDraftIntoService() async {
+    final Course currentDraft = _buildCurrentDraftCourse();
+    final List<Course> mergedCourses = List<Course>.of(_existingCourses);
+
+    if (widget.course != null) {
+      final int currentIndex = mergedCourses.indexOf(widget.course!);
+      if (currentIndex != -1) {
+        mergedCourses[currentIndex] = currentDraft;
+      } else {
+        mergedCourses.add(currentDraft);
+      }
+    } else {
+      mergedCourses.add(currentDraft);
+    }
+
+    await CourseService.instance.saveCourses(mergedCourses);
+  }
+
   // 颜色选择弹窗
 
   Future<void> _pickColor() async {
@@ -2074,7 +2169,7 @@ class _CourseEditPageState extends State<CourseEditPage> {
         selectedColor: _selectedColor,
         colors: _presetColors,
         customColors: _customColors,
-        existingCourses: widget.existingCourses,
+        existingCourses: _existingCourses,
         onAddCustomColor: _addCustomColor,
         onDeleteCustomColor: _removeCustomColor,
       ),

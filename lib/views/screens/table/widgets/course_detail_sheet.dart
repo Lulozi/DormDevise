@@ -348,6 +348,7 @@ class CourseDetailSheet extends StatelessWidget {
                     navigator
                         .push(
                           MaterialPageRoute(
+                            settings: RouteSettings(arguments: card.course),
                             builder: (context) => CourseEditPage(
                               course: card.course,
                               existingCourses: allCourses,
