@@ -407,27 +407,21 @@ class CourseDetailSheet extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildDetailRow(context, '教室$idx', cr.location),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16),
-                      child: RichText(
-                        text: TextSpan(
-                          style: TextStyle(
-                            fontSize: 13,
-                            // 与「教室1」标签颜色一致
-                            color: colorScheme.outline,
-                            height: 1.5,
-                          ),
-                          children: [
-                            const TextSpan(
-                              text: '· ',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            TextSpan(
-                              text: cr.weekLabel,
-                              // 周数文字与 · 同色
-                            ),
-                          ],
+                    // 周次信息靠左对齐，与上方教室名对齐。
+                    RichText(
+                      text: TextSpan(
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.outline,
+                          height: 1.5,
                         ),
+                        children: [
+                          const TextSpan(
+                            text: '· ',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          TextSpan(text: cr.weekLabel),
+                        ],
                       ),
                     ),
                   ],
