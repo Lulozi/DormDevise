@@ -1551,17 +1551,29 @@ class _CourseEditPageState extends State<CourseEditPage> {
 
     // 从所有教室分组中收集全部时段
     final allSessions = <CourseSession>[];
+    // 当为新建课程时，若用户未配置周次 (startWeek == 0 且 customWeeks 为空)，
+    // 默认将其视为覆盖整个学期，避免创建后在课表中不可见。
+    final int defaultStartWeek = 1;
+    final int defaultEndWeek = widget.maxWeek;
     for (final group in _classroomGroups) {
       for (final wg in group.weekGroups) {
         for (final s in wg.sessions) {
+          final bool isUnconfigured =
+              s.startWeek == 0 && s.endWeek == 0 && s.customWeeks.isEmpty;
+          final int startWeek = (widget.course == null && isUnconfigured)
+              ? defaultStartWeek
+              : s.startWeek;
+          final int endWeek = (widget.course == null && isUnconfigured)
+              ? defaultEndWeek
+              : s.endWeek;
           allSessions.add(
             CourseSession(
               weekday: s.weekday,
               startSection: s.startSection,
               sectionCount: s.sectionCount,
               location: group.name, // 使用教室组名作为 location
-              startWeek: s.startWeek,
-              endWeek: s.endWeek,
+              startWeek: startWeek,
+              endWeek: endWeek,
               weekType: s.weekType,
               customWeeks: List.of(s.customWeeks),
             ),
