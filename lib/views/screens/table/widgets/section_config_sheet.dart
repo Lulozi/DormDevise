@@ -64,6 +64,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
               _MutableSegment.fromConfig(segment, widget.scheduleConfig),
         )
         .toList();
+    // 确保每个时段的 classDurations 列表长度与 classCount 对齐，避免后续索引越界
+    for (final _MutableSegment seg in _segments) {
+      _ensureClassDurations(seg);
+    }
     _segmentKeys = List<GlobalKey>.generate(
       _segments.length,
       (_) => GlobalKey(),
@@ -564,7 +568,10 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
     final List<_SectionPreview> items = <_SectionPreview>[];
     TimeOfDay cursor = segment.startTime;
     for (int i = 0; i < segment.classCount; i++) {
-      final Duration classDuration = segment.classDurations[i];
+      // 防御性处理：如果 classDurations 长度不够，使用默认时长作为回退。
+      final Duration classDuration = i < segment.classDurations.length
+          ? segment.classDurations[i]
+          : _defaultClassDuration;
       final TimeOfDay end = _addDuration(cursor, classDuration);
       items.add(
         _SectionPreview(number: baseIndex + i + 1, start: cursor, end: end),
@@ -614,6 +621,25 @@ class _SectionConfigSheetState extends State<SectionConfigSheet> {
           expected - segment.breakDurations.length,
           base,
           growable: false,
+        ),
+      );
+    }
+  }
+
+  /// 确保每节课时长列表与节次数一致，短则补上默认时长，长则截断多余项。
+  void _ensureClassDurations(_MutableSegment segment) {
+    final int expected = segment.classCount;
+    if (segment.classDurations.length > expected) {
+      segment.classDurations.removeRange(
+        expected,
+        segment.classDurations.length,
+      );
+    } else if (segment.classDurations.length < expected) {
+      segment.classDurations.addAll(
+        List<Duration>.filled(
+          expected - segment.classDurations.length,
+          _defaultClassDuration,
+          growable: true,
         ),
       );
     }
