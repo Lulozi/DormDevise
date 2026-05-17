@@ -1558,14 +1558,15 @@ class _CourseEditPageState extends State<CourseEditPage> {
     for (final group in _classroomGroups) {
       for (final wg in group.weekGroups) {
         for (final s in wg.sessions) {
+          // 周次以周次分组为准，确保“编辑上课周数”能真正影响保存与冲突检测。
           final bool isUnconfigured =
-              s.startWeek == 0 && s.endWeek == 0 && s.customWeeks.isEmpty;
+              wg.startWeek == 0 && wg.endWeek == 0 && wg.customWeeks.isEmpty;
           final int startWeek = (widget.course == null && isUnconfigured)
               ? defaultStartWeek
-              : s.startWeek;
+              : wg.startWeek;
           final int endWeek = (widget.course == null && isUnconfigured)
               ? defaultEndWeek
-              : s.endWeek;
+              : wg.endWeek;
           allSessions.add(
             CourseSession(
               weekday: s.weekday,
@@ -1574,8 +1575,8 @@ class _CourseEditPageState extends State<CourseEditPage> {
               location: group.name, // 使用教室组名作为 location
               startWeek: startWeek,
               endWeek: endWeek,
-              weekType: s.weekType,
-              customWeeks: List.of(s.customWeeks),
+              weekType: wg.weekType,
+              customWeeks: List.of(wg.customWeeks),
             ),
           );
         }
@@ -2030,6 +2031,21 @@ class _CourseEditPageState extends State<CourseEditPage> {
         weekGroup.endWeek = result['end'] as int;
         weekGroup.weekType = result['type'] as CourseWeekType;
         weekGroup.customWeeks = result['customWeeks'] as List<int>;
+        // 同步更新当前分组下各时段的周次信息，确保后续逻辑读取一致。
+        weekGroup.sessions = weekGroup.sessions
+            .map(
+              (CourseSession s) => CourseSession(
+                weekday: s.weekday,
+                startSection: s.startSection,
+                sectionCount: s.sectionCount,
+                location: s.location,
+                startWeek: weekGroup.startWeek,
+                endWeek: weekGroup.endWeek,
+                weekType: weekGroup.weekType,
+                customWeeks: List<int>.of(weekGroup.customWeeks),
+              ),
+            )
+            .toList();
         // 选择周次后按周排序教室
         _sortClassroomGroups();
       });
