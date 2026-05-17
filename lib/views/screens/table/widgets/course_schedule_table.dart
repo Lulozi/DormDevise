@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../models/course.dart';
 import '../../../../models/course_schedule_config.dart';
 import '../../../../utils/color_extensions.dart';
+import '../course_edit_page.dart';
 import 'course_detail_sheet.dart';
 
 class CourseTableHighlightTarget {
@@ -3413,20 +3414,16 @@ class _CourseScheduleTableState extends State<CourseScheduleTable>
       ),
     );
 
-    if (result != null && result is Map) {
-      final action = result['action'];
-
-      if (action == 'create') {
-        final newCourse = result['newCourse'] as Course;
-        widget.onCourseAdded?.call(newCourse);
-      } else {
-        final target = result['target'] as Course;
-        if (action == 'delete') {
-          widget.onCourseDeleted?.call(target);
-        } else if (action == 'update') {
-          final newCourse = result['newCourse'] as Course;
-          widget.onCourseChanged?.call(target, newCourse);
+    if (result is CourseEditResult) {
+      if (result.isSave) {
+        final Course? previousCourse = result.previousCourse;
+        if (previousCourse == null) {
+          widget.onCourseAdded?.call(result.course);
+        } else {
+          widget.onCourseChanged?.call(previousCourse, result.course);
         }
+      } else if (result.isDelete) {
+        widget.onCourseDeleted?.call(result.course);
       }
     }
   }

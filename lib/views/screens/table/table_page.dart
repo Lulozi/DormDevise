@@ -1451,7 +1451,7 @@ class TablePageState extends State<TablePage>
 
   /// 添加新课程。
   Future<void> _addCourse({int? weekday, int? section}) async {
-    final Course? newCourse = await Navigator.of(context).push(
+    final Object? result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CourseEditPage(
           initialWeekday: weekday,
@@ -1461,8 +1461,8 @@ class TablePageState extends State<TablePage>
         ),
       ),
     );
-    if (newCourse != null) {
-      await _handleCourseAdded(newCourse);
+    if (result is CourseEditResult && result.isSave) {
+      await _handleCourseAdded(result.course);
     }
   }
 
@@ -1659,26 +1659,18 @@ class TablePageState extends State<TablePage>
                             _addCourse(weekday: weekday, section: section);
                           },
                     onCourseChanged: (oldCourse, newCourse) async {
-                      setState(() {
-                        _invalidateAdaptiveLayoutCache();
-                        final index = _courses.indexOf(oldCourse);
-                        if (index != -1) {
-                          _courses[index] = newCourse;
-                        }
-                      });
-                      await CourseService.instance.saveCourses(_courses);
-                      await CourseWidgetService.instance.syncWidget(
-                        resetDisplayDateToToday: true,
+                      // 编辑页已经把最终结果写回服务层，这里只重载最新数据，
+                      // 避免把刚保存的课程1改动用旧的 _courses 再覆盖回去。
+                      await _loadData(
+                        syncWidgetAfterLoad: true,
+                        resetWidgetDisplayDateToToday: true,
                       );
                     },
                     onCourseDeleted: (course) async {
-                      setState(() {
-                        _invalidateAdaptiveLayoutCache();
-                        _courses.remove(course);
-                      });
-                      await CourseService.instance.saveCourses(_courses);
-                      await CourseWidgetService.instance.syncWidget(
-                        resetDisplayDateToToday: true,
+                      // 删除也依赖服务层作为唯一真相源，直接重载即可。
+                      await _loadData(
+                        syncWidgetAfterLoad: true,
+                        resetWidgetDisplayDateToToday: true,
                       );
                     },
                     onCourseAdded: _handleCourseAdded,

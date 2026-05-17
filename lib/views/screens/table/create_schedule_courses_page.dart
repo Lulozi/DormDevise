@@ -150,7 +150,7 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
   }
 
   void _addCourse(int weekday, int section) async {
-    final Course? newCourse = await Navigator.of(context).push(
+    final Object? result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CourseEditPage(
           initialWeekday: weekday,
@@ -162,8 +162,8 @@ class _CreateScheduleCoursesPageState extends State<CreateScheduleCoursesPage> {
       ),
     );
 
-    if (newCourse != null) {
-      _handleCourseAdded(newCourse);
+    if (result is CourseEditResult && result.isSave) {
+      _handleCourseAdded(result.course);
     }
   }
 
