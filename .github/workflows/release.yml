@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: '选择发布类型'
+        description: '发布类型'
         required: true
         default: '稳定版'
         type: choice
@@ -15,14 +15,24 @@ on:
           - 候选发布版
           - 稳定版
       version:
-        description: '输入基础版本号 (例如: 1.0.0 或 v1.0.0)'
-        required: true
-        type: string
-      iteration:
-        description: '迭代号 (仅 内测版/公测版/候选发布版 必填，例如: 2)'
+        description: '基础版本号 (留空自动推算)'
         required: false
         default: ''
         type: string
+      iteration:
+        description: '迭代版本号 (留空自动生成)'
+        required: false
+        default: ''
+        type: string
+      publish_mode:
+        description: '发布到 GitHub Releases 的方式'
+        required: true
+        default: '智能处理'
+        type: choice
+        options:
+          - 智能处理
+          - 强制发布
+          - 强制不发布
       target_branch:
         description: '构建的目标分支 (默认: main)'
         required: false
@@ -36,48 +46,152 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      # 1. 解析中文下拉菜单，映射系统类型
+      # 1. 解析中文发布类型，自动计算下一个版本号
       - name: Parse Version and Release Type
         id: parse_version
         run: |
-          # 净化基础版本（去除大小写 v 或 V）
-          CLEAN_VERSION=$(echo "${{ inputs.version }}" | sed -e 's/^[vV]//')
-          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
-
-          # 获取中文下拉框的实际选择
+          # 定义中文与系统类型映射
+          declare -A REL_MAP
+          REL_MAP["快照版"]="snapshot"
+          REL_MAP["内测版"]="alpha"
+          REL_MAP["公测版"]="beta"
+          REL_MAP["候选发布版"]="rc"
+          REL_MAP["稳定版"]="stable"
+          
+          USER_VERSION_INPUT="${{ inputs.version }}"
+          USER_ITERATION_INPUT="${{ inputs.iteration }}"
           RELEASE_TYPE_RAW="${{ inputs.release_type }}"
-
-          # 根据下拉菜单映射系统类型并设置后缀
-          if [[ "$RELEASE_TYPE_RAW" == "快照版" ]]; then
-            echo "release_type=snapshot" >> $GITHUB_OUTPUT
-            echo "suffix=-SNAPSHOT" >> $GITHUB_OUTPUT
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          elif [[ "$RELEASE_TYPE_RAW" == "内测版" ]]; then
-            echo "release_type=alpha" >> $GITHUB_OUTPUT
-            ITERATION="${{ inputs.iteration }}"
-            if [[ -n "$ITERATION" ]]; then echo "suffix=-alpha.$ITERATION" >> $GITHUB_OUTPUT; else echo "suffix=-alpha" >> $GITHUB_OUTPUT; fi
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          elif [[ "$RELEASE_TYPE_RAW" == "公测版" ]]; then
-            echo "release_type=beta" >> $GITHUB_OUTPUT
-            ITERATION="${{ inputs.iteration }}"
-            if [[ -n "$ITERATION" ]]; then echo "suffix=-beta.$ITERATION" >> $GITHUB_OUTPUT; else echo "suffix=-beta" >> $GITHUB_OUTPUT; fi
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          elif [[ "$RELEASE_TYPE_RAW" == "候选发布版" ]]; then
-            echo "release_type=rc" >> $GITHUB_OUTPUT
-            ITERATION="${{ inputs.iteration }}"
-            if [[ -n "$ITERATION" ]]; then echo "suffix=-rc.$ITERATION" >> $GITHUB_OUTPUT; else echo "suffix=-rc" >> $GITHUB_OUTPUT; fi
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else # 稳定版
-            echo "release_type=stable" >> $GITHUB_OUTPUT
-            echo "suffix=" >> $GITHUB_OUTPUT
-            echo "prerelease=false" >> $GITHUB_OUTPUT
+          
+          USR_KEY=${REL_MAP[$RELEASE_TYPE_RAW]}
+          if [[ -z "$USR_KEY" ]]; then
+            echo "❌ 错误: 未知的发布类型 '$RELEASE_TYPE_RAW'"
+            exit 1
           fi
+          
+          # 获取最新的 Git Tag，没有 Tag 时直接报错终止
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null)
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "❌ 错误: 仓库中尚未创建任何 Tag。无法自动推算版本号，请先手动输入基础版本号，或先在本地/网页端创建一个初始 Tag。"
+            exit 1
+          fi
+          
+          LATEST_VER=$(echo "$LATEST_TAG" | sed -e 's/^[vV]//')
+          
+          # 解析最新的 Tag 结构
+          LT_BASE="0.0.0"
+          LT_SUFFIX=""
+          LT_ITER="1"
+          LT_KEY="stable"
+          if [[ "$LATEST_VER" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-([a-zA-Z]+)\.([0-9]+))?$ ]]; then
+              LT_BASE="${BASH_REMATCH[1]}"
+              if [[ -n "${BASH_REMATCH[3]}" ]]; then
+                  LT_SUFFIX="${BASH_REMATCH[3]}"
+                  LT_ITER="${BASH_REMATCH[4]}"
+              fi
+          fi
+          
+          # 权重定义
+          declare -A WEIGHTS
+          WEIGHTS["snapshot"]=0
+          WEIGHTS["alpha"]=1
+          WEIGHTS["beta"]=2
+          WEIGHTS["rc"]=3
+          WEIGHTS["stable"]=4
+          
+          [[ "$LT_SUFFIX" == "SNAPSHOT" ]] && LT_KEY="snapshot"
+          [[ "$LT_SUFFIX" == "alpha" ]] && LT_KEY="alpha"
+          [[ "$LT_SUFFIX" == "beta" ]] && LT_KEY="beta"
+          [[ "$LT_SUFFIX" == "rc" ]] && LT_KEY="rc"
+          [[ -z "$LT_SUFFIX" ]] && LT_KEY="stable"
 
-      # 2. 拉取代码
+          WEIGHT_OLD=${WEIGHTS[$LT_KEY]}
+          WEIGHT_NEW=${WEIGHTS[$USR_KEY]}
+          
+          FINAL_BASE="$LT_BASE"
+          FINAL_ITER="1"
+          
+          # 核心推算逻辑
+          if [[ -n "$USER_VERSION_INPUT" ]]; then
+              # 用户手动写了基础版本号
+              FINAL_BASE=$(echo "$USER_VERSION_INPUT" | sed -e 's/^[vV]//')
+              
+              if [[ "$FINAL_BASE" == "$LT_BASE" ]]; then
+                  # ① 同级基础版本，绝对禁止类型降级
+                  if [[ $WEIGHT_NEW -lt $WEIGHT_OLD ]]; then
+                      echo "❌ 错误：不允许在同基础版本内降级类型发布。当前最新 Tag 为 $LATEST_TAG，无法回退到 $RELEASE_TYPE_RAW。"
+                      exit 1
+                  fi
+
+                  # ② 同级基础版本，且类型相同
+                  if [[ "$USR_KEY" == "$LT_KEY" ]]; then
+                      if [[ -n "$USER_ITERATION_INPUT" ]]; then
+                          # 用户填了迭代号，禁止迭代号降级
+                          if [[ $USER_ITERATION_INPUT -lt $LT_ITER ]]; then
+                              echo "❌ 错误：不允许在同基础版本、同发布类型下降级迭代号。当前 Tag $LATEST_TAG 迭代号为 $LT_ITER，无法回退至 $USER_ITERATION_INPUT。"
+                              exit 1
+                          fi
+                          FINAL_ITER="$USER_ITERATION_INPUT"
+                      else
+                          # 用户留空迭代号，自动 +1
+                          FINAL_ITER=$((LT_ITER + 1))
+                      fi
+                  else
+                      # ③ 同级基础版本，类型向前递进 (alpha->beta 等)，迭代号回归为 1
+                      FINAL_ITER="1"
+                  fi
+              else
+                  # ④ 用户修改了基础版本号，迭代号强制回归为 1
+                  FINAL_ITER="1"
+              fi
+          else
+              # 用户没写基础版本号（自动抓取上一个 Tag 推算）
+              FINAL_BASE="$LT_BASE"
+              
+              # ⑤ 绝对禁止降级发布
+              if [[ $WEIGHT_NEW -lt $WEIGHT_OLD ]]; then
+                  echo "❌ 错误：不允许降级发布。当前最新 Tag 为 $LATEST_TAG，无法回退到 $RELEASE_TYPE_RAW。"
+                  exit 1
+              fi
+              
+              if [[ "$USR_KEY" == "$LT_KEY" ]]; then
+                  # ⑥ 类型相同，自动 +1 迭代号
+                  FINAL_ITER=$((LT_ITER + 1))
+              else
+                  # ⑦ 类型递进，迭代号回归为 1
+                  FINAL_ITER="1"
+              fi
+          fi
+          
+          # 组装最终版本号
+          FINAL_SUFFIX=""
+          FINAL_IS_PRERELEASE="true"
+          if [[ "$USR_KEY" == "stable" ]]; then
+              FINAL_SUFFIX=""
+              FINAL_IS_PRERELEASE="false"
+          elif [[ "$USR_KEY" == "snapshot" ]]; then
+              # ⑧ 针对快照版优化：用户不填迭代号，不生成 .X 后缀；填了才生成
+              if [[ -z "$USER_ITERATION_INPUT" ]]; then
+                  FINAL_SUFFIX="-SNAPSHOT"
+              else
+                  FINAL_SUFFIX="-SNAPSHOT.$FINAL_ITER"
+              fi
+              FINAL_IS_PRERELEASE="true"
+          else
+              FINAL_SUFFIX="-$USR_KEY.$FINAL_ITER"
+              FINAL_IS_PRERELEASE="true"
+          fi
+          
+          echo "clean_version=$FINAL_BASE" >> $GITHUB_OUTPUT
+          echo "suffix=$FINAL_SUFFIX" >> $GITHUB_OUTPUT
+          echo "prerelease=$FINAL_IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "release_type=$USR_KEY" >> $GITHUB_OUTPUT
+
+      # 2. 拉取代码（必须拉取全部历史记录以获取 Tag）
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.target_branch }}
+          fetch-depth: 0
 
       # 3. 更新 pubspec.yaml 版本
       - name: Update pubspec.yaml version
@@ -100,7 +214,7 @@ jobs:
       # 6. 注入签名配置
       - name: Create key.properties
         run: |
-          echo "storeFile=../key.jks" > android/key.properties
+          echo "storeFile=key.jks" > android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
@@ -116,9 +230,9 @@ jobs:
       - name: Build Release APK
         run: flutter build apk --release
 
-      # 8. 选择性发布到 GitHub Releases (快照版和内测版 将跳过此步骤)
+      # 8. 根据用户选择的发布模式上传到 GitHub Releases
       - name: Create GitHub Release
-        if: steps.parse_version.outputs.release_type != 'snapshot' && steps.parse_version.outputs.release_type != 'alpha'
+        if: inputs.publish_mode == '强制发布' || (inputs.publish_mode == '智能处理' && steps.parse_version.outputs.release_type != 'snapshot' && steps.parse_version.outputs.release_type != 'alpha')
         uses: softprops/action-gh-release@v2
         with:
           files: android/app/build/outputs/apk/*.apk
