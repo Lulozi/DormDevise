@@ -10,16 +10,16 @@ on:
         type: choice
         options:
           - 快照版
-          - Alpha
-          - Beta
-          - 预发布版
+          - 内测版
+          - 公测版
+          - 候选发布版
           - 稳定版
       version:
         description: '输入基础版本号 (例如: 1.0.0 或 v1.0.0)'
         required: true
         type: string
       iteration:
-        description: '迭代号 (仅 Alpha/Beta/预发布版必填，例如: 2)'
+        description: '迭代号 (仅 内测版/公测版/候选发布版 必填，例如: 2)'
         required: false
         default: ''
         type: string
@@ -52,17 +52,17 @@ jobs:
             echo "release_type=snapshot" >> $GITHUB_OUTPUT
             echo "suffix=-SNAPSHOT" >> $GITHUB_OUTPUT
             echo "prerelease=true" >> $GITHUB_OUTPUT
-          elif [[ "$RELEASE_TYPE_RAW" == "Alpha" ]]; then
+          elif [[ "$RELEASE_TYPE_RAW" == "内测版" ]]; then
             echo "release_type=alpha" >> $GITHUB_OUTPUT
             ITERATION="${{ inputs.iteration }}"
             if [[ -n "$ITERATION" ]]; then echo "suffix=-alpha.$ITERATION" >> $GITHUB_OUTPUT; else echo "suffix=-alpha" >> $GITHUB_OUTPUT; fi
             echo "prerelease=true" >> $GITHUB_OUTPUT
-          elif [[ "$RELEASE_TYPE_RAW" == "Beta" ]]; then
+          elif [[ "$RELEASE_TYPE_RAW" == "公测版" ]]; then
             echo "release_type=beta" >> $GITHUB_OUTPUT
             ITERATION="${{ inputs.iteration }}"
             if [[ -n "$ITERATION" ]]; then echo "suffix=-beta.$ITERATION" >> $GITHUB_OUTPUT; else echo "suffix=-beta" >> $GITHUB_OUTPUT; fi
             echo "prerelease=true" >> $GITHUB_OUTPUT
-          elif [[ "$RELEASE_TYPE_RAW" == "预发布版" ]]; then
+          elif [[ "$RELEASE_TYPE_RAW" == "候选发布版" ]]; then
             echo "release_type=rc" >> $GITHUB_OUTPUT
             ITERATION="${{ inputs.iteration }}"
             if [[ -n "$ITERATION" ]]; then echo "suffix=-rc.$ITERATION" >> $GITHUB_OUTPUT; else echo "suffix=-rc" >> $GITHUB_OUTPUT; fi
@@ -116,7 +116,7 @@ jobs:
       - name: Build Release APK
         run: flutter build apk --release
 
-      # 8. 选择性发布到 GitHub Releases (快照版和Alpha 将跳过此步骤)
+      # 8. 选择性发布到 GitHub Releases (快照版和内测版 将跳过此步骤)
       - name: Create GitHub Release
         if: steps.parse_version.outputs.release_type != 'snapshot' && steps.parse_version.outputs.release_type != 'alpha'
         uses: softprops/action-gh-release@v2
